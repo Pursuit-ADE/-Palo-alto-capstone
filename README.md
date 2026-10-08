@@ -6,6 +6,8 @@ A governed AI analytics copilot that sits next to certified dashboards. The AI o
 
 **Synthetic data only.** No real customer or Palo Alto Networks data is used.
 
+New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
+
 ## Run it
 
 Requires Node 20+. No Docker needed: the app and tests use an embedded Postgres (PGlite) seeded deterministically on start.
