@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "terms": [
+    { "term": "Open", "definition": "Not Closed Won and not Closed Lost." },
+    { "term": "Pipeline coverage", "definition": "Open pipeline closing in a period divided by quota for that period. We report total coverage; weighted coverage is not defined yet." },
+    { "term": "Fiscal quarter", "definition": "Palo Alto Networks' fiscal year starts August 1, so FY27-Q1 is Aug 1 to Oct 31, 2026 (assumption until confirmed)." },
+    { "term": "This quarter", "definition": "The fiscal quarter containing the data snapshot's as-of date." },
+    { "term": "Region", "definition": "East or West in the synthetic dataset." }
+  ],
+  "periodPhrases": {
+    "this quarter": "current",
+    "current quarter": "current",
+    "this fiscal quarter": "current",
+    "next quarter": "next",
+    "q1": "FY27-Q1",
+    "q2": "FY27-Q2",
+    "fy27-q1": "FY27-Q1",
+    "fy27-q2": "FY27-Q2"
+  },
+  "dimensionPhrases": {
+    "by region": "region",
+    "per region": "region",
+    "each region": "region",
+    "by stage": "stage",
+    "per stage": "stage",
+    "by owner": "owner",
+    "per owner": "owner"
+  },
+  "ambiguousTerms": {
+    "weighted": "Do you mean total coverage (open pipeline / quota)? Weighted coverage is not defined in the metric registry yet."
+  }
+}
