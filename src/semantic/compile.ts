@@ -48,8 +48,9 @@ class Params {
 function whereFor(source: Source, alias: string, p: Params, snapshotId: string, regions: string[], principal: Principal, period?: string) {
   const where = [`${alias}.snapshot_id = ${p.add(snapshotId)}`, `${alias}.region_id = ANY(${p.add(regions)}::text[])`];
   for (const c of source.conditions) where.push(`${alias}.${c.column} = ${p.add(c.equals)}`);
-  if (source.table === 'opportunities' && principal.accountIds) {
-    where.push(`${alias}.account_id = ANY(${p.add(principal.accountIds)}::text[])`);
+  if (principal.ownerIds) {
+    const ownerColumn = source.table === 'opportunities' ? 'owner_user_id' : 'user_id';
+    where.push(`${alias}.${ownerColumn} = ANY(${p.add(principal.ownerIds)}::text[])`);
   }
   if (period) {
     const per = findPeriod(period)!;

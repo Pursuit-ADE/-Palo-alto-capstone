@@ -7,7 +7,7 @@ import { IntentError } from '@/semantic/compile';
 import { ScopeViolation } from '@/semantic/scope';
 
 const reg = loadRegistry();
-const seed = buildSeed();
+const data = buildSeed();
 let database: Database;
 
 beforeAll(async () => {
@@ -17,10 +17,12 @@ afterAll(async () => {
   await database.client.close();
 });
 
-const open = seed.opportunities.filter((o) => !o.isClosed);
+const open = data.opportunities.filter((o) => !o.isClosed);
 const sum = (xs: { amount: string }[]) => xs.reduce((t, o) => t + Number(o.amount), 0);
 const q1 = QUOTA_PERIODS[0];
 const inQ1 = (o: { closeDate: string }) => o.closeDate >= q1.start && o.closeDate <= q1.end;
+const teamOf = (managerId: string) => new Set(data.users.filter((u) => u.managerId === managerId && u.role === 'sales_rep').map((u) => u.id));
+const ratio = (num: number, den: number) => Math.round((num / den) * 10000) / 10000;
 
 async function answer(userId: string, phrase: string): Promise<Answer> {
   const r = await ask(database, reg, userId, phrase);
@@ -28,25 +30,24 @@ async function answer(userId: string, phrase: string): Promise<Answer> {
   return r;
 }
 
-describe('governed metrics against the seeded database', () => {
+describe('governed metrics against the loaded CRM data', () => {
   it('open pipeline for the analyst equals the hand-computed total', async () => {
     const r = await answer('u_analyst', 'What is our open pipeline?');
     expect(r.rows[0]!.value).toBeCloseTo(sum(open), 2);
-    expect(r.provenance.snapshotId).toBe(seed.snapshot.id);
+    expect(r.provenance.snapshotId).toBe(data.snapshot.id);
   });
 
-  it('open opportunity count matches the seed', async () => {
+  it('open opportunity count matches the source (Prospecting + Engaging)', async () => {
     const r = await answer('u_analyst', 'how many open deals?');
     expect(r.rows[0]!.value).toBe(open.length);
   });
 
   it('coverage by region = open pipeline closing in the quarter / quota for the quarter', async () => {
     const r = await answer('u_analyst', 'coverage by region for this quarter');
-    for (const region of ['east', 'west']) {
-      const quota = Number(seed.quotas.find((q) => q.regionId === region && q.period === 'FY27-Q1')!.amount);
+    for (const region of ['central', 'east', 'west']) {
+      const quota = sum(data.quotas.filter((q) => q.regionId === region && q.period === 'FY27-Q1'));
       const pipe = sum(open.filter((o) => o.regionId === region && inQ1(o)));
-      const row = r.rows.find((x) => x.region === region)!;
-      expect(row.value).toBeCloseTo(Math.round((pipe / quota) * 10000) / 10000, 4);
+      expect(r.rows.find((x) => x.region === region)!.value).toBeCloseTo(ratio(pipe, quota), 4);
     }
   });
 
@@ -59,13 +60,20 @@ describe('governed metrics against the seeded database', () => {
 });
 
 describe('role-based scope', () => {
-  it('East and West sellers get different, correctly scoped numbers from the same formula', async () => {
+  it('technical sellers see only the team they support, so East and West get different numbers', async () => {
     const east = await answer('u_ts_east', 'What is our open pipeline?');
     const west = await answer('u_ts_west', 'What is our open pipeline?');
-    expect(east.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.regionId === 'east')), 2);
-    expect(west.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.regionId === 'west')), 2);
+    const eastTeam = teamOf('u_mgr_cara_losch');
+    const westTeam = teamOf('u_mgr_celia_rouche');
+    expect(east.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => eastTeam.has(o.ownerUserId))), 2);
+    expect(west.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => westTeam.has(o.ownerUserId))), 2);
     expect(east.scope).toContain('East');
-    expect(west.scope).toContain('West');
+    expect(east.scope).toContain('Cara Losch');
+  });
+
+  it('a sales rep sees only their own deals', async () => {
+    const r = await answer('u_darcel_schlecht', 'how many open deals?');
+    expect(r.rows[0]!.value).toBe(open.filter((o) => o.ownerUserId === 'u_darcel_schlecht').length);
   });
 
   it('refuses a seller who asks for another region instead of widening scope', async () => {
@@ -87,11 +95,11 @@ describe('intent validation and injection', () => {
   it('treats a SQL-injection string in a filter as a plain value, not SQL', async () => {
     const r = await answerIntent(database, reg, 'u_analyst', {
       metric: 'open_opportunity_count',
-      filters: { stages: ["Proposal' OR '1'='1"] },
+      filters: { stages: ["Engaging' OR '1'='1"] },
       groupBy: [],
     });
     expect(r.rows[0]!.value).toBe(0);
     const accounts = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
-    expect(accounts.rows[0]!.n).toBe(seed.accounts.length);
+    expect(accounts.rows[0]!.n).toBe(data.accounts.length);
   });
 });

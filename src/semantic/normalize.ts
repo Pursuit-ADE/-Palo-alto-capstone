@@ -42,7 +42,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
   }
   const metric = registry.metrics.get(matches[0]!)!;
 
-  const regions = (['east', 'west'] as const).filter((r) => text.includes(` ${r} `));
+  const regions = (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
 
   let period: string | undefined;
   const periodKeys = Object.keys(glossary.periodPhrases).sort((a, b) => b.length - a.length);

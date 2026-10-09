@@ -7,7 +7,7 @@ export type Dimension = z.infer<typeof Dimension>;
 // Only these tables and columns can ever appear in compiled SQL.
 export const ALLOWED_COLUMNS = {
   opportunities: ['amount', 'is_closed', 'close_date', 'stage', 'region_id', 'owner_user_id', 'account_id', 'snapshot_id'],
-  quotas: ['amount', 'period', 'region_id', 'snapshot_id'],
+  quotas: ['amount', 'period', 'region_id', 'user_id', 'snapshot_id'],
 } as const;
 export type AllowedTable = keyof typeof ALLOWED_COLUMNS;
 
@@ -69,7 +69,7 @@ export const Intent = z
     metric: Identifier,
     filters: z
       .object({
-        regions: z.array(z.enum(['east', 'west'])).min(1).optional(),
+        regions: z.array(z.enum(['central', 'east', 'west'])).min(1).optional(),
         stages: z.array(z.string().max(40)).min(1).optional(),
         period: z.string().regex(/^FY\d{2}-Q[1-4]$/).optional(),
       })

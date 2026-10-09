@@ -1,5 +1,5 @@
 {
-  "id": "a0183d64-d190-400d-8eff-4c734c272a57",
+  "id": "118bd4ff-6ed2-4283-90c3-c059969ac351",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -111,26 +111,38 @@
           "primaryKey": false,
           "notNull": true
         },
-        "industry": {
-          "name": "industry",
+        "sector": {
+          "name": "sector",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "region_id": {
-          "name": "region_id",
+        "year_established": {
+          "name": "year_established",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revenue_musd": {
+          "name": "revenue_musd",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "employees": {
+          "name": "employees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "hq_country": {
+          "name": "hq_country",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "technical_seller_user_id": {
-          "name": "technical_seller_user_id",
+        "parent_account": {
+          "name": "parent_account",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -144,45 +156,6 @@
           "tableTo": "data_snapshots",
           "columnsFrom": [
             "snapshot_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "accounts_region_id_regions_id_fk": {
-          "name": "accounts_region_id_regions_id_fk",
-          "tableFrom": "accounts",
-          "tableTo": "regions",
-          "columnsFrom": [
-            "region_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "accounts_owner_user_id_app_users_id_fk": {
-          "name": "accounts_owner_user_id_app_users_id_fk",
-          "tableFrom": "accounts",
-          "tableTo": "app_users",
-          "columnsFrom": [
-            "owner_user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "accounts_technical_seller_user_id_app_users_id_fk": {
-          "name": "accounts_technical_seller_user_id_app_users_id_fk",
-          "tableFrom": "accounts",
-          "tableTo": "app_users",
-          "columnsFrom": [
-            "technical_seller_user_id"
           ],
           "columnsTo": [
             "id"
@@ -224,6 +197,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "manager_id": {
+          "name": "manager_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         }
       },
       "indexes": {},
@@ -482,7 +467,7 @@
           "name": "account_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "region_id": {
           "name": "region_id",
@@ -496,8 +481,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "name": {
-          "name": "name",
+        "product_id": {
+          "name": "product_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -514,9 +499,27 @@
           "primaryKey": false,
           "notNull": true
         },
+        "amount_is_estimate": {
+          "name": "amount_is_estimate",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "engage_date": {
+          "name": "engage_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
         "close_date": {
           "name": "close_date",
           "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "close_date_is_estimate": {
+          "name": "close_date_is_estimate",
+          "type": "boolean",
           "primaryKey": false,
           "notNull": true
         },
@@ -586,8 +589,52 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "opportunities_product_id_products_id_fk": {
+          "name": "opportunities_product_id_products_id_fk",
+          "tableFrom": "opportunities",
+          "tableTo": "products",
+          "columnsFrom": [
+            "product_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "series": {
+          "name": "series",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "list_price": {
+          "name": "list_price",
+          "type": "numeric(12, 2)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

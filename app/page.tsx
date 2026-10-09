@@ -1,4 +1,4 @@
-import { AS_OF_DATE, USERS } from '@/db/seed';
+import { AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent, ask, type Answer, type Reply } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
 import { resolvePeriod } from '@/semantic/periods';
@@ -6,6 +6,8 @@ import { ScopeViolation } from '@/semantic/scope';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
 export const dynamic = 'force-dynamic';
+
+const USERS = demoUsers();
 
 const EXAMPLES = ['What is our open pipeline?', 'coverage by region for this quarter', 'open opportunities by stage', 'pipeline coverage'];
 // Common sales rule of thumb, used only to color the coverage tiles (assumption, not a governed metric).
@@ -75,7 +77,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Synthetic data</span>
+          <span className="badge">Public sample data</span>
           <form className="who" method="get">
             <label htmlFor="user">Viewing as</label>
             <select id="user" name="user" defaultValue={user}>

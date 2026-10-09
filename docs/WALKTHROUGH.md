@@ -1,6 +1,6 @@
 # Walkthrough
 
-This is a **governed analytics copilot** for the ALTO PALS capstone. Someone asks a plain-English question about pipeline. The app answers only from three approved metrics, only with the data that person is allowed to see, and it always says where the number came from. All of the data is fake. Nothing here is a real Palo Alto Networks customer.
+This is a **governed analytics copilot** for the ALTO PALS capstone. Someone asks a plain-English question about pipeline. The app answers only from three approved metrics, only with the data that person is allowed to see, and it always says where the number came from. The sales data is the public Maven Analytics CRM sample (a fictional company). Nothing here is a real Palo Alto Networks customer.
 
 ## Run it
 
@@ -14,10 +14,10 @@ Then open http://localhost:3000. Pick a person, type a question or click an exam
 
 ## What a good answer looks like
 
-Signed in as **Jordan Lee (Technical seller, East)**, "What is our open pipeline?" returns **$8,168,000**. Under the number the page says:
+Signed in as **Jordan Lee (Technical seller, East)**, "What is our open pipeline?" returns **$495,950**. Under the number the page says:
 
-- **Scope:** East region, limited to the 10 accounts on Jordan's account team.
-- **Provenance:** metric `open_pipeline` version 1, snapshot `snap_alto-pals-v1`, as of **2026-10-08**, plus a short hash of the result.
+- **Scope:** East region, Cara Losch's team (6 reps), the sales team Jordan supports.
+- **Provenance:** metric `open_pipeline` version 1, snapshot `snap_alto-pals-v2`, as of **2026-10-08**, plus a short hash of the result.
 - **Intent:** the structured request the system actually ran, which for that question is "open pipeline, no filters, no breakdown."
 
 That last line is the whole product idea. The person types English. The system turns it into a small, checked request. It never lets the question write its own math or its own SQL.
@@ -50,19 +50,26 @@ The identity dropdown is a demo switch, not login.
 
 | Person | Role | What they see |
 |---|---|---|
-| Jordan Lee | Technical seller, East | East, and only the 10 East accounts on their team |
-| Sam Rivera | Technical seller, West | West, same rule |
-| Casey Morgan | Account owner, East | East, their accounts |
-| Riley Chen | Account owner, West | West, their accounts |
-| Avery Patel | Customer analytics | East and West, every account |
+| Jordan Lee | Technical seller, East (synthetic) | Deals and quotas of Cara Losch's team, the team Jordan supports |
+| Sam Rivera | Technical seller, West (synthetic) | Celia Rouche's team |
+| Darcel Schlecht | Sales rep (from the sample) | Only their own deals and quota |
+| Melvin Marxen | Sales manager, Central (from the sample) | Their own team |
+| Avery Patel | Customer analytics (synthetic) | Central, East and West, every team |
 
-A regional-manager role exists in the data model (a whole region, every account in it), but none of the five demo people is a regional manager yet.
+## The data
 
-## The fake company
+The demo needs no Docker and no database server. On startup the app creates an in-memory Postgres (PGlite) and loads:
 
-The demo needs no Docker and no database server. On startup the app creates an in-memory Postgres (PGlite) and fills it from the seed `alto-pals-v1`. The same seed always produces the same rows, which is why tests and the demo match. (`docker-compose.yml` is there for the real Postgres we move to in Week 2.)
+- **From the public Maven Analytics "CRM Sales Opportunities" sample** (public domain, fictional company MavenTech, in `data/maven-crm/`): 85 accounts, 8,800 opportunities, 35 sales reps under 6 managers in Central, East and West, and 7 products.
+- **Synthetic, because the sample has none:** quotas, contacts, support cases, engagements, the two technical sellers and the analyst.
 
-The world is small: 2 regions, 20 accounts (10 East, 10 West), contacts, opportunities, quotas, plus support cases and engagements reserved for later alerts. Every business row is stamped with snapshot `snap_alto-pals-v1`.
+Adjustments, all documented in `registry/dictionary.json`:
+
+- Dates are shifted forward by the same number of days so the newest record lands on the snapshot date, Oct 8, 2026.
+- Open deals have no value or close date in the sample. The product list price is used as the value, and engage date + 57 days (the median sales cycle) as the expected close date, rolled forward if already past. Both are flagged as estimates.
+- Quotas are 1.2x each rep's average quarterly won revenue over the last year.
+
+Every business row is stamped with snapshot `snap_alto-pals-v2`.
 
 ## What is built, and what is later
 

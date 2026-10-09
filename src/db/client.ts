@@ -16,7 +16,7 @@ export interface Database {
 
 const MIGRATIONS = path.join(process.cwd(), 'drizzle');
 
-/** Opens a database, applies migrations and loads the deterministic seed if it is empty. */
+/** Opens a database, applies migrations and loads the dataset if it is empty. */
 export async function openDatabase(dataDir?: string, seed: string = DEFAULT_SEED): Promise<Database> {
   const client = dataDir ? new PGlite(dataDir) : new PGlite();
   const db = drizzle(client, { schema });
@@ -26,16 +26,23 @@ export async function openDatabase(dataDir?: string, seed: string = DEFAULT_SEED
   return { db, client };
 }
 
+function chunks<T>(rows: T[], size = 500): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < rows.length; i += size) out.push(rows.slice(i, i + size));
+  return out;
+}
+
 export async function loadSeed(db: Db, seed: string = DEFAULT_SEED) {
   const s = buildSeed(seed);
   await db.transaction(async (tx) => {
     await tx.insert(schema.dataSnapshots).values(s.snapshot);
     await tx.insert(schema.regions).values(s.regions);
     await tx.insert(schema.appUsers).values(s.users);
+    await tx.insert(schema.products).values(s.products);
     await tx.insert(schema.accounts).values(s.accounts);
-    await tx.insert(schema.accountTeam).values(s.accountTeam);
+    for (const c of chunks(s.accountTeam)) await tx.insert(schema.accountTeam).values(c);
     await tx.insert(schema.contacts).values(s.contacts);
-    await tx.insert(schema.opportunities).values(s.opportunities);
+    for (const c of chunks(s.opportunities)) await tx.insert(schema.opportunities).values(c);
     await tx.insert(schema.quotas).values(s.quotas);
     if (s.supportCases.length) await tx.insert(schema.supportCases).values(s.supportCases);
     if (s.engagements.length) await tx.insert(schema.engagements).values(s.engagements);

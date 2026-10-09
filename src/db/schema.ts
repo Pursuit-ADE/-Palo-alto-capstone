@@ -1,6 +1,8 @@
-// Synthetic CRM-style data model. No real Palo Alto Networks data is ever loaded.
+// Data model. Accounts, products, sales agents and opportunities come from the public-domain
+// Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
+// cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -15,25 +17,30 @@ export const regions = pgTable('regions', {
   name: text('name').notNull(),
 });
 
-// Mock identities. Roles: technical_seller, account_owner, regional_manager, analyst.
+// Roles: sales_rep, sales_manager, technical_seller, analyst. manager_id links a rep (or the
+// technical seller supporting that team) to their sales manager.
 export const appUsers = pgTable('app_users', {
   id: text('id').primaryKey(),
   displayName: text('display_name').notNull(),
   role: text('role').notNull(),
   regionId: text('region_id').references(() => regions.id),
+  managerId: text('manager_id'),
+  source: text('source').notNull(),
 });
 
 export const accounts = pgTable('accounts', {
   id: text('id').primaryKey(),
   snapshotId: text('snapshot_id').notNull().references(() => dataSnapshots.id),
   name: text('name').notNull(),
-  industry: text('industry').notNull(),
-  regionId: text('region_id').notNull().references(() => regions.id),
-  ownerUserId: text('owner_user_id').notNull().references(() => appUsers.id),
-  technicalSellerUserId: text('technical_seller_user_id').references(() => appUsers.id),
+  sector: text('sector').notNull(),
+  yearEstablished: integer('year_established'),
+  revenueMusd: numeric('revenue_musd', { precision: 12, scale: 2 }),
+  employees: integer('employees'),
+  hqCountry: text('hq_country'),
+  parentAccount: text('parent_account'),
 });
 
-// Account-access mapping: who may see which account, and in what capacity.
+// Account-access mapping: who works on which account (agents who sold to it, and their team's technical seller).
 export const accountTeam = pgTable(
   'account_team',
   {
@@ -44,6 +51,12 @@ export const accountTeam = pgTable(
   },
   (t) => [primaryKey({ columns: [t.accountId, t.userId] })],
 );
+
+export const products = pgTable('products', {
+  id: text('id').primaryKey(),
+  series: text('series').notNull(),
+  listPrice: numeric('list_price', { precision: 12, scale: 2 }).notNull(),
+});
 
 export const contacts = pgTable('contacts', {
   id: text('id').primaryKey(),
@@ -57,18 +70,21 @@ export const contacts = pgTable('contacts', {
 export const opportunities = pgTable('opportunities', {
   id: text('id').primaryKey(),
   snapshotId: text('snapshot_id').notNull().references(() => dataSnapshots.id),
-  accountId: text('account_id').notNull().references(() => accounts.id),
+  accountId: text('account_id').references(() => accounts.id),
   regionId: text('region_id').notNull().references(() => regions.id),
   ownerUserId: text('owner_user_id').notNull().references(() => appUsers.id),
-  name: text('name').notNull(),
+  productId: text('product_id').notNull().references(() => products.id),
   stage: text('stage').notNull(),
   amount: numeric('amount', { precision: 14, scale: 2 }).notNull(),
+  amountIsEstimate: boolean('amount_is_estimate').notNull(),
+  engageDate: date('engage_date'),
   closeDate: date('close_date').notNull(),
+  closeDateIsEstimate: boolean('close_date_is_estimate').notNull(),
   isClosed: boolean('is_closed').notNull(),
   isWon: boolean('is_won').notNull(),
 });
 
-// Synthetic quotas: needed because pipeline coverage = open pipeline / quota.
+// Synthetic quotas per sales rep and fiscal quarter: pipeline coverage = open pipeline / quota.
 export const quotas = pgTable('quotas', {
   id: text('id').primaryKey(),
   snapshotId: text('snapshot_id').notNull().references(() => dataSnapshots.id),

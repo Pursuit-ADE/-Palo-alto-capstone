@@ -1,36 +1,39 @@
 {
-  "version": 1,
+  "version": 2,
   "tables": {
     "opportunities": {
-      "description": "Sales opportunities from the synthetic CRM sample.",
+      "description": "Sales opportunities from the public Maven Analytics CRM sample (fictional company MavenTech), dates shifted to FY27.",
       "fields": {
-        "amount": "Opportunity value in USD.",
-        "stage": "Sales stage: Prospecting, Qualification, Technical Validation, Proposal, Negotiation, Closed Won, Closed Lost.",
-        "close_date": "Expected (open) or actual (closed) close date.",
-        "is_closed": "True once the opportunity is Closed Won or Closed Lost.",
-        "is_won": "True only for Closed Won.",
-        "region_id": "Sales region of the account (east or west).",
-        "owner_user_id": "Account owner responsible for the opportunity."
+        "amount": "Deal value in USD. Closed deals use the recorded close value; open deals have none in the source, so the product's list price is used as an estimate (amount_is_estimate = true).",
+        "stage": "Sales stage from the source: Prospecting, Engaging, Won, Lost.",
+        "close_date": "Actual close date for Won/Lost. For open deals, an estimate: engage date + 57 days (median sales cycle), rolled forward if already past.",
+        "is_closed": "True for Won and Lost.",
+        "is_won": "True only for Won.",
+        "region_id": "Regional office of the sales rep who owns the deal (central, east or west).",
+        "owner_user_id": "Sales rep (sales agent in the source) who owns the deal.",
+        "account_id": "Customer account. Empty for many open deals in the source."
       }
     },
     "quotas": {
-      "description": "Synthetic sales quotas per region and fiscal quarter (the CRM sample has no quota data).",
+      "description": "Synthetic sales quotas per sales rep and fiscal quarter (the CRM sample has no quota data): 1.2x the rep's average quarterly won revenue over the last year.",
       "fields": {
         "amount": "Quota in USD for the period.",
         "period": "Fiscal quarter label, for example FY27-Q1.",
-        "region_id": "Region the quota belongs to."
+        "region_id": "Region of the sales rep.",
+        "user_id": "Sales rep the quota belongs to."
       }
     },
     "accounts": {
-      "description": "Customer accounts.",
+      "description": "Customer accounts from the CRM sample.",
       "fields": {
-        "region_id": "Sales region of the account.",
-        "owner_user_id": "Account owner.",
-        "technical_seller_user_id": "Technical seller (solution consultant) on the account."
+        "sector": "Industry (source typo 'technolgy' corrected).",
+        "revenue_musd": "Annual revenue in millions of USD.",
+        "hq_country": "Headquarters country.",
+        "parent_account": "Parent company, if a subsidiary."
       }
     },
     "account_team": {
-      "description": "Account-access mapping: which users work on which accounts.",
+      "description": "Account-access mapping: reps with deals on the account and the technical seller supporting their team.",
       "fields": { "team_role": "account_owner or technical_seller." }
     }
   }

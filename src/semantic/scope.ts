@@ -1,15 +1,17 @@
 // Role-based scope, resolved from the database, never from anything the user types.
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { appUsers, accountTeam } from '../db/schema';
+import { appUsers } from '../db/schema';
 
 export interface Principal {
   userId: string;
   displayName: string;
   role: string;
   regions: string[];
-  /** null = all accounts in the allowed regions */
-  accountIds: string[] | null;
+  /** Sales reps whose deals and quotas this person may see; null = everyone in the allowed regions */
+  ownerIds: string[] | null;
+  /** Plain-language description of the slice, used in the scope statement */
+  slice: string;
 }
 
 export class ScopeViolation extends Error {
@@ -19,26 +21,28 @@ export class ScopeViolation extends Error {
   }
 }
 
-const ALL_REGIONS = ['east', 'west'];
+export const ALL_REGIONS = ['central', 'east', 'west'];
 
 export async function resolvePrincipal(db: Db, userId: string): Promise<Principal> {
   const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId));
   if (!user) throw new ScopeViolation('Unknown user');
-  if (user.role === 'analyst') {
-    return { userId, displayName: user.displayName, role: user.role, regions: ALL_REGIONS, accountIds: null };
-  }
+  const base = { userId, displayName: user.displayName, role: user.role };
+  if (user.role === 'analyst') return { ...base, regions: ALL_REGIONS, ownerIds: null, slice: 'all teams' };
   if (!user.regionId) throw new ScopeViolation('User has no region assignment');
-  if (user.role === 'regional_manager') {
-    return { userId, displayName: user.displayName, role: user.role, regions: [user.regionId], accountIds: null };
-  }
-  const team = await db.select({ accountId: accountTeam.accountId }).from(accountTeam).where(eq(accountTeam.userId, userId));
-  return {
-    userId,
-    displayName: user.displayName,
-    role: user.role,
-    regions: [user.regionId],
-    accountIds: team.map((t) => t.accountId).sort(),
-  };
+  const regions = [user.regionId];
+
+  if (user.role === 'sales_rep') return { ...base, regions, ownerIds: [userId], slice: 'your own deals' };
+
+  // A manager sees their own team; a technical seller sees the team they support.
+  const managerId = user.role === 'sales_manager' ? userId : user.role === 'technical_seller' ? user.managerId : null;
+  if (!managerId) throw new ScopeViolation('User has no team assignment');
+  const reps = await db
+    .select({ id: appUsers.id })
+    .from(appUsers)
+    .where(and(eq(appUsers.managerId, managerId), eq(appUsers.role, 'sales_rep')));
+  const [manager] = await db.select().from(appUsers).where(eq(appUsers.id, managerId));
+  const managerName = manager?.displayName.split(' (')[0] ?? 'your manager';
+  return { ...base, regions, ownerIds: reps.map((r) => r.id).sort(), slice: `${managerName}'s team (${reps.length} reps)` };
 }
 
 /** Regions the query will use. Asking for a region outside your scope is refused, not silently widened. */
@@ -50,7 +54,6 @@ export function effectiveRegions(principal: Principal, requested?: string[]): st
 }
 
 export function scopeStatement(principal: Principal, regions: string[]): string {
-  const regionText = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ');
-  const accounts = principal.accountIds ? `, limited to the ${principal.accountIds.length} accounts on your account team` : '';
-  return `Scope: ${regionText} region${regions.length > 1 ? 's' : ''}${accounts}.`;
+  const regionText = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return `Scope: ${regionText} region${regions.length > 1 ? 's' : ''}, ${principal.slice}.`;
 }

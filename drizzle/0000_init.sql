@@ -10,17 +10,21 @@ CREATE TABLE "accounts" (
 	"id" text PRIMARY KEY NOT NULL,
 	"snapshot_id" text NOT NULL,
 	"name" text NOT NULL,
-	"industry" text NOT NULL,
-	"region_id" text NOT NULL,
-	"owner_user_id" text NOT NULL,
-	"technical_seller_user_id" text
+	"sector" text NOT NULL,
+	"year_established" integer,
+	"revenue_musd" numeric(12, 2),
+	"employees" integer,
+	"hq_country" text,
+	"parent_account" text
 );
 --> statement-breakpoint
 CREATE TABLE "app_users" (
 	"id" text PRIMARY KEY NOT NULL,
 	"display_name" text NOT NULL,
 	"role" text NOT NULL,
-	"region_id" text
+	"region_id" text,
+	"manager_id" text,
+	"source" text NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "contacts" (
@@ -53,15 +57,24 @@ CREATE TABLE "engagements" (
 CREATE TABLE "opportunities" (
 	"id" text PRIMARY KEY NOT NULL,
 	"snapshot_id" text NOT NULL,
-	"account_id" text NOT NULL,
+	"account_id" text,
 	"region_id" text NOT NULL,
 	"owner_user_id" text NOT NULL,
-	"name" text NOT NULL,
+	"product_id" text NOT NULL,
 	"stage" text NOT NULL,
 	"amount" numeric(14, 2) NOT NULL,
+	"amount_is_estimate" boolean NOT NULL,
+	"engage_date" date,
 	"close_date" date NOT NULL,
+	"close_date_is_estimate" boolean NOT NULL,
 	"is_closed" boolean NOT NULL,
 	"is_won" boolean NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "products" (
+	"id" text PRIMARY KEY NOT NULL,
+	"series" text NOT NULL,
+	"list_price" numeric(12, 2) NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "quotas" (
@@ -94,9 +107,6 @@ ALTER TABLE "account_team" ADD CONSTRAINT "account_team_account_id_accounts_id_f
 ALTER TABLE "account_team" ADD CONSTRAINT "account_team_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "account_team" ADD CONSTRAINT "account_team_snapshot_id_data_snapshots_id_fk" FOREIGN KEY ("snapshot_id") REFERENCES "public"."data_snapshots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "accounts" ADD CONSTRAINT "accounts_snapshot_id_data_snapshots_id_fk" FOREIGN KEY ("snapshot_id") REFERENCES "public"."data_snapshots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_owner_user_id_app_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."app_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "accounts" ADD CONSTRAINT "accounts_technical_seller_user_id_app_users_id_fk" FOREIGN KEY ("technical_seller_user_id") REFERENCES "public"."app_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "app_users" ADD CONSTRAINT "app_users_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contacts" ADD CONSTRAINT "contacts_snapshot_id_data_snapshots_id_fk" FOREIGN KEY ("snapshot_id") REFERENCES "public"."data_snapshots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "contacts" ADD CONSTRAINT "contacts_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -107,6 +117,7 @@ ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_snapshot_id_data_snaps
 ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_account_id_accounts_id_fk" FOREIGN KEY ("account_id") REFERENCES "public"."accounts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_owner_user_id_app_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "public"."app_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "opportunities" ADD CONSTRAINT "opportunities_product_id_products_id_fk" FOREIGN KEY ("product_id") REFERENCES "public"."products"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quotas" ADD CONSTRAINT "quotas_snapshot_id_data_snapshots_id_fk" FOREIGN KEY ("snapshot_id") REFERENCES "public"."data_snapshots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quotas" ADD CONSTRAINT "quotas_user_id_app_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."app_users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "quotas" ADD CONSTRAINT "quotas_region_id_regions_id_fk" FOREIGN KEY ("region_id") REFERENCES "public"."regions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
