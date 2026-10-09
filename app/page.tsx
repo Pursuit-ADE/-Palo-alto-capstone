@@ -86,26 +86,49 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). Demo identity switch, not a login.</p>
         </div>
 
-        <section className="kpis" aria-label="Key metrics">
-          <div className="kpi">
-            <span className="label">Open pipeline · all open deals</span>
-            <span className="value">{compactUsd(Number(pipeline.rows[0]?.value ?? 0))}</span>
-            <span className="note">{format(pipeline.rows[0]?.value, 'currency')}, any expected close date (not limited to {period})</span>
-          </div>
-          <div className="kpi">
-            <span className="label">Pipeline coverage · {period}</span>
-            <span className="value">{format(cov, 'ratio')}</span>
-            <span className="note">{format(coverage.rows[0]?.numerator, 'currency')} closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota</span>
-          </div>
-          <div className="kpi">
-            <span className="label">Open opportunities · all open deals</span>
-            <span className="value">{format(count.rows[0]?.value, 'count')}</span>
-            <span className="note">deals not yet won or lost</span>
-          </div>
-        </section>
+        <div className="overview">
+          <section className="kpis stack" aria-label="All open deals">
+            <div className="kpi">
+              <span className="label">Open pipeline · all open deals</span>
+              <span className="value">{compactUsd(Number(pipeline.rows[0]?.value ?? 0))}</span>
+              <span className="note">{format(pipeline.rows[0]?.value, 'currency')}, any expected close date (not limited to {period})</span>
+            </div>
+            <div className="kpi">
+              <span className="label">Open opportunities · all open deals</span>
+              <span className="value">{format(count.rows[0]?.value, 'count')}</span>
+              <span className="note">deals not yet won or lost</span>
+            </div>
+          </section>
 
-        <div className="grid2">
-          <section className="card" aria-labelledby="ask-title">
+          <section className="card coverage" aria-labelledby="cov-title">
+            <span className="label" id="cov-title">Pipeline coverage · {period}</span>
+            <span className="cov-value">{format(cov, 'ratio')}</span>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. 1.00x means pipeline equals quota.</p>
+            <h2>By region</h2>
+            <div className="bars">
+              {byRegion.rows.map((r) => {
+                const v = Number(r.value ?? 0);
+                const max = Math.max(1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
+                return (
+                  <div className="bar-row" key={String(r.region)}>
+                    <div className="bar-head">
+                      <span>{cell('region', r.region, '')}</span>
+                      <b>{format(v, 'ratio')}</b>
+                    </div>
+                    <div className="track">
+                      <div className="fill" style={{ width: `${(v / max) * 100}%` }} />
+                      <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
+                    </div>
+                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota</span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="bars-note">The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.</p>
+          </section>
+        </div>
+
+        <section className="card" aria-labelledby="ask-title">
             <h2 id="ask-title">Ask the copilot</h2>
             <p className="sub">Answers come only from the governed metrics below, scoped to {me.displayName.split(' (')[0]}.</p>
             <form className="ask" method="get">
@@ -126,32 +149,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               </div>
             )}
           </section>
-
-          <section className="card" aria-labelledby="cov-title">
-            <h2 id="cov-title">Coverage by region</h2>
-            <p className="sub">Open pipeline closing in {period} ÷ quota for {period}. 1.00x means pipeline equals quota.</p>
-            <div className="bars">
-              {byRegion.rows.map((r) => {
-                const v = Number(r.value ?? 0);
-                const max = Math.max(1, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
-                return (
-                  <div className="bar-row" key={String(r.region)}>
-                    <div className="bar-head">
-                      <span>{cell('region', r.region, '')}</span>
-                      <b>{format(v, 'ratio')}</b>
-                    </div>
-                    <div className="track">
-                      <div className="fill" style={{ width: `${(v / max) * 100}%` }} />
-                      <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
-                    </div>
-                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota</span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="bars-note">The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.</p>
-          </section>
-        </div>
 
         <section className="card" aria-labelledby="metrics-title">
           <h2 id="metrics-title">Governed metrics</h2>
