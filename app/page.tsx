@@ -10,8 +10,6 @@ export const dynamic = 'force-dynamic';
 const USERS = demoUsers();
 
 const EXAMPLES = ['What is our open pipeline?', 'coverage by region for this quarter', 'open opportunities by stage', 'pipeline coverage'];
-// Common sales rule of thumb, used only to color the coverage tiles (assumption, not a governed metric).
-const COVERAGE_TARGET = 3;
 
 function format(value: unknown, unit: string): string {
   if (typeof value !== 'number') return String(value ?? '');
@@ -22,12 +20,6 @@ function format(value: unknown, unit: string): string {
 
 function compactUsd(value: number): string {
   return value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : `$${Math.round(value / 1000)}K`;
-}
-
-function coverageHealth(v: number) {
-  if (v >= COVERAGE_TARGET) return { cls: 'ok', text: 'On target' };
-  if (v >= 2) return { cls: 'warn', text: 'Below target' };
-  return { cls: 'bad', text: 'At risk' };
 }
 
 function cell(k: string, v: unknown, unit: string): string {
@@ -54,7 +46,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
     answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }),
   ]);
   const cov = Number(coverage.rows[0]?.value ?? 0);
-  const health = coverageHealth(cov);
 
   let reply: Reply | { kind: 'refused'; message: string } | null = null;
   if (q.trim()) {
@@ -71,7 +62,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
-            <div className="mark" aria-hidden="true" />
             <div>
               <strong>Governed Analytics Copilot</strong>
               <span>Customer Analytics · Team ALTO PALS</span>
@@ -98,17 +88,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
         <section className="kpis" aria-label="Key metrics">
           <div className="kpi">
-            <span className="label">Open pipeline</span>
+            <span className="label">Open pipeline · all open deals</span>
             <span className="value">{compactUsd(Number(pipeline.rows[0]?.value ?? 0))}</span>
-            <span className="note">{format(pipeline.rows[0]?.value, 'currency')} across all open deals</span>
+            <span className="note">{format(pipeline.rows[0]?.value, 'currency')}, any expected close date (not limited to {period})</span>
           </div>
           <div className="kpi">
             <span className="label">Pipeline coverage · {period}</span>
             <span className="value">{format(cov, 'ratio')}</span>
-            <span className="note"><span className={`pill ${health.cls}`}>{health.text}</span> target {COVERAGE_TARGET.toFixed(1)}x</span>
+            <span className="note">{format(coverage.rows[0]?.numerator, 'currency')} closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota</span>
           </div>
           <div className="kpi">
-            <span className="label">Open opportunities</span>
+            <span className="label">Open opportunities · all open deals</span>
             <span className="value">{format(count.rows[0]?.value, 'count')}</span>
             <span className="note">deals not yet won or lost</span>
           </div>
@@ -139,26 +129,27 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
           <section className="card" aria-labelledby="cov-title">
             <h2 id="cov-title">Coverage by region</h2>
-            <p className="sub">Open pipeline closing in {period} ÷ quota. Line marks the {COVERAGE_TARGET.toFixed(1)}x target.</p>
+            <p className="sub">Open pipeline closing in {period} ÷ quota for {period}. 1.00x means pipeline equals quota.</p>
             <div className="bars">
               {byRegion.rows.map((r) => {
                 const v = Number(r.value ?? 0);
-                const max = Math.max(COVERAGE_TARGET * 1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
+                const max = Math.max(1, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
                 return (
                   <div className="bar-row" key={String(r.region)}>
                     <div className="bar-head">
-                      <span>{cell('region', r.region, '')} <span className={`pill ${coverageHealth(v).cls}`}>{coverageHealth(v).text}</span></span>
+                      <span>{cell('region', r.region, '')}</span>
                       <b>{format(v, 'ratio')}</b>
                     </div>
                     <div className="track">
                       <div className="fill" style={{ width: `${(v / max) * 100}%` }} />
-                      <div className="target" style={{ left: `${(COVERAGE_TARGET / max) * 100}%` }} />
+                      <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
                     </div>
-                    <span className="legend">{format(r.numerator, 'currency')} pipeline vs {format(r.denominator, 'currency')} quota</span>
+                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota</span>
                   </div>
                 );
               })}
             </div>
+            <p className="bars-note">The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.</p>
           </section>
         </div>
 

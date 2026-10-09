@@ -29,7 +29,7 @@ body { font: 15px/1.55 var(--font); color: var(--fg); background: var(--bg); }
 .mark::after { content: ""; width: 10px; height: 10px; border: 3px solid var(--chrome); border-radius: 2px; transform: rotate(45deg); }
 .brand strong { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
 .brand span { display: block; font-size: 12px; color: var(--chrome-muted); }
-.badge { font: 700 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 5px 10px; }
+.badge { flex-shrink: 0; white-space: nowrap; font: 700 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 5px 10px; }
 .who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .who label { font-size: 12px; color: var(--chrome-muted); }
 .who select { min-width: 0; max-width: 100%; flex: 1 1 200px; font: 600 14px var(--font); color: var(--chrome-fg); background: var(--chrome-2); border: 1px solid #3a3e46; border-radius: 6px; padding: 8px 10px; }
@@ -81,6 +81,7 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .fill { height: 100%; background: var(--orange); border-radius: 6px; }
 .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--chrome); }
 .legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.bars-note { font-size: 12px; color: var(--muted); margin: 14px 0 0; }
 
 @media (max-width: 860px) {
   .grid2 { grid-template-columns: minmax(0, 1fr); }
