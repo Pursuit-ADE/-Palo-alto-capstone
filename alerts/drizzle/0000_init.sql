@@ -35,6 +35,7 @@ CREATE TABLE "alert_deliveries" (
 	"delivered_at" timestamp with time zone,
 	"digest_id" text,
 	"claimed_at" timestamp with time zone,
+	"claim_token" text,
 	"attempts" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint

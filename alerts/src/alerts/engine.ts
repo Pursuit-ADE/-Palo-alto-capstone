@@ -1,6 +1,7 @@
 // The alert engine. One shared rule is evaluated per subscriber (L4): a user only gets an alert for an
 // account they can see, access is checked again right before anything is sent, and the database's
 // unique key (rule, user, event) guarantees each alert is created once.
+import { randomUUID } from 'node:crypto';
 import { and, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, contacts, engagements, supportCases } from '../db/schema';
@@ -26,6 +27,8 @@ export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_diges
 
 /** A claim older than this is treated as a send that was cut off, and may be taken over. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000;
+/** A failed alert is retried up to this many attempts in total, waiting 2^attempts minutes between tries. */
+export const MAX_ATTEMPTS = 5;
 
 function when(d: Date): string {
   return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
@@ -139,7 +142,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
         }
         const critical = (rule.criticalSeverities as string[]).includes(ev.severity);
         const sendNow = (sub.frequency === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
-        if (sendNow) await send(db, channels, [id], now);
+        if (sendNow) await send(db, rules, channels, [id], now);
         else await db.update(alertDeliveries).set({ status: 'queued_digest' }).where(eq(alertDeliveries.id, id));
       }
     }
@@ -148,67 +151,110 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
 }
 
 /**
- * Sends alerts as one message per user. Each alert is first claimed atomically (status 'sending'), so two
- * senders running at once can never both deliver it. Access is re-checked for each claimed alert immediately
- * before delivery. Delivery is at-least-once: if a process dies after the channel accepted a message but before
- * it was marked delivered, a later run may send it again once the claim is stale.
+ * Whether this alert may still go to this user right now: the user still exists and has a role in the rule's
+ * audience, is still subscribed to the rule, and can still see the account. Read fresh from the database.
  */
-export async function send(db: Db, channels: Channels, ids: string[], now: Date, digestId?: string) {
+export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: { userId: string; ruleId: string; accountId: string }): Promise<boolean> {
+  const rule = rules.get(row.ruleId);
+  if (!rule) return false;
+  const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, row.userId));
+  if (!user || !(rule.audience as string[]).includes(user.role)) return false;
+  const [sub] = await db
+    .select({ u: alertSubscriptions.userId })
+    .from(alertSubscriptions)
+    .where(and(eq(alertSubscriptions.userId, row.userId), eq(alertSubscriptions.ruleId, row.ruleId)));
+  if (!sub) return false;
+  return canSeeAccount(db, row.userId, row.accountId);
+}
+
+/**
+ * Sends alerts as one message per user and channel.
+ * - Each alert is first claimed atomically with a unique token (status 'sending'), so two senders never both
+ *   deliver it. Every later update requires that same token, so a sender whose claim was taken over can't
+ *   overwrite the newer sender's result.
+ * - Eligibility (role, subscription, account access) is re-checked for each group immediately before its
+ *   channel call; anything no longer allowed is suppressed instead of sent.
+ * - Failed alerts are retried with backoff (2^attempts minutes) up to MAX_ATTEMPTS.
+ * Delivery is at-least-once: if a process dies after the channel accepted a message but before it was marked
+ * delivered, a later run may send it again once the claim is stale.
+ */
+export async function send(db: Db, rules: Map<string, AlertRule>, channels: Channels, ids: string[], now: Date, digestId?: string) {
   if (ids.length === 0) return;
+  const token = randomUUID();
+  const nowIso = now.toISOString();
   const staleBefore = new Date(now.getTime() - STALE_CLAIM_MS);
   const claimed = await db
     .update(alertDeliveries)
-    .set({ status: 'sending', claimedAt: now, attempts: sql`${alertDeliveries.attempts} + 1` })
+    .set({ status: 'sending', claimedAt: now, claimToken: token, attempts: sql`${alertDeliveries.attempts} + 1` })
     .where(
       and(
         inArray(alertDeliveries.id, ids),
         or(
-          inArray(alertDeliveries.status, ['pending', 'failed', 'queued_digest']),
+          inArray(alertDeliveries.status, ['pending', 'queued_digest']),
+          and(
+            eq(alertDeliveries.status, 'failed'),
+            lt(alertDeliveries.attempts, MAX_ATTEMPTS),
+            sql`${alertDeliveries.claimedAt} <= ${nowIso}::timestamptz - (interval '1 minute' * power(2, ${alertDeliveries.attempts}))`,
+          ),
           and(eq(alertDeliveries.status, 'sending'), lt(alertDeliveries.claimedAt, staleBefore)),
         ),
       ),
     )
     .returning();
-  const allowed: typeof claimed = [];
-  for (const r of claimed) {
-    if (await canSeeAccount(db, r.userId, r.accountId)) allowed.push(r);
-    else await db.update(alertDeliveries).set({ status: 'suppressed_no_access' }).where(eq(alertDeliveries.id, r.id));
-  }
+  const mine = (rowIds: string[]) =>
+    and(inArray(alertDeliveries.id, rowIds), eq(alertDeliveries.status, 'sending'), eq(alertDeliveries.claimToken, token));
+
   const byUserChannel = new Map<string, typeof claimed>();
-  for (const r of allowed) {
+  for (const r of claimed) {
     const k = `${r.userId}|${r.channel}`;
     byUserChannel.set(k, [...(byUserChannel.get(k) ?? []), r]);
   }
-  for (const [k, items] of byUserChannel) {
+  for (const [k, group] of byUserChannel) {
     const [userId, channel] = k.split('|') as [string, string];
+    const items: typeof claimed = [];
+    for (const r of group) {
+      if (await stillEligible(db, rules, r)) items.push(r);
+      else await db.update(alertDeliveries).set({ status: 'suppressed_no_access' }).where(mine([r.id]));
+    }
+    if (items.length === 0) continue;
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
     await db
       .update(alertDeliveries)
       .set(ok ? { status: 'delivered', deliveredAt: now, digestId: digestId ?? null } : { status: 'failed' })
-      .where(inArray(alertDeliveries.id, items.map((i) => i.id)));
+      .where(mine(items.map((i) => i.id)));
   }
 }
 
-/** Delivers queued digest alerts for every user who is not in quiet hours. */
-export async function flushDigests(db: Db, channels: Channels, now: Date) {
-  const queued = await db
+/**
+ * Delivers queued digests, retries failed alerts whose backoff has passed, and takes over stale sends, for
+ * every user who is not in quiet hours. Runs independently of the events, so a failed alert is never stranded.
+ */
+export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date) {
+  const due = await db
     .select({ d: alertDeliveries, s: alertSubscriptions })
     .from(alertDeliveries)
-    .innerJoin(alertSubscriptions, and(eq(alertSubscriptions.userId, alertDeliveries.userId), eq(alertSubscriptions.ruleId, alertDeliveries.ruleId)))
-    .where(eq(alertDeliveries.status, 'queued_digest'));
-  const due = queued.filter((q) => !inQuietHours(q.s, now));
+    .leftJoin(alertSubscriptions, and(eq(alertSubscriptions.userId, alertDeliveries.userId), eq(alertSubscriptions.ruleId, alertDeliveries.ruleId)))
+    .where(inArray(alertDeliveries.status, ['queued_digest', 'failed', 'sending']));
   const byUser = new Map<string, string[]>();
-  for (const q of due) byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
-  for (const [userId, ids] of byUser) await send(db, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);
+  for (const q of due) {
+    if (q.s && inQuietHours(q.s, now)) continue;
+    byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
+  }
+  for (const [userId, ids] of byUser) await send(db, rules, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);
 }
 
 /** The in-app inbox: only alerts that were actually delivered. Nothing held, blocked or failed is readable. */
 export async function inbox(db: Db, userId: string) {
   const rank: Record<string, number> = { P1: 0, P2: 1, info: 2 };
-  const rows = await db
-    .select()
-    .from(alertDeliveries)
-    .where(and(eq(alertDeliveries.userId, userId), eq(alertDeliveries.status, 'delivered')));
+  // Follows current access: an alert about an account the user can no longer see leaves the inbox.
+  // (A Slack message already sent can't be recalled.) Policy to confirm with the client.
+  const rows = (
+    await db
+      .select({ d: alertDeliveries })
+      .from(alertDeliveries)
+      .innerJoin(accountTeam, and(eq(accountTeam.userId, alertDeliveries.userId), eq(accountTeam.accountId, alertDeliveries.accountId)))
+      .where(and(eq(alertDeliveries.userId, userId), eq(alertDeliveries.status, 'delivered')))
+  ).map((r) => r.d);
   return rows.sort((a, b) => (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || a.title.localeCompare(b.title));
 }
 

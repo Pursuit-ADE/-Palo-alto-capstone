@@ -1,5 +1,5 @@
 {
-  "id": "ba094981-827e-41ed-bf3a-ca3cc4921201",
+  "id": "26be231b-efef-4266-914f-109f06bb19a1",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -267,6 +267,12 @@
         "claimed_at": {
           "name": "claimed_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claim_token": {
+          "name": "claim_token",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

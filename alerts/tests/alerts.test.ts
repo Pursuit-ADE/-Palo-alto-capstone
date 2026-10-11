@@ -4,10 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
-import { accountTeam, alertDeliveries, alertSubscriptions, supportCases } from '@/db/schema';
+import { accountTeam, alertDeliveries, alertSubscriptions, appUsers, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
 import { createChannels, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
-import { flushDigests, inbox, inQuietHours, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
+import { flushDigests, inbox, inQuietHours, MAX_ATTEMPTS, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
 const rules = loadRules();
@@ -132,7 +132,7 @@ describe('preferences (L3)', () => {
     const ch = recorder();
     await runAlerts(database.db, rules, ch, SINCE, DAY);
     expect(ch.calls).toHaveLength(0);
-    await flushDigests(database.db, ch, DAY);
+    await flushDigests(database.db, rules, ch, DAY);
     expect(ch.calls).toHaveLength(1);
     expect(ch.calls[0]!.isDigest).toBe(true);
     expect(ch.calls[0]!.ids).toHaveLength(2);
@@ -147,7 +147,7 @@ describe('send-time permission check (L4)', () => {
     const ch = recorder();
     await runAlerts(database.db, rules, ch, SINCE, DAY);
     await database.db.delete(accountTeam).where(and(eq(accountTeam.userId, 'u_ts_east'), eq(accountTeam.accountId, jordanAccount)));
-    await flushDigests(database.db, ch, DAY);
+    await flushDigests(database.db, rules, ch, DAY);
     expect(ch.calls).toHaveLength(0);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('suppressed_no_access');
     expect(await inbox(database.db, 'u_ts_east')).toHaveLength(0);
@@ -161,10 +161,114 @@ describe('retries', () => {
     const down: Channels = { async deliver() { return false; } };
     await runAlerts(database.db, rules, down, SINCE, DAY);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('failed');
+    const tooSoon = recorder();
+    await runAlerts(database.db, rules, tooSoon, SINCE, new Date(DAY.getTime() + 60_000));
+    expect(tooSoon.calls).toHaveLength(0); // backoff: 2 minutes after the first attempt
     const ch = recorder();
-    await runAlerts(database.db, rules, ch, SINCE, DAY);
+    await runAlerts(database.db, rules, ch, SINCE, new Date(DAY.getTime() + 3 * 60_000));
     expect(ch.calls).toHaveLength(1);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+  });
+
+  it('retries a failed digest on a later flush, without needing the original event again', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    await flushDigests(database.db, rules, { async deliver() { return false; } }, DAY);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('failed');
+    const ch = recorder();
+    await flushDigests(database.db, rules, ch, new Date(DAY.getTime() + 24 * 3600_000));
+    expect(ch.calls).toHaveLength(1);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+  });
+
+  it('stops retrying after the maximum number of attempts', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    let calls = 0;
+    const down: Channels = { async deliver() { calls++; return false; } };
+    for (let day = 0; day < 10; day++) await flushDigests(database.db, rules, down, new Date(DAY.getTime() + day * 24 * 3600_000));
+    expect(calls).toBe(MAX_ATTEMPTS);
+    const [row] = await deliveries('u_ts_east');
+    expect(row!.status).toBe('failed');
+    expect(row!.attempts).toBe(MAX_ATTEMPTS);
+  });
+
+  it("does not let a sender whose claim was taken over overwrite the newer sender's result", async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    let release!: (ok: boolean) => void;
+    const slow: Channels = { deliver: () => new Promise<boolean>((r) => { release = r; }) };
+    const oldSender = flushDigests(database.db, rules, slow, DAY);
+    await new Promise((r) => setTimeout(r, 200)); // old sender is now waiting on its channel
+    const later = new Date(DAY.getTime() + STALE_CLAIM_MS + 60_000);
+    await flushDigests(database.db, rules, recorder(), later);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+    release(false); // the old sender finally reports failure
+    await oldSender;
+    const [row] = await deliveries('u_ts_east');
+    expect(row!.status).toBe('delivered');
+    expect(row!.attempts).toBe(2);
+  });
+});
+
+describe('fresh eligibility at delivery (L4)', () => {
+  it('re-checks access for each channel call, not once for the whole batch', async () => {
+    const jordanAccounts = data.accountTeam.filter((t) => t.userId === 'u_ts_east').map((t) => t.accountId);
+    const [a1, a2] = jordanAccounts as [string, string];
+    await database.db.insert(supportCases).values([
+      { id: 'case_a', snapshotId: data.snapshot.id, accountId: a1, severity: 'P2', status: 'Open', subject: 'A', openedAt: new Date('2026-10-08T09:00:00Z') },
+      { id: 'case_b', snapshotId: data.snapshot.id, accountId: a2, severity: 'P2', status: 'Open', subject: 'B', openedAt: new Date('2026-10-08T09:30:00Z') },
+    ]);
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    // Put the second alert on another channel, so it is sent in a second channel call.
+    await database.db.update(alertDeliveries).set({ channel: 'slack' }).where(eq(alertDeliveries.eventId, 'case_b'));
+    const calls: string[] = [];
+    const ch: Channels = {
+      async deliver(channel, _user, items) {
+        calls.push(`${channel}:${items.map((i) => i.eventId).join(',')}`);
+        // Access to the second account is removed while the first message is being sent.
+        await database.db.delete(accountTeam).where(and(eq(accountTeam.userId, 'u_ts_east'), eq(accountTeam.accountId, a2)));
+        return true;
+      },
+    };
+    await flushDigests(database.db, rules, ch, DAY);
+    expect(calls).toEqual(['inbox:case_a']);
+    const byEvent = Object.fromEntries((await deliveries('u_ts_east')).map((r) => [r.eventId, r.status]));
+    expect(byEvent).toEqual({ case_a: 'delivered', case_b: 'suppressed_no_access' });
+  });
+
+  it("re-checks the rule's audience: a role change before delivery stops the alert", async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    await database.db.update(appUsers).set({ role: 'sales_rep' }).where(eq(appUsers.id, 'u_ts_east'));
+    const ch = recorder();
+    await flushDigests(database.db, rules, ch, DAY);
+    expect(ch.calls).toHaveLength(0);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('suppressed_no_access');
+  });
+
+  it('stops an alert when the user unsubscribes before delivery', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    await database.db.delete(alertSubscriptions).where(eq(alertSubscriptions.userId, 'u_ts_east'));
+    const ch = recorder();
+    await flushDigests(database.db, rules, ch, DAY);
+    expect(ch.calls).toHaveLength(0);
+  });
+
+  it('drops an alert from the inbox once the user loses access to the account', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T10:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    expect(await inbox(database.db, 'u_ts_east')).toHaveLength(1);
+    await database.db.delete(accountTeam).where(and(eq(accountTeam.userId, 'u_ts_east'), eq(accountTeam.accountId, jordanAccount)));
+    expect(await inbox(database.db, 'u_ts_east')).toHaveLength(0);
   });
 
   it('takes over a send that was cut off, but only once its claim is stale', async () => {
@@ -189,7 +293,7 @@ describe('retries', () => {
     await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
     await runAlerts(database.db, rules, recorder(), SINCE, DAY);
     const ch = recorder();
-    await Promise.all([flushDigests(database.db, ch, DAY), flushDigests(database.db, ch, DAY)]);
+    await Promise.all([flushDigests(database.db, rules, ch, DAY), flushDigests(database.db, rules, ch, DAY)]);
     expect(ch.calls).toHaveLength(1);
   });
 });
@@ -251,6 +355,10 @@ describe('Slack channel (L5)', () => {
     expect(parseWebhooks('["https://hooks.slack.com/services/x"]')).toEqual({});
     expect(await ok.deliver('slack', 'u_ts_east', [item], false)).toBe(true);
     expect(posted).toEqual(['https://hooks.slack.com/services/T/B/east']);
+    const signals: unknown[] = [];
+    await createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T/B/east' }, fetch: async (_u, init) => { signals.push(init.signal); return { ok: true }; } })
+      .deliver('slack', 'u_ts_east', [item], false);
+    expect(signals[0]).toBeInstanceOf(AbortSignal); // every Slack call has a timeout
     const bad = createChannels({ slackWebhooks: { u_ts_east: 'https://attacker.example/hook' }, fetch: fake });
     expect(await bad.deliver('slack', 'u_ts_east', [item], false)).toBe(false);
     expect(posted).toHaveLength(1);

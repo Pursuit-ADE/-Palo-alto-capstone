@@ -3,7 +3,53 @@
 // The real model (Week 3) must produce the same structured Intent and passes the same validation.
 import type { Registry } from '../registry/load';
 import type { Dimension, Intent } from '../registry/types';
-import { resolvePeriod } from './periods';
+import { QUOTA_PERIODS } from '../db/seed';
+import type { Glossary } from '../registry/types';
+import { findPeriod, resolvePeriod } from './periods';
+
+const EXCLUSION = / (excluding|exclude|except|without|other than|apart from|besides|minus|outside of|not) /;
+const UNKNOWN_REGIONS = ['north', 'south', 'emea', 'apac', 'apj', 'americas', 'latam', 'europe', 'asia', 'japan'];
+const STAGE_WORDS: Record<string, string> = { prospecting: 'Prospecting', engaging: 'Engaging', won: 'Won', lost: 'Lost' };
+// Periods we can't answer: anything other than a single fiscal quarter in the snapshot.
+const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\d\d /;
+
+function findStages(text: string): string[] {
+  const hits = Object.entries(STAGE_WORDS).filter(([w]) => text.includes(` ${w} `)).map(([, s]) => s);
+  return [...new Set(hits)];
+}
+
+/** Every period the question mentions, resolved to quarter labels; `unsupported` if any can't be answered. */
+function findPeriods(text: string, glossary: Glossary, asOfDate: string): { labels: Set<string>; unsupported: boolean } {
+  const labels = new Set<string>();
+  let unsupported = false;
+  let rest = text;
+  // Explicit fiscal quarters: "fy27-q1", "fy27 q1", "fy 2027 q1".
+  rest = rest.replace(/ fy ?-?(\d{2}|\d{4}) ?-? ?q([1-9]) /g, (_, y: string, q: string) => {
+    const label = `FY${y.slice(-2)}-Q${q}`;
+    if (findPeriod(label)) labels.add(label);
+    else unsupported = true;
+    return ' ';
+  });
+  // Bare quarters ("q2") are in the current fiscal year.
+  rest = rest.replace(/ q([1-9]) /g, (_, q: string) => {
+    const fy = resolvePeriod('current', asOfDate)?.slice(0, 4) ?? 'FY27';
+    const label = `${fy}-Q${q}`;
+    if (findPeriod(label)) labels.add(label);
+    else unsupported = true;
+    return ' ';
+  });
+  if (/ fy ?-?\d/.test(rest) || UNSUPPORTED_PERIOD.test(rest)) unsupported = true; // a year, month or other non-quarter period
+  // Relative phrases from the glossary ("this quarter", "next quarter").
+  for (const [key, value] of Object.entries(glossary.periodPhrases)) {
+    if (/^(q\d|fy)/.test(key)) continue; // handled above
+    if (rest.includes(` ${key} `)) {
+      const label = resolvePeriod(value, asOfDate);
+      if (label) labels.add(label);
+      else unsupported = true;
+    }
+  }
+  return { labels, unsupported };
+}
 
 export type NormalizeResult =
   | { kind: 'intent'; intent: Intent }
@@ -42,15 +88,33 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
   }
   const metric = registry.metrics.get(matches[0]!)!;
 
+  // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
+  // never a quietly different answer.
+  if (EXCLUSION.test(text)) {
+    return { kind: 'clarify', question: "I can't leave out a region or stage yet. Which regions or stages do you want included?" };
+  }
+  const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
+  if (unknownRegion) {
+    return { kind: 'clarify', question: `"${unknownRegion.toUpperCase()}" isn't a region here. The regions are Central, East and West.` };
+  }
+
   const regions = (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
 
-  let period: string | undefined;
-  const periodKeys = Object.keys(glossary.periodPhrases).sort((a, b) => b.length - a.length);
-  for (const key of periodKeys) {
-    if (text.includes(` ${key} `)) {
-      period = resolvePeriod(glossary.periodPhrases[key]!, asOfDate);
-      break;
-    }
+  const periods = findPeriods(text, glossary, asOfDate);
+  if (periods.unsupported) {
+    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?` };
+  }
+  if (periods.labels.size > 1) {
+    return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?` };
+  }
+  const period = [...periods.labels][0];
+
+  const stages = findStages(text);
+  if (stages.length && metric.kind === 'ratio') {
+    return { kind: 'clarify', question: `${metric.name} can't be filtered by stage. Do you want ${metric.name.toLowerCase()} for all open deals?` };
+  }
+  if (stages.some((st) => st === 'Won' || st === 'Lost')) {
+    return { kind: 'clarify', question: `${metric.name} only counts open deals (Prospecting and Engaging). Won and lost deals aren't included.` };
   }
 
   const groupBy: Dimension[] = [];
@@ -66,6 +130,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
 
   const filters: Intent['filters'] = {};
   if (regions.length) filters.regions = [...regions];
+  if (stages.length) filters.stages = stages;
   if (period) filters.period = period;
   return { kind: 'intent', intent: { metric: metric.id, filters, groupBy } };
 }

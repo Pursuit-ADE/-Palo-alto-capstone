@@ -5,7 +5,10 @@
 import type { alertDeliveries } from '../db/schema';
 
 type Delivery = typeof alertDeliveries.$inferSelect;
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ ok: boolean }>;
+type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean }>;
+
+/** Slack calls give up after this long, so a hung request can't hold an alert claim open. */
+export const CHANNEL_TIMEOUT_MS = 10_000;
 
 export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
@@ -32,7 +35,7 @@ export function createChannels(opts: { slackWebhooks?: Record<string, unknown>; 
         const url = webhooks[userId];
         if (!url) return false;
         try {
-          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest) }) });
+          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest) }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
           return res.ok;
         } catch {
           return false;

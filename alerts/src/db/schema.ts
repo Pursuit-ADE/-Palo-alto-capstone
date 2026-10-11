@@ -157,6 +157,7 @@ export const alertDeliveries = pgTable(
     // Set when a sender claims the alert (status 'sending'), so two senders never deliver the same alert,
     // and a send cut off by a crash can be reclaimed once the claim is stale.
     claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    claimToken: text('claim_token'),
     attempts: integer('attempts').notNull().default(0),
   },
   (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId)],

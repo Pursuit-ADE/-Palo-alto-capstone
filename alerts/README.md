@@ -30,7 +30,9 @@ event (support case, engagement)
   -> channel: in-app inbox, or that user's own Slack webhook
 ```
 
-Only delivered alerts are readable in the inbox. Alerts that are held for a digest, blocked by the access check or failed show up only as counts, with no account or case details. An alert whose send failed, or was cut off mid-send, is retried on the next run; delivered, queued and blocked alerts are not resent.
+Before each channel call the sender re-checks, fresh from the database, that the user still has a role in the rule's audience, is still subscribed, and can still see the account; anything else is suppressed. Each alert is claimed with a unique token before sending, and only the holder of that token can record the result, so a slow sender whose claim was taken over can't overwrite it. Failed alerts are retried on later flushes with backoff (2^attempts minutes, at most 5 attempts), without needing the original event again. Slack calls time out after 10 seconds. Delivery is at-least-once.
+
+The inbox follows current access: an alert about an account the user can no longer see leaves the inbox (to confirm with the client; a Slack message already sent can't be recalled). Only delivered alerts are readable in the inbox. Alerts that are held for a digest, blocked by the access check or failed show up only as counts, with no account or case details. An alert whose send failed, or was cut off mid-send, is retried on the next run; delivered, queued and blocked alerts are not resent.
 
 | PRD | Where |
 |---|---|

@@ -34,7 +34,11 @@ export function validateIntent(raw: unknown, registry: Registry): { intent: Inte
     if (!metric.dimensions.includes(d)) throw new IntentError(`${metric.name} cannot be broken down by ${d}.`);
   }
   if (intent.filters.period && !findPeriod(intent.filters.period)) throw new IntentError(`Unknown period: ${intent.filters.period}`);
+  // Coverage divides by quota, which has no stage, so a stage filter can't be applied consistently.
+  // Refuse it rather than return an answer that silently ignores the filter.
+  if (metric.kind === 'ratio' && intent.filters.stages) throw new IntentError(`${metric.name} can't be filtered by stage.`);
   if (metric.kind === 'ratio' && metric.requiresPeriod && !intent.filters.period) {
+
     throw new IntentError(`${metric.name} needs a period.`);
   }
   return { intent, metric };
