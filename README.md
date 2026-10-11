@@ -53,6 +53,13 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Fiscal quarters**: Palo Alto Networks' fiscal year starts Aug 1, so FY27-Q1 = Aug 1 to Oct 31, 2026 (assumption).
 - **Scope**: sales reps see their own deals; managers and the technical seller who supports a team see that team; the analyst sees everything. Coverage uses the same people's quotas.
 
+## Week 3: conversation, charts and red-team
+
+- **Follow-up questions (A5):** the copilot keeps a chat. The only conversation state is the previous answer's structured intent, which the server re-validates and re-scopes every turn. "What about West?", "by stage" and "and next quarter?" build on the previous question; a 10-turn test proves the numbers match asking each question fresh.
+- **Intent model:** `src/semantic/model.ts`. The deterministic golden-set model is the default and runs in CI. Set `INTENT_MODEL=claude` (with Anthropic credentials) to use Claude with structured output; it sees only the metric catalog, the question and the previous intent, never rows or entitlements, and its output passes the same schema, registry and scope checks. If the model is unavailable, the app falls back to the deterministic model. Which AI providers are allowed is still an open question for the client.
+- **Charts and narrative (A6):** a plain-language summary and a bar chart (with a Vega-Lite spec) are built from the governed rows, never written by a model.
+- **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope.
+
 ## Security controls
 
 | Control | Where | Proof |

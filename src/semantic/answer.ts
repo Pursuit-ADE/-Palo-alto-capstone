@@ -6,7 +6,10 @@ import type { Database } from '../db/client';
 import { dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
-import { normalize } from './normalize';
+import { Intent as IntentSchema, type Intent } from '../registry/types';
+import { flagQuestion } from './flags';
+import { deterministicModel, type IntentModel } from './model';
+import { chartSpec, narrate } from './narrative';
 import { resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
 export const MAX_QUESTION_LENGTH = 300;
@@ -17,6 +20,10 @@ export interface Answer {
   intent: unknown;
   rows: Record<string, string | number | null>[];
   scope: string;
+  /** Plain-language summary built from the rows (never from a model). */
+  narrative: string;
+  /** Vega-Lite bar chart spec for a single breakdown, or null. */
+  chart: ReturnType<typeof chartSpec>;
   provenance: { snapshotId: string; asOfDate: string; resultHash: string };
 }
 
@@ -67,6 +74,8 @@ async function run(database: Database, registry: Registry, principal: Principal,
     intent,
     rows,
     scope: scopeStatement(principal, q.regions),
+    narrative: narrate(metric, rows, intent.groupBy, intent.filters.period),
+    chart: chartSpec(metric, rows, intent.groupBy),
     provenance: { snapshotId: snapshot.id, asOfDate: snapshot.asOfDate, resultHash },
   };
 }
@@ -102,13 +111,29 @@ export function answerIntent(database: Database, registry: Registry, userId: str
   return audited(database, userId, source, null, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
 }
 
-/** Answers a typed question for a user, with audit. */
-export function ask(database: Database, registry: Registry, userId: string, phrase: string): Promise<Reply> {
+export interface AskOptions {
+  /** The previous turn's intent: the whole conversation state. Re-validated here; anything invalid is ignored. */
+  previous?: unknown;
+  /** Turn number in the conversation, for the audit log. */
+  turn?: number;
+  model?: IntentModel;
+}
+
+/** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
+export function parsePrevious(raw: unknown): Intent | undefined {
+  const parsed = IntentSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
+export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
+  const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
+    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
     const p = await principal();
     const snapshot = await currentSnapshot(database);
-    const n = normalize(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10));
+    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {
       fields.reason = n.kind === 'clarify' ? n.question : n.message;
       return n;

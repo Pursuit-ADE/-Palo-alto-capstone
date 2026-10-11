@@ -15,6 +15,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "0.133.0",
     "@electric-sql/pglite": "0.5.8",
     "drizzle-orm": "0.45.4",
     "next": "16.4.0",

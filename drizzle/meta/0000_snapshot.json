@@ -1,5 +1,5 @@
 {
-  "id": "6b76bbbc-07cb-4530-9c45-0d59d9463769",
+  "id": "5f4aad85-3b50-40a8-8c23-72b65b8378dc",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -738,6 +738,24 @@
         "reason": {
           "name": "reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "flags": {
+          "name": "flags",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "turn": {
+          "name": "turn",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         }

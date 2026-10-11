@@ -136,4 +136,8 @@ export const queryAudit = pgTable('query_audit', {
   resultHash: text('result_hash'),
   outcome: text('outcome').notNull(),
   reason: text('reason'),
+  // S3: reason codes for suspicious questions (e.g. instruction_override, role_claim). Logged, never obeyed.
+  flags: text('flags').array(),
+  model: text('model'),
+  turn: integer('turn'),
 });

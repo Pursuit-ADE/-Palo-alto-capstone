@@ -13,6 +13,18 @@ const STAGE_WORDS: Record<string, string> = { prospecting: 'Prospecting', engagi
 // Periods we can't answer: anything other than a single fiscal quarter in the snapshot.
 const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\d\d /;
 
+const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
+const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
+const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
+
+/** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
+function hasModifier(text: string, registry: Registry): boolean {
+  if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text)) return true;
+  if (/ (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous) quarter /.test(text)) return true;
+  if (Object.keys(registry.glossary.dimensionPhrases).some((p) => text.includes(` ${p} `))) return true;
+  return findStages(text).length > 0;
+}
+
 function findStages(text: string): string[] {
   const hits = Object.entries(STAGE_WORDS).filter(([w]) => text.includes(` ${w} `)).map(([, s]) => s);
   return [...new Set(hits)];
@@ -60,7 +72,12 @@ function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
-export function normalize(phrase: string, registry: Registry, asOfDate: string): NormalizeResult {
+/**
+ * Follow-ups (PRD A5): with a previous intent, a question that names no metric but changes a region, period,
+ * stage or breakdown ("what about West?", "by stage", "and next quarter?") starts from the previous intent.
+ * The previous intent is the whole conversation state: a small structured summary, never rows or chat text.
+ */
+export function normalize(phrase: string, registry: Registry, asOfDate: string, previous?: Intent): NormalizeResult {
   const text = clean(phrase);
   const { glossary } = registry;
 
@@ -79,8 +96,11 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
       matches = [m.id];
     } else if (len === best) matches.push(m.id);
   }
+  const prior = previous && registry.metrics.has(previous.metric) ? previous : undefined;
+  const followUpCue = FOLLOW_UP.test(text);
   if (matches.length === 0) {
-    return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
+    if (prior && (hasModifier(text, registry) || followUpCue)) matches = [prior.metric];
+    else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
   }
   if (matches.length > 1) {
     const names = matches.map((id) => registry.metrics.get(id)?.name).join(' or ');
@@ -98,7 +118,11 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
     return { kind: 'clarify', question: `"${unknownRegion.toUpperCase()}" isn't a region here. The regions are Central, East and West.` };
   }
 
-  const regions = (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
+  const regions: ('central' | 'east' | 'west')[] = ALL_REGIONS_PHRASE.test(text)
+    ? ['central', 'east', 'west']
+    : (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
+  // Carry forward what this turn doesn't change, when it continues the previous question.
+  const inherit = prior && (prior.metric === metric.id || followUpCue) ? prior : undefined;
 
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
@@ -107,9 +131,10 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
   if (periods.labels.size > 1) {
     return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?` };
   }
-  const period = [...periods.labels][0];
+  const period = [...periods.labels][0] ?? inherit?.filters.period;
 
-  const stages = findStages(text);
+  const mentionedStages = findStages(text);
+  const stages = mentionedStages.length ? mentionedStages : metric.kind === 'aggregate' ? (inherit?.filters.stages ?? []) : [];
   if (stages.length && metric.kind === 'ratio') {
     return { kind: 'clarify', question: `${metric.name} can't be filtered by stage. Do you want ${metric.name.toLowerCase()} for all open deals?` };
   }
@@ -123,13 +148,17 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string):
     .filter((h) => h.at >= 0)
     .sort((a, b) => a.at - b.at);
   for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
+    for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
+  }
 
   if (metric.kind === 'ratio' && metric.requiresPeriod && !period) {
     return { kind: 'clarify', question: `${metric.name} needs a period. Which quarter do you mean, for example this quarter or next quarter?` };
   }
 
   const filters: Intent['filters'] = {};
-  if (regions.length) filters.regions = [...regions];
+  const finalRegions = regions.length ? regions : (inherit?.filters.regions ?? []);
+  if (finalRegions.length) filters.regions = [...finalRegions];
   if (stages.length) filters.stages = stages;
   if (period) filters.period = period;
   return { kind: 'intent', intent: { metric: metric.id, filters, groupBy } };

@@ -93,7 +93,10 @@ CREATE TABLE "query_audit" (
 	"snapshot_id" text,
 	"result_hash" text,
 	"outcome" text NOT NULL,
-	"reason" text
+	"reason" text,
+	"flags" text[],
+	"model" text,
+	"turn" integer
 );
 --> statement-breakpoint
 CREATE TABLE "quotas" (
