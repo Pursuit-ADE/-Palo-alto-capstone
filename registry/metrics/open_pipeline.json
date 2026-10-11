@@ -1,0 +1,38 @@
+{
+  "id": "open_pipeline",
+  "version": 1,
+  "name": "Open pipeline",
+  "description": "Total amount of opportunities that are not yet closed (won or lost).",
+  "owner": "Customer Analytics (metric steward)",
+  "unit": "currency",
+  "synonyms": [
+    "open pipeline",
+    "pipeline",
+    "open pipe",
+    "pipeline value",
+    "open deal value",
+    "total pipeline",
+    "pipeline dollars"
+  ],
+  "kind": "aggregate",
+  "source": {
+    "table": "opportunities",
+    "measure": {
+      "fn": "sum",
+      "column": "amount"
+    },
+    "conditions": [
+      {
+        "column": "is_closed",
+        "equals": false
+      }
+    ],
+    "periodColumn": "close_date"
+  },
+  "dimensions": [
+    "region",
+    "stage",
+    "owner"
+  ],
+  "notes": "Won and Lost deals are excluded. Period filter applies to close date. Open deal values are list-price estimates."
+}
