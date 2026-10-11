@@ -43,7 +43,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Public sample data</span>
+          <span className="badge">Maven CRM data</span>
           <form className="who" method="get">
             <label htmlFor="user">Viewing as</label>
             <select id="user" name="user" defaultValue={user}>
@@ -59,7 +59,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       <main>
         <div className="page-head">
           <h1>Your alerts</h1>
-          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Demo time {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. Demo identity switch, not a login.</p>
+          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. Identity switch for testing, not a login yet.</p>
         </div>
 
         <section className="kpis" aria-label="Alert summary">

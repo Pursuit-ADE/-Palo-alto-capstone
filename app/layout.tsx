@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata = {
   title: 'Actionable Alerts',
-  description: 'Team ALTO PALS capstone: private, rule-based alerts (public sample data).',
+  description: 'Team ALTO PALS capstone: private, rule-based alerts (Maven CRM data).',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
