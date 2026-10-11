@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata = {
   title: 'Governed Analytics Copilot',
-  description: 'Team ALTO PALS capstone: governed AI analytics copilot (synthetic data only).',
+  description: 'Team ALTO PALS capstone: governed AI analytics copilot (Maven CRM data).',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

@@ -67,7 +67,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Public sample data</span>
+          <span className="badge">Maven CRM data</span>
           <form className="who" method="get">
             <label htmlFor="user">Viewing as</label>
             <select id="user" name="user" defaultValue={user}>
@@ -83,7 +83,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
       <main>
         <div className="page-head">
           <h1>Pipeline overview</h1>
-          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). Demo identity switch, not a login.</p>
+          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). Identity switch for testing, not a login yet.</p>
         </div>
 
         <div className="overview">
