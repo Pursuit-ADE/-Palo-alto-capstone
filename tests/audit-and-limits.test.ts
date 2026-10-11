@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { desc } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { appUsers, queryAudit } from '@/db/schema';
 import { loadRegistry } from '@/registry/load';
@@ -20,7 +20,10 @@ afterAll(async () => {
   await database.close();
 });
 
-const last = async () => (await database.db.select().from(queryAudit).orderBy(desc(queryAudit.at)).limit(1))[0]!;
+// Each test awaits its own ask() before reading, and rows from earlier tests are older, but two rows can share a
+// millisecond, so read the newest row for the user under test.
+const last = async (userId?: string) =>
+  (await database.db.select().from(queryAudit).where(userId ? eq(queryAudit.userId, userId) : undefined).orderBy(desc(queryAudit.at)).limit(1))[0]!;
 
 describe('query audit log (S4)', () => {
   it('records an answered question with metric version, scope, snapshot and result hash, but not the raw text', async () => {
@@ -44,14 +47,16 @@ describe('query audit log (S4)', () => {
 
   it('records a scope refusal', async () => {
     await expect(ask(database, reg, 'u_ts_east', 'number of open deals in the west')).rejects.toBeInstanceOf(ScopeViolation);
-    expect(await last()).toMatchObject({ userId: 'u_ts_east', outcome: 'refused_scope', reason: 'You do not have access to region: west' });
+    const refusals = await database.db.select().from(queryAudit).where(and(eq(queryAudit.userId, 'u_ts_east'), eq(queryAudit.outcome, 'refused_scope')));
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]!.reason).toBe('You do not have access to region: west');
   });
 
   it('records an invalid intent and an unknown user', async () => {
     await expect(answerIntent(database, reg, 'u_analyst', { metric: 'drop_tables', filters: {}, groupBy: [] })).rejects.toBeInstanceOf(IntentError);
-    expect((await last()).outcome).toBe('refused_intent');
+    expect((await last('u_analyst')).outcome).toBe('refused_intent');
     await expect(ask(database, reg, 'u_new_ceo', 'What is our open pipeline?')).rejects.toBeInstanceOf(ScopeViolation);
-    expect(await last()).toMatchObject({ userId: 'u_new_ceo', outcome: 'refused_scope', reason: 'Unknown user' });
+    expect(await last('u_new_ceo')).toMatchObject({ userId: 'u_new_ceo', outcome: 'refused_scope', reason: 'Unknown user' });
   });
 
   it('returns no answer when the audit row cannot be written', async () => {
@@ -69,8 +74,10 @@ describe('fail closed', () => {
 
 describe('limits (T-07)', () => {
   it('refuses questions over the length limit', async () => {
-    await expect(ask(database, reg, 'u_analyst', 'pipeline '.repeat(MAX_QUESTION_LENGTH))).rejects.toBeInstanceOf(IntentError);
-    expect((await last()).outcome).toBe('refused_intent');
+    const long = 'pipeline '.repeat(MAX_QUESTION_LENGTH);
+    await expect(ask(database, reg, 'u_analyst', long)).rejects.toBeInstanceOf(IntentError);
+    const [row] = await database.db.select().from(queryAudit).where(eq(queryAudit.questionSha256, createHash('sha256').update(long).digest('hex')));
+    expect(row!.outcome).toBe('refused_intent');
   });
 
   it('rate-limits each user separately', () => {
