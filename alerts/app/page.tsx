@@ -3,6 +3,7 @@ import { demoUsers } from '@/db/seed';
 import { alertSubscriptions } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
+import { testIdentitiesEnabled } from '@/server/identity';
 import { getAlertsRuntime } from '@/server/runtime';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ function hours(s: number | null, e: number | null): string {
 }
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
+  if (!testIdentitiesEnabled()) return <SignInRequired />;
   const params = await searchParams;
   const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
   const me = USERS.find((u) => u.id === user)!;
@@ -122,5 +124,16 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         </div>
       </main>
     </>
+  );
+}
+
+function SignInRequired() {
+  return (
+    <main>
+      <div className="page-head">
+        <h1>Sign-in is not set up yet</h1>
+        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
+      </div>
+    </main>
   );
 }

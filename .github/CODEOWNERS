@@ -1,0 +1,6 @@
+# Changes to governed definitions need review from the metric and alert stewards (T-10).
+# Pair with branch protection on main ("Require review from Code Owners").
+/registry/        @brovaset @MITRAKER
+/alerts/rules/    @brovaset @MITRAKER
+/src/semantic/    @brovaset @MITRAKER
+/.github/         @brovaset @MITRAKER

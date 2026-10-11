@@ -3,6 +3,8 @@ import { answerIntent, ask, type Answer, type Reply } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
 import { resolvePeriod } from '@/semantic/periods';
 import { ScopeViolation } from '@/semantic/scope';
+import { testIdentitiesEnabled } from '@/server/identity';
+import { questionLimiter } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
 export const dynamic = 'force-dynamic';
@@ -30,6 +32,7 @@ function cell(k: string, v: unknown, unit: string): string {
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; q?: string }> }) {
+  if (!testIdentitiesEnabled()) return <SignInRequired />;
   const params = await searchParams;
   const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
   const q = params.q ?? '';
@@ -40,17 +43,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
   // Dashboard tiles: the same governed path as any typed question, so they obey the same scope.
   const [pipeline, coverage, count, byRegion] = await Promise.all([
-    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }),
-    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }),
+    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard'),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard'),
+    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard'),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard'),
   ]);
   const cov = Number(coverage.rows[0]?.value ?? 0);
 
   let reply: Reply | { kind: 'refused'; message: string } | null = null;
-  if (q.trim()) {
+  if (q.trim() && !questionLimiter.allow(user)) {
+    reply = { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
+  } else if (q.trim()) {
     try {
-      reply = await ask(database, registry, user, q.slice(0, 300));
+      reply = await ask(database, registry, user, q);
     } catch (e) {
       if (e instanceof ScopeViolation || e instanceof IntentError) reply = { kind: 'refused', message: e.message };
       else throw e;
@@ -190,5 +195,16 @@ function AnswerView({ a }: { a: Answer }) {
         <span><b>Intent</b> · <code>{JSON.stringify(a.intent)}</code></span>
       </div>
     </div>
+  );
+}
+
+function SignInRequired() {
+  return (
+    <main>
+      <div className="page-head">
+        <h1>Sign-in is not set up yet</h1>
+        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
+      </div>
+    </main>
   );
 }

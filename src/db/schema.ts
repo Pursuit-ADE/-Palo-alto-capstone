@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -115,4 +115,25 @@ export const engagements = pgTable('engagements', {
   type: text('type').notNull(),
   asset: text('asset').notNull(),
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+});
+
+// PRD S4: one row per question or dashboard query, including refusals. Append-only: the app's audit
+// role may only INSERT. The raw question is never stored, only its SHA-256 hash.
+export const queryAudit = pgTable('query_audit', {
+  id: text('id').primaryKey(),
+  at: timestamp('at', { withTimezone: true }).notNull(),
+  requestId: text('request_id').notNull(),
+  source: text('source').notNull(),
+  userId: text('user_id').notNull(),
+  role: text('role'),
+  questionSha256: text('question_sha256'),
+  intent: jsonb('intent'),
+  metricId: text('metric_id'),
+  metricVersion: integer('metric_version'),
+  regions: text('regions').array(),
+  ownerCount: integer('owner_count'),
+  snapshotId: text('snapshot_id'),
+  resultHash: text('result_hash'),
+  outcome: text('outcome').notNull(),
+  reason: text('reason'),
 });

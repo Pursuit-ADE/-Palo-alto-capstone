@@ -18,6 +18,9 @@ export class IntentError extends Error {
   }
 }
 
+// Upper bound on rows any governed query can return (results are aggregates; this caps a bad breakdown).
+export const MAX_RESULT_ROWS = 500;
+
 const DIMENSION_COLUMN: Record<Dimension, string> = { region: 'region_id', stage: 'stage', owner: 'owner_user_id' };
 
 /** Validates an intent from any source (mock normalizer or AI model) against the schema and the registry. */
@@ -80,7 +83,7 @@ export function compile(intent: Intent, registry: Registry, principal: Principal
       `SELECT ${[...dims, `${measureSql(s, 't')} AS value`].join(', ')}`,
       `FROM ${s.table} t`,
       `WHERE ${where}`,
-      groupCols.length ? `GROUP BY ${groupCols.join(', ')} ORDER BY ${groupCols.join(', ')}` : '',
+      groupCols.length ? `GROUP BY ${groupCols.join(', ')} ORDER BY ${groupCols.join(', ')} LIMIT ${MAX_RESULT_ROWS}` : '',
     ].filter(Boolean).join('\n');
     return { text, params: p.values, regions };
   }

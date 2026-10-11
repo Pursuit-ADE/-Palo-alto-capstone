@@ -14,7 +14,7 @@ beforeAll(async () => {
   database = await openDatabase();
 });
 afterAll(async () => {
-  await database.client.close();
+  await database.close();
 });
 
 const open = data.opportunities.filter((o) => !o.isClosed);

@@ -25,6 +25,35 @@ jobs:
       - name: Dependency scan
         run: npm audit --audit-level=high
 
+  postgres-roles:
+    # Least-privilege check (PRD S7) against a real Postgres with the roles from docker/init-roles.sql.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: copilot_owner
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: copilot
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U copilot_owner"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/copilot
+      DATABASE_URL: postgres://app_readonly:readonly_local_dev@localhost:5432/copilot
+      AUDIT_DATABASE_URL: postgres://app_audit:audit_local_dev@localhost:5432/copilot
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Create roles
+        run: psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f docker/init-roles.sql
+      - run: npx vitest run tests/postgres-roles.test.ts
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:
