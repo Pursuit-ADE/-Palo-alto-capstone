@@ -5,7 +5,7 @@ import { askCopilot, type AskResult } from './actions';
 import { cell } from './format';
 import type { Answer } from '@/semantic/answer';
 
-export function AskPanel({ user, name, examples }: { user: string; name: string; examples: string[] }) {
+export function AskPanel({ user, name, examples, initialQuestion = '' }: { user: string; name: string; examples: string[]; initialQuestion?: string }) {
   const [result, action, pending] = useActionState<AskResult, FormData>(askCopilot, null);
   return (
     <section className="card" aria-labelledby="ask-title">
@@ -13,7 +13,7 @@ export function AskPanel({ user, name, examples }: { user: string; name: string;
       <p className="sub">Answers come only from the governed metrics below, scoped to {name}.</p>
       <form className="ask" action={action}>
         <input type="hidden" name="user" value={user} />
-        <input id="q" name="q" placeholder="Ask about open pipeline, pipeline coverage or open opportunities" maxLength={300} aria-label="Question" />
+        <input id="q" name="q" defaultValue={initialQuestion} placeholder="Ask about open pipeline, pipeline coverage or open opportunities" maxLength={300} aria-label="Question" />
         <button type="submit" disabled={pending}>{pending ? 'Asking…' : 'Ask'}</button>
       </form>
       <form className="chips" action={action}>

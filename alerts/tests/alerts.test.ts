@@ -204,8 +204,15 @@ describe('content (L6)', () => {
     expect(a!.title).toBe(`P1 support case at ${name}`);
     expect(a!.explanation).toContain('an account on your account team');
     expect(a!.explanation).toContain('high_severity_case v1');
-    expect(a!.link.startsWith('https://copilot.example/?q=')).toBe(true);
-    expect(a!.link).not.toContain('user=');
+    expect(a!.link).toBe('https://copilot.example/?prompt=high_severity_case');
+  });
+
+  it('keeps the test identity on the copilot link only when test identities are on', async () => {
+    await addCase(database.db, 'case_t1', 'P1', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY, { copilotUrl: 'https://copilot.example', testIdentityInLinks: true });
+    const [a] = await deliveries('u_ts_east');
+    expect(a!.link).toBe('https://copilot.example/?prompt=high_severity_case&user=u_ts_east');
   });
 
   it('treats event text as data: placeholders inside a case subject are not expanded', async () => {

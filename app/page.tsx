@@ -2,6 +2,7 @@ import { AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { testIdentitiesEnabled } from '@/server/identity';
+import { promptFor } from '@/server/prompts';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
 import { format, cell } from './format';
@@ -16,7 +17,7 @@ function compactUsd(value: number): string {
   return value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : `$${Math.round(value / 1000)}K`;
 }
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
   if (!testIdentitiesEnabled()) return <SignInRequired />;
   const params = await searchParams;
   const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
@@ -105,7 +106,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           </section>
         </div>
 
-        <AskPanel user={user} name={me.displayName.split(' (')[0]!} examples={EXAMPLES} />
+        <AskPanel user={user} name={me.displayName.split(' (')[0]!} examples={EXAMPLES} initialQuestion={promptFor(params.prompt)} />
 
         <section className="card" aria-labelledby="metrics-title">
           <h2 id="metrics-title">Governed metrics</h2>

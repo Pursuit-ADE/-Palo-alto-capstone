@@ -28,7 +28,6 @@ const Base = z.object({
   owner: z.string().min(1),
   audience: z.array(z.enum(['technical_seller', 'sales_rep', 'sales_manager'])).min(1),
   criticalSeverities: z.array(z.enum(['P1', 'P2', 'P3', 'P4'])),
-  copilotQuestion: z.string().min(1).max(120),
 });
 
 export const AlertRule = z.discriminatedUnion('event', [

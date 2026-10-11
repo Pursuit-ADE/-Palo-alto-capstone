@@ -1,6 +1,7 @@
 // End-to-end governed answer: phrase -> intent -> validation -> scope -> compiled SQL -> result with provenance.
 // Every call writes one audit row (PRD S4), including refusals. If the audit row can't be written, no answer is returned.
 import { createHash, randomUUID } from 'node:crypto';
+import { desc } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
@@ -25,6 +26,16 @@ type AuditFields = Partial<typeof queryAudit.$inferInsert>;
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
+/** The snapshot answers come from: always the newest one, chosen explicitly rather than by row order. */
+export async function currentSnapshot(database: Database) {
+  const [snapshot] = await database.db
+    .select()
+    .from(dataSnapshots)
+    .orderBy(desc(dataSnapshots.asOfDate), desc(dataSnapshots.loadedAt), desc(dataSnapshots.id))
+    .limit(1);
+  return snapshot;
+}
+
 async function audit(database: Database, entry: AuditFields & { userId: string; source: string; outcome: string; requestId: string }) {
   await database.auditDb.insert(queryAudit).values({ id: randomUUID(), at: new Date(), ...entry });
 }
@@ -38,7 +49,7 @@ function outcomeOf(e: unknown): { outcome: string; reason: string } {
 async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
-  const [snapshot] = await database.db.select().from(dataSnapshots);
+  const snapshot = await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
   const q = compile(intent, registry, principal, snapshot.id);
   Object.assign(fields, { regions: q.regions, ownerCount: principal.ownerIds?.length ?? null, snapshotId: snapshot.id });
@@ -96,7 +107,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
     const p = await principal();
-    const [snapshot] = await database.db.select().from(dataSnapshots);
+    const snapshot = await currentSnapshot(database);
     const n = normalize(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10));
     if (n.kind !== 'intent') {
       fields.reason = n.kind === 'clarify' ? n.question : n.message;

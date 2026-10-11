@@ -4,11 +4,22 @@
   "name": "High-severity support case on my account",
   "description": "A P1 or P2 support case is opened and still open on an account where you are on the account team.",
   "owner": "Customer Analytics (alert steward)",
-  "audience": ["technical_seller"],
+  "audience": [
+    "technical_seller"
+  ],
   "event": "support_case",
-  "conditions": { "severityIn": ["P1", "P2"], "statusIn": ["Open"] },
-  "criticalSeverities": ["P1"],
+  "conditions": {
+    "severityIn": [
+      "P1",
+      "P2"
+    ],
+    "statusIn": [
+      "Open"
+    ]
+  },
+  "criticalSeverities": [
+    "P1"
+  ],
   "title": "{severity} support case at {account}",
-  "explain": "Fired because {account}, an account on your account team, has an open {severity} support case: \"{subject}\", opened {when}.",
-  "copilotQuestion": "What is our open pipeline?"
+  "explain": "Fired because {account}, an account on your account team, has an open {severity} support case: \"{subject}\", opened {when}."
 }

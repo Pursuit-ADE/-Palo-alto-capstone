@@ -39,7 +39,7 @@ Only delivered alerts are readable in the inbox. Alerts that are held for a dige
 | L3 preferences | `alert_subscriptions`: frequency, quiet hours (UTC), P1 bypass, channel |
 | L4 private routing, send-time check | `canSeeAccount()` in `src/alerts/engine.ts`, called at creation and again in `send()` |
 | L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks with no shared fallback |
-| L6 explanation and copilot link | `explain` template per rule, link opens the copilot as the same user |
+| L6 explanation and copilot link | `explain` template per rule; link opens the copilot with that rule's fixed question. Identity comes from the copilot's own sign-in; in test mode only, the test identity is carried along |
 
 Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is escaped for Slack, so it can't become a link or a mention.
 
@@ -47,12 +47,12 @@ Templates only accept the placeholders their event type provides, and case statu
 
 | Variable | Purpose |
 |---|---|
-| `COPILOT_URL` | Base URL for "Ask the copilot" links (default `http://localhost:3000`) |
+| `COPILOT_URL` | Base URL for "Ask the copilot" links (default `http://localhost:3000`). Links open the copilot with a fixed prompt id (`?prompt=high_severity_case`) that the copilot maps to a known question. |
 | `SLACK_USER_WEBHOOKS` | JSON map of user id to that user's own `https://hooks.slack.com/...` webhook. Never commit real values. |
 
 ## Not done yet
 
-- Real scheduler (pg-boss) for continuous evaluation and timed digests; today it runs once at start.
+- Real scheduler (pg-boss) for continuous evaluation and timed digests, on a persistent Postgres so delivery state survives restarts. Today the service runs once at start on an in-memory database and does not read `DATABASE_URL`.
 - User-editable preferences UI; demo subscriptions live in `src/alerts/demo.ts`.
 - Per-user time zones for quiet hours (UTC for now), email channel, CSM triggers.
 - Shared package for the data loader instead of a copy of the copilot's.

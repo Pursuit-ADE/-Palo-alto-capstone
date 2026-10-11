@@ -4,11 +4,18 @@
   "name": "CXO engagement on my account",
   "description": "A C-level contact at one of your accounts downloads content or responds to a campaign.",
   "owner": "Customer Analytics (alert steward)",
-  "audience": ["sales_rep"],
+  "audience": [
+    "sales_rep"
+  ],
   "event": "engagement",
-  "conditions": { "cxoOnly": true, "typeIn": ["whitepaper_download", "campaign_response"] },
+  "conditions": {
+    "cxoOnly": true,
+    "typeIn": [
+      "whitepaper_download",
+      "campaign_response"
+    ]
+  },
   "criticalSeverities": [],
   "title": "CXO engagement at {account}",
-  "explain": "Fired because the {contactTitle} at {account}, an account where you own deals, engaged with \"{asset}\" ({type}) {when}.",
-  "copilotQuestion": "how many open deals?"
+  "explain": "Fired because the {contactTitle} at {account}, an account where you own deals, engaged with \"{asset}\" ({type}) {when}."
 }

@@ -18,6 +18,8 @@ export interface AlertEvent {
 
 export interface EngineOptions {
   copilotUrl?: string;
+  /** Test mode only: keep the test identity on copilot links so the demo opens as the same person. */
+  testIdentityInLinks?: boolean;
 }
 
 export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'failed';
@@ -119,8 +121,9 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
             severity: ev.severity,
             title: render(rule.title, ev.values),
             explanation: `${render(rule.explain, ev.values)} Rule: ${rule.id} v${rule.version}.`,
-            // No user id in the link: the copilot must take identity from its own sign-in, never from a URL.
-            link: `${copilotUrl}/?q=${encodeURIComponent(rule.copilotQuestion)}`,
+            // The link names a fixed prompt (the rule id), which the copilot maps to a known question. Identity
+            // comes from the copilot's own sign-in; only in test mode is the test identity carried along.
+            link: `${copilotUrl}/?prompt=${encodeURIComponent(rule.id)}${opts.testIdentityInLinks ? `&user=${encodeURIComponent(sub.userId)}` : ''}`,
             status: 'pending',
             channel: sub.channel,
             createdAt: now,
