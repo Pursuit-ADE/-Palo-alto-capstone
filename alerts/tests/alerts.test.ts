@@ -6,8 +6,8 @@ import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { accountTeam, alertDeliveries, alertSubscriptions, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { createChannels, type Channels } from '@/alerts/channels';
-import { flushDigests, inQuietHours, runAlerts } from '@/alerts/engine';
+import { createChannels, slackText, type Channels } from '@/alerts/channels';
+import { flushDigests, inbox, inQuietHours, runAlerts } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
 const rules = loadRules();
@@ -49,12 +49,24 @@ describe('rule catalog (L1)', () => {
     expect([...rules.keys()].sort()).toEqual(['cxo_engagement', 'high_severity_case']);
   });
 
-  it('rejects a rule with an unknown template placeholder', () => {
+  const loadBad = (file: string, change: (r: Record<string, any>) => void) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-'));
-    const r = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'rules', 'cxo_engagement.json'), 'utf8'));
-    r.explain = 'Leak {email}';
+    const r = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'rules', file), 'utf8'));
+    change(r);
     fs.writeFileSync(path.join(dir, 'bad.json'), JSON.stringify(r));
-    expect(() => loadRules(dir)).toThrow();
+    return () => loadRules(dir);
+  };
+
+  it('rejects a rule with an unknown template placeholder', () => {
+    expect(loadBad('cxo_engagement.json', (r) => { r.explain = 'Leak {email}'; })).toThrow();
+  });
+
+  it('rejects a placeholder the event type does not provide', () => {
+    expect(loadBad('high_severity_case.json', (r) => { r.explain = 'Case at {account} about {asset}'; })).toThrow();
+  });
+
+  it('rejects a misspelled case status instead of silently matching nothing', () => {
+    expect(loadBad('high_severity_case.json', (r) => { r.conditions.statusIn = ['open']; })).toThrow();
   });
 });
 
@@ -110,6 +122,7 @@ describe('preferences (L3)', () => {
     await runAlerts(database.db, rules, recorder(), SINCE, NIGHT);
     const byEvent = Object.fromEntries((await deliveries('u_ts_east')).map((r) => [r.eventId, r.status]));
     expect(byEvent).toEqual({ case_p2: 'queued_digest', case_p1: 'delivered' });
+    expect((await inbox(database.db, 'u_ts_east')).map((r) => r.eventId)).toEqual(['case_p1']);
   });
 
   it('queues digest alerts and delivers them together in one digest message', async () => {
@@ -137,6 +150,31 @@ describe('send-time permission check (L4)', () => {
     await flushDigests(database.db, ch, DAY);
     expect(ch.calls).toHaveLength(0);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('suppressed_no_access');
+    expect(await inbox(database.db, 'u_ts_east')).toHaveLength(0);
+  });
+});
+
+describe('retries', () => {
+  it('retries an alert whose channel failed, on the next run', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T10:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
+    const down: Channels = { async deliver() { return false; } };
+    await runAlerts(database.db, rules, down, SINCE, DAY);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('failed');
+    const ch = recorder();
+    await runAlerts(database.db, rules, ch, SINCE, DAY);
+    expect(ch.calls).toHaveLength(1);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+  });
+
+  it('finishes an alert left pending when a run crashed mid-send', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T10:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
+    const crash: Channels = { async deliver() { throw new Error('process stopped'); } };
+    await expect(runAlerts(database.db, rules, crash, SINCE, DAY)).rejects.toThrow();
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('pending');
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
   });
 });
 
@@ -163,6 +201,14 @@ describe('content (L6)', () => {
 });
 
 describe('Slack channel (L5)', () => {
+  it('escapes Slack formatting in event text so it cannot become a link or mention', () => {
+    const text = slackText([{ title: 'P1 at X', explanation: 'Subject: <https://evil.example|click here> <!channel> & more', link: 'http://localhost:3000/?user=u' } as never], false);
+    expect(text).not.toContain('<https://evil.example');
+    expect(text).not.toContain('<!channel>');
+    expect(text).toContain('&lt;https://evil.example|click here&gt;');
+    expect(text).toContain('<http://localhost:3000/?user=u|Ask the copilot>');
+  });
+
   const item = { id: 'a1', title: 'P1 support case at X', explanation: 'why', link: 'http://localhost:3000/' } as never;
 
   it('fails closed when the user has no webhook of their own (no shared fallback)', async () => {

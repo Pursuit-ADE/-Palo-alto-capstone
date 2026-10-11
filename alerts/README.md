@@ -30,6 +30,8 @@ event (support case, engagement)
   -> channel: in-app inbox, or that user's own Slack webhook
 ```
 
+Only delivered alerts are readable in the inbox. Alerts that are held for a digest, blocked by the access check or failed show up only as counts, with no account or case details. An alert whose send failed, or was cut off mid-send, is retried on the next run; delivered, queued and blocked alerts are not resent.
+
 | PRD | Where |
 |---|---|
 | L1 versioned alert-rule catalog | `rules/*.json`, `src/alerts/rules.ts` |
@@ -39,7 +41,7 @@ event (support case, engagement)
 | L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks with no shared fallback |
 | L6 explanation and copilot link | `explain` template per rule, link opens the copilot as the same user |
 
-Templates only accept fixed placeholders, and event text is inserted as plain text, so a case subject can't inject template variables.
+Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is escaped for Slack, so it can't become a link or a mention.
 
 ## Configuration
 

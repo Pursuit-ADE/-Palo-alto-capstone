@@ -123,8 +123,13 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
           })
           .onConflictDoNothing()
           .returning({ id: alertDeliveries.id });
-        if (inserted.length === 0) continue; // already alerted for this rule, user and event
-        created.push(id);
+        if (inserted.length > 0) created.push(id);
+        else {
+          // Already created for this rule, user and event. Only a send that never finished is tried again;
+          // delivered, queued and suppressed alerts are left as they are.
+          const [existing] = await db.select({ status: alertDeliveries.status }).from(alertDeliveries).where(eq(alertDeliveries.id, id));
+          if (!existing || (existing.status !== 'pending' && existing.status !== 'failed')) continue;
+        }
         const critical = (rule.criticalSeverities as string[]).includes(ev.severity);
         const sendNow = (sub.frequency === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
         if (sendNow) await send(db, channels, [id], now);
@@ -170,4 +175,22 @@ export async function flushDigests(db: Db, channels: Channels, now: Date) {
   const byUser = new Map<string, string[]>();
   for (const q of due) byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
   for (const [userId, ids] of byUser) await send(db, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);
+}
+
+/** The in-app inbox: only alerts that were actually delivered. Nothing held, blocked or failed is readable. */
+export async function inbox(db: Db, userId: string) {
+  const rank: Record<string, number> = { P1: 0, P2: 1, info: 2 };
+  const rows = await db
+    .select()
+    .from(alertDeliveries)
+    .where(and(eq(alertDeliveries.userId, userId), eq(alertDeliveries.status, 'delivered')));
+  return rows.sort((a, b) => (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || a.title.localeCompare(b.title));
+}
+
+/** Counts per status, without any alert content. */
+export async function statusCounts(db: Db, userId: string): Promise<Record<string, number>> {
+  const rows = await db.select({ status: alertDeliveries.status }).from(alertDeliveries).where(eq(alertDeliveries.userId, userId));
+  const counts: Record<string, number> = {};
+  for (const r of rows) counts[r.status] = (counts[r.status] ?? 0) + 1;
+  return counts;
 }

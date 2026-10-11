@@ -5,11 +5,20 @@ import path from 'node:path';
 import { z } from 'zod';
 
 const Identifier = z.string().regex(/^[a-z_][a-z0-9_]*$/);
-const PLACEHOLDERS = ['account', 'severity', 'subject', 'when', 'contactTitle', 'asset', 'type'] as const;
-const Template = z
-  .string()
-  .min(1)
-  .refine((t) => [...t.matchAll(/\{(\w+)\}/g)].every((m) => (PLACEHOLDERS as readonly string[]).includes(m[1]!)), 'Unknown placeholder in template');
+// Each event type fills its own placeholders, so a template can only use values that event provides.
+const PLACEHOLDERS = {
+  support_case: ['account', 'severity', 'subject', 'when'],
+  engagement: ['account', 'contactTitle', 'asset', 'type', 'when'],
+} as const;
+type Placeholder = (typeof PLACEHOLDERS)[keyof typeof PLACEHOLDERS][number];
+
+const templateFor = (event: keyof typeof PLACEHOLDERS) =>
+  z
+    .string()
+    .min(1)
+    .refine((t) => [...t.matchAll(/\{(\w+)\}/g)].every((m) => (PLACEHOLDERS[event] as readonly string[]).includes(m[1]!)), {
+      message: `Template uses a placeholder that ${event} events do not provide`,
+    });
 
 const Base = z.object({
   id: Identifier,
@@ -19,18 +28,20 @@ const Base = z.object({
   owner: z.string().min(1),
   audience: z.array(z.enum(['technical_seller', 'sales_rep', 'sales_manager'])).min(1),
   criticalSeverities: z.array(z.enum(['P1', 'P2', 'P3', 'P4'])),
-  title: Template,
-  explain: Template,
   copilotQuestion: z.string().min(1).max(120),
 });
 
 export const AlertRule = z.discriminatedUnion('event', [
   Base.extend({
     event: z.literal('support_case'),
-    conditions: z.object({ severityIn: z.array(z.enum(['P1', 'P2', 'P3', 'P4'])).min(1), statusIn: z.array(z.string()).min(1) }).strict(),
+    title: templateFor('support_case'),
+    explain: templateFor('support_case'),
+    conditions: z.object({ severityIn: z.array(z.enum(['P1', 'P2', 'P3', 'P4'])).min(1), statusIn: z.array(z.enum(['Open', 'Closed'])).min(1) }).strict(),
   }).strict(),
   Base.extend({
     event: z.literal('engagement'),
+    title: templateFor('engagement'),
+    explain: templateFor('engagement'),
     conditions: z.object({ cxoOnly: z.boolean(), typeIn: z.array(z.enum(['whitepaper_download', 'campaign_response'])).min(1) }).strict(),
   }).strict(),
 ]);
@@ -47,6 +58,6 @@ export function loadRules(dir: string = path.join(process.cwd(), 'rules')): Map<
 }
 
 /** Fills a template with fixed placeholders only; values are plain text, never evaluated. */
-export function render(template: string, values: Partial<Record<(typeof PLACEHOLDERS)[number], string>>): string {
+export function render(template: string, values: Partial<Record<Placeholder, string>>): string {
   return template.replace(/\{(\w+)\}/g, (_, k: string) => values[k as keyof typeof values] ?? '');
 }

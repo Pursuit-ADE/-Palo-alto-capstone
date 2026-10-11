@@ -11,8 +11,13 @@ export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
 }
 
+/** Escapes Slack's control characters so event text can't become links, mentions or formatting. */
+export function slackEscape(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
 export function slackText(items: Delivery[], isDigest: boolean): string {
-  const lines = items.map((i) => `• *${i.title}*\n${i.explanation}\n<${i.link}|Ask the copilot>`);
+  const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}\n<${i.link}|Ask the copilot>`);
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
 }
 

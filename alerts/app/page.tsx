@@ -1,20 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { demoUsers } from '@/db/seed';
-import { alertDeliveries, alertSubscriptions } from '@/db/schema';
+import { alertSubscriptions } from '@/db/schema';
+import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
 import { getAlertsRuntime } from '@/server/runtime';
 
 export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
-
-const STATUS_TEXT: Record<string, string> = {
-  delivered: 'Delivered',
-  queued_digest: 'Waiting for digest',
-  suppressed_no_access: 'Not sent: no access',
-  failed: 'Not sent: channel failed',
-  pending: 'Pending',
-};
 
 function hours(s: number | null, e: number | null): string {
   if (s === null || e === null) return 'None';
@@ -26,12 +19,11 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
   const me = USERS.find((u) => u.id === user)!;
   const { database, rules } = await getAlertsRuntime();
-  const rank: Record<string, number> = { P1: 0, P2: 1, info: 2 };
-  const mine = (await database.db.select().from(alertDeliveries).where(eq(alertDeliveries.userId, user))).sort(
-    (a, b) => (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || a.title.localeCompare(b.title),
-  );
+  // Only delivered alerts are readable. Held, blocked or failed alerts are counted, never shown.
+  const mine = await inbox(database.db, user);
+  const counts = await statusCounts(database.db, user);
+  const count = (s: string) => counts[s] ?? 0;
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
-  const count = (s: string) => mine.filter((m) => m.status === s).length;
 
   return (
     <>
@@ -64,7 +56,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
 
         <section className="kpis" aria-label="Alert summary">
           <div className="kpi"><span className="label">Delivered</span><span className="value">{count('delivered')}</span><span className="note">sent to your inbox</span></div>
-          <div className="kpi"><span className="label">Waiting for digest</span><span className="value">{count('queued_digest')}</span><span className="note">held by your digest or quiet-hours setting</span></div>
+          <div className="kpi"><span className="label">Waiting for digest</span><span className="value">{count('queued_digest')}</span><span className="note">held by your digest or quiet-hours setting; shown once delivered</span></div>
           <div className="kpi"><span className="label">Not sent</span><span className="value">{count('suppressed_no_access') + count('failed')}</span><span className="note">access removed or channel unavailable</span></div>
         </section>
 
@@ -80,7 +72,6 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                   <div className="alert-head">
                     <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? 'Info' : a.severity}</span>
                     <b>{a.title}</b>
-                    <span className="status">{STATUS_TEXT[a.status] ?? a.status}</span>
                   </div>
                   <p>{a.explanation}</p>
                   <a href={a.link}>Ask the copilot about this</a>
