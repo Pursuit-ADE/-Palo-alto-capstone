@@ -1,6 +1,6 @@
 # Actionable Alerts
 
-Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026). Part 2 of the PRD (L1–L6): private, rule-based alerts that sit beside the [governed analytics copilot](https://github.com/MITRAKER/governed-analytics-copilot).
+Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026). Part 2 of the PRD (L1–L6): private, rule-based alerts that sit beside the [governed analytics copilot](../README.md).
 
 **No real customer or Palo Alto Networks data.** Accounts, deals and sales reps come from the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company). Support cases, engagements, contacts and quotas are synthetic. The data loader is the same as the copilot's, so both apps see the same snapshot.
 

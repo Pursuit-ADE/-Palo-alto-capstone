@@ -63,4 +63,4 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Branches
 
-Each week of the build has its own branch: `week1` (this copilot), `week2`, and so on.
+Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on.
