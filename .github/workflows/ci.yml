@@ -3,7 +3,7 @@ name: ci
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'week*']
   pull_request:
   workflow_dispatch:
 
