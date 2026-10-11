@@ -1,0 +1,56 @@
+# Actionable Alerts
+
+Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026). Part 2 of the PRD (L1–L6): private, rule-based alerts that sit beside the [governed analytics copilot](https://github.com/MITRAKER/governed-analytics-copilot).
+
+**No real customer or Palo Alto Networks data.** Accounts, deals and sales reps come from the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company). Support cases, engagements, contacts and quotas are synthetic. The data loader is the same as the copilot's, so both apps see the same snapshot.
+
+## Run it
+
+Requires Node 20+. No Docker needed: an embedded Postgres (PGlite) is loaded on start.
+
+```bash
+npm install
+npm test          # rule catalog, routing, dedupe, preferences, send-time checks, Slack adapter
+npm run build
+npm start         # http://localhost:3000
+```
+
+The page evaluates the rules once at start, as of Oct 8, 2026 15:00 UTC, for events since Sep 1. Switch identity to compare inboxes.
+
+## How it works
+
+```
+event (support case, engagement)
+  -> rule catalog (rules/*.json, versioned, Zod-validated)
+  -> subscribers of that rule whose role is in the rule's audience
+  -> private routing: only users on the account's team (account_team, read from the database)
+  -> one alert per (rule, user, event), enforced by a unique index
+  -> preferences: right away, daily digest, quiet hours, P1 bypass
+  -> access checked again immediately before delivery
+  -> channel: in-app inbox, or that user's own Slack webhook
+```
+
+| PRD | Where |
+|---|---|
+| L1 versioned alert-rule catalog | `rules/*.json`, `src/alerts/rules.ts` |
+| L2 starting triggers | `high_severity_case` (technical sellers), `cxo_engagement` (sales reps). CSM triggers are stretch and not built. |
+| L3 preferences | `alert_subscriptions`: frequency, quiet hours (UTC), P1 bypass, channel |
+| L4 private routing, send-time check | `canSeeAccount()` in `src/alerts/engine.ts`, called at creation and again in `send()` |
+| L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks with no shared fallback |
+| L6 explanation and copilot link | `explain` template per rule, link opens the copilot as the same user |
+
+Templates only accept fixed placeholders, and event text is inserted as plain text, so a case subject can't inject template variables.
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `COPILOT_URL` | Base URL for "Ask the copilot" links (default `http://localhost:3000`) |
+| `SLACK_USER_WEBHOOKS` | JSON map of user id to that user's own `https://hooks.slack.com/...` webhook. Never commit real values. |
+
+## Not done yet
+
+- Real scheduler (pg-boss) for continuous evaluation and timed digests; today it runs once at start.
+- User-editable preferences UI; demo subscriptions live in `src/alerts/demo.ts`.
+- Per-user time zones for quiet hours (UTC for now), email channel, CSM triggers.
+- Shared package for the data loader instead of a copy of the copilot's.
