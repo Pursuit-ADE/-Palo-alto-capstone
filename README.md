@@ -58,7 +58,7 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Follow-up questions (A5):** the copilot keeps a chat. The only conversation state is the previous answer's structured intent, which the server re-validates and re-scopes every turn. "What about West?", "by stage" and "and next quarter?" build on the previous question; a 10-turn test proves the numbers match asking each question fresh.
 - **Intent model:** `src/semantic/model.ts`. The deterministic golden-set model is the default and runs in CI. Set `INTENT_MODEL=claude` (with Anthropic credentials) to use Claude with structured output; it sees only the metric catalog, the question and the previous intent, never rows or entitlements, and its output passes the same schema, registry and scope checks. If the model is unavailable, the app falls back to the deterministic model. Which AI providers are allowed is still an open question for the client.
 - **Charts and narrative (A6):** a plain-language summary and a bar chart (with a Vega-Lite spec) are built from the governed rows, never written by a model.
-- **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope.
+- **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope. After 3 flagged questions in 10 minutes, a user is locked out of asking for 10 minutes. `npm run eval:golden` checks the configured intent model against the golden set.
 
 ## Security controls
 
@@ -83,9 +83,10 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
 - HSTS once the app is served over HTTPS.
 - Week 2: business rules in the context layer; run the app on Postgres mode by default.
-- Week 3: real AI model for intent, follow-up conversations, charts, red-team suite.
-- Week 4: alert rule catalog, subscriptions, private delivery with send-time permission checks.
-- Mock identity picker is for the demo only; it is not authentication.
+- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. Pending the client's answer on allowed AI providers.
+- Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
+- Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
+- The test identity picker is not authentication.
 
 ## Project documents
 

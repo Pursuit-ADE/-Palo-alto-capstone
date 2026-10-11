@@ -10,7 +10,7 @@ import { Intent as IntentSchema, type Intent } from '../registry/types';
 import { flagQuestion } from './flags';
 import { deterministicModel, type IntentModel } from './model';
 import { chartSpec, narrate } from './narrative';
-import { resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
+import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
 export const MAX_QUESTION_LENGTH = 300;
 
@@ -47,7 +47,22 @@ async function audit(database: Database, entry: AuditFields & { userId: string; 
   await database.auditDb.insert(queryAudit).values({ id: randomUUID(), at: new Date(), ...entry });
 }
 
+/** Thrown when a user is locked out after repeated flagged questions (S3). */
+export class SessionLocked extends Error {
+  constructor() {
+    super('Too many questions were flagged as unsafe. Asking is paused for a few minutes.');
+    this.name = 'SessionLocked';
+  }
+}
+
+/** The lock the caller enforces; see FlagGuard in src/server/limits.ts. */
+export interface Guard {
+  isLocked(user: string, now?: number): boolean;
+  record(user: string, now?: number): void;
+}
+
 function outcomeOf(e: unknown): { outcome: string; reason: string } {
+  if (e instanceof SessionLocked) return { outcome: 'refused_locked', reason: e.message };
   if (e instanceof ScopeViolation) return { outcome: 'refused_scope', reason: e.message };
   if (e instanceof IntentError) return { outcome: 'refused_intent', reason: e.message };
   return { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' };
@@ -117,6 +132,8 @@ export interface AskOptions {
   /** Turn number in the conversation, for the audit log. */
   turn?: number;
   model?: IntentModel;
+  /** Session lock after repeated flagged questions. */
+  guard?: Guard;
 }
 
 /** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
@@ -130,8 +147,12 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    if (opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
     const p = await principal();
+    const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
+    fields.flags = flags;
+    if (flags.length) opts.guard?.record(userId);
     const snapshot = await currentSnapshot(database);
     const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {

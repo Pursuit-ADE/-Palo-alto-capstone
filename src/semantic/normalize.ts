@@ -98,8 +98,12 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   }
   const prior = previous && registry.metrics.has(previous.metric) ? previous : undefined;
   const followUpCue = FOLLOW_UP.test(text);
+  let continued = false; // this turn names no metric and only changes a modifier
   if (matches.length === 0) {
-    if (prior && (hasModifier(text, registry) || followUpCue)) matches = [prior.metric];
+    if (prior && (hasModifier(text, registry) || followUpCue)) {
+      matches = [prior.metric];
+      continued = true;
+    }
     else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
   }
   if (matches.length > 1) {
@@ -121,8 +125,10 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const regions: ('central' | 'east' | 'west')[] = ALL_REGIONS_PHRASE.test(text)
     ? ['central', 'east', 'west']
     : (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
-  // Carry forward what this turn doesn't change, when it continues the previous question.
-  const inherit = prior && (prior.metric === metric.id || followUpCue) ? prior : undefined;
+  // Carry forward what this turn doesn't change, but only when it clearly continues the previous question:
+  // it names no metric ("what about West?"), or it names the same metric with a follow-up cue ("and the
+  // open pipeline by stage?"). A newly named metric, or a full question restated, starts fresh.
+  const inherit = prior && (continued || (prior.metric === metric.id && followUpCue)) ? prior : undefined;
 
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
