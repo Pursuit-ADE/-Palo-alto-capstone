@@ -18,6 +18,13 @@ export function narrate(metric: { name: string; unit: string }, rows: Row[], gro
     }
     return `${metric.name}${when} is ${fmt(r.value, metric.unit)}.`;
   }
+  if (groupBy.length > 1) {
+    // Each row is one combination (for example Central and Engaging), so rank combinations, not totals.
+    const sortedCells = [...rows].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
+    const top = sortedCells[0]!;
+    const name = groupBy.map((d) => label(d, top[d])).join(' and ');
+    return `${metric.name}${when} by ${groupBy.join(' and ')}: ${rows.length} combinations. The largest is ${name} at ${fmt(top.value, metric.unit)}.`;
+  }
   const dim = groupBy[0]!;
   const sorted = [...rows].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
   const top = sorted[0]!;

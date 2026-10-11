@@ -27,7 +27,7 @@ export interface Answer {
   provenance: { snapshotId: string; asOfDate: string; resultHash: string };
 }
 
-export type Reply = Answer | { kind: 'clarify'; question: string } | { kind: 'unsupported'; message: string };
+export type Reply = Answer | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
 
 type AuditFields = Partial<typeof queryAudit.$inferInsert>;
 
@@ -156,9 +156,13 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     const snapshot = await currentSnapshot(database);
     const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {
-      fields.reason = n.kind === 'clarify' ? n.question : n.message;
+      // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
+      // audit log keeps only the question's hash.
+      fields.reason = `${n.kind}:${sha256(n.kind === 'clarify' ? n.question : n.message).slice(0, 16)}`;
       return n;
     }
-    return run(database, registry, p, n.intent, fields);
+    // Scope is resolved again after the model returns: a role or team change made while the model was
+    // working applies to this query, not just the next one.
+    return run(database, registry, await principal(), n.intent, fields);
   });
 }

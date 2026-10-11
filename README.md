@@ -42,7 +42,7 @@ phrase -> intent normalizer -> Intent (metric + filters, Zod-validated)
 | `data/maven-crm/` | The public CRM sample (accounts, opportunities, sales teams, products) |
 | `src/db/schema.ts`, `src/db/seed.ts` | Data model and loader: sample data, date shift, estimates for open deals, synthetic quotas, contacts, cases and engagements |
 | `src/semantic/` | Normalizer (golden-set mock of the AI model), validation, scope and SQL compiler |
-| `drizzle/` | Generated migrations |
+| `drizzle/` | Migrations, append-only: `0000_init` is the baseline on main, later changes are new numbered files. Never edit an applied migration; `tests/migrations.test.ts` upgrades a baseline database to the current schema |
 | `.github/workflows/` | CI: typecheck, tests, dependency audit, secret scan (gitleaks), static analysis (CodeQL) |
 
 Registry changes go through pull requests (reviewed, version-controlled); there is no runtime editing.

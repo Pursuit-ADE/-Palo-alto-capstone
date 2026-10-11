@@ -138,12 +138,14 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
           // Already created for this rule, user and event. Only a send that never finished is tried again;
           // delivered, queued and suppressed alerts are left as they are.
           const [existing] = await db.select({ status: alertDeliveries.status }).from(alertDeliveries).where(eq(alertDeliveries.id, id));
-          if (!existing || !['pending', 'failed', 'sending'].includes(existing.status)) continue;
+          // Rediscovering an event only finishes routing an alert that was never claimed. Failed and in-flight
+          // alerts belong to the flush (retry limits, backoff, active claims) and are never reset here.
+          if (!existing || existing.status !== 'pending') continue;
         }
         const critical = (rule.criticalSeverities as string[]).includes(ev.severity);
         const sendNow = (sub.frequency === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
         if (sendNow) await send(db, rules, channels, [id], now);
-        else await db.update(alertDeliveries).set({ status: 'queued_digest' }).where(eq(alertDeliveries.id, id));
+        else await db.update(alertDeliveries).set({ status: 'queued_digest' }).where(and(eq(alertDeliveries.id, id), eq(alertDeliveries.status, 'pending')));
       }
     }
   }
@@ -237,7 +239,9 @@ export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channe
     .where(inArray(alertDeliveries.status, ['queued_digest', 'failed', 'sending']));
   const byUser = new Map<string, string[]>();
   for (const q of due) {
-    if (q.s && inQuietHours(q.s, now)) continue;
+    // Quiet hours hold digests and retries, except a critical alert whose subscriber turned on the bypass.
+    const critical = (rules.get(q.d.ruleId)?.criticalSeverities as string[] | undefined)?.includes(q.d.severity) ?? false;
+    if (q.s && inQuietHours(q.s, now) && !(critical && q.s.criticalBypass)) continue;
     byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
   }
   for (const [userId, ids] of byUser) await send(db, rules, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);

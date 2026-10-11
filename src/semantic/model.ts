@@ -63,7 +63,8 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
 }
 
 /** Claude as the intent model. Used only when INTENT_MODEL=claude; needs Anthropic credentials. */
-export function claudeModel(client: Anthropic = new Anthropic()): IntentModel {
+// A question should fail fast to the deterministic fallback rather than hang: 20 s per attempt, one retry.
+export function claudeModel(client: Anthropic = new Anthropic({ timeout: 20_000, maxRetries: 1 })): IntentModel {
   return {
     name: CLAUDE_MODEL,
     async propose(question, registry, asOfDate, previous) {

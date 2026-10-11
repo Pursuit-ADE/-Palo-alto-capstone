@@ -36,6 +36,8 @@ export function AskPanel({ user, name, examples, initialQuestion = '' }: { user:
         const result = await askCopilot(null, fd);
         setTurns((t) => [...t, { id: Date.now(), question: q, result }].slice(-MAX_TURNS_SHOWN));
         if (result?.kind === 'answer') setPrevious(result.intent);
+        // A clarification waits on a partial request (e.g. coverage with no quarter); the reply finishes it.
+        else if (result?.kind === 'clarify' && result.resume) setPrevious(result.resume);
         if (inputRef.current) inputRef.current.value = '';
       } catch {
         setFailed(true);

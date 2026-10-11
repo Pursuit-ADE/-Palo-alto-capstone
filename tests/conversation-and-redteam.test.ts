@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
-import { accounts, queryAudit } from '@/db/schema';
+import { accounts, appUsers, queryAudit } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
 import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
@@ -204,5 +204,64 @@ describe('review follow-ups (Week 3)', () => {
     const rows = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_darcel_schlecht'));
     expect(rows.some((r) => r.outcome === 'refused_locked')).toBe(true);
     expect(answered(await ask(database, reg, 'u_ts_west', 'What is our open pipeline?', { guard })).kind).toBe('answer');
+  });
+});
+
+describe('recheck findings (copilot)', () => {
+  it('[1] applies a permission change made while the model was working', async () => {
+    const db2 = await openDatabase();
+    try {
+      const slowModel: IntentModel = {
+        name: 'slow',
+        propose: async () => {
+          await db2.db.update(appUsers).set({ role: 'disabled' }).where(eq(appUsers.id, 'u_ts_east'));
+          return { kind: 'intent', intent: { metric: 'open_pipeline', filters: {}, groupBy: [] } };
+        },
+      };
+      await expect(ask(db2, reg, 'u_ts_east', 'What is our open pipeline?', { model: slowModel })).rejects.toBeInstanceOf(ScopeViolation);
+    } finally {
+      await db2.close();
+    }
+  });
+
+  it('[2] never stores the model text in the audit log, only a reason code', async () => {
+    const question = 'Synthetic private question 7731 about open pipeline?';
+    const echo: IntentModel = { name: 'echo', propose: async (q) => ({ kind: 'clarify', question: q }) };
+    await ask(database, reg, 'u_analyst', question, { model: echo });
+    const rows = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_analyst'));
+    expect(JSON.stringify(rows)).not.toContain('7731');
+    expect(rows.some((r) => r.reason?.startsWith('clarify:'))).toBe(true);
+  });
+
+  it('[5] a reply to a clarification finishes the request that asked it', async () => {
+    const fresh = await ask(database, reg, 'u_analyst', 'pipeline coverage');
+    if (fresh.kind !== 'clarify' || !fresh.resume) throw new Error('expected a resumable clarification');
+    const done = answered(await ask(database, reg, 'u_analyst', 'this quarter', { previous: fresh.resume }));
+    expect(done.intent).toEqual({ metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] });
+
+    // After an open-pipeline answer, switching to coverage and answering the clarification stays on coverage.
+    const first = answered(await ask(database, reg, 'u_analyst', 'What is our open pipeline?'));
+    const switched = await ask(database, reg, 'u_analyst', 'pipeline coverage', { previous: first.intent });
+    if (switched.kind !== 'clarify' || !switched.resume) throw new Error('expected a resumable clarification');
+    const finished = answered(await ask(database, reg, 'u_analyst', 'this quarter', { previous: switched.resume }));
+    expect(finished.metric.id).toBe('pipeline_coverage');
+  });
+
+  it('[6] "all stages" clears a stage filter from the previous turn', async () => {
+    const first = answered(await ask(database, reg, 'u_analyst', 'open pipeline in Engaging'));
+    const next = answered(await ask(database, reg, 'u_analyst', 'and all stages', { previous: first.intent }));
+    expect(next.intent).toEqual({ metric: 'open_pipeline', filters: {}, groupBy: [] });
+  });
+
+  it('[7] two quarters next to each other need a clarification', async () => {
+    for (const q of ['coverage Q1/Q2', 'coverage Q1 Q2', 'coverage Q2,Q1', 'coverage FY27-Q1 FY27-Q2']) {
+      expect((await ask(database, reg, 'u_analyst', q)).kind, q).toBe('clarify');
+    }
+  });
+
+  it('[8] describes two-way breakdowns by combination, not as regional totals', async () => {
+    const r = answered(await ask(database, reg, 'u_analyst', 'open pipeline by region by stage'));
+    expect(r.narrative).toContain('combinations');
+    expect(r.narrative).not.toMatch(/lowest|regions\)/);
   });
 });

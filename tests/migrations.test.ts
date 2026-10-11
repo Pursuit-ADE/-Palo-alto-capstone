@@ -1,0 +1,39 @@
+// Upgrades must keep working: a database created from main's baseline migration must upgrade to the current
+// schema with the same migrator the app runs on start. Migrations are append-only; never rewrite an applied one.
+import { describe, expect, it } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+import { drizzle } from 'drizzle-orm/pglite';
+import { migrate } from 'drizzle-orm/pglite/migrator';
+
+const MIGRATIONS = path.join(process.cwd(), 'drizzle');
+
+describe('migrations', () => {
+  it('upgrades a database created from the baseline (main) to the current schema', async () => {
+    const journal = JSON.parse(fs.readFileSync(path.join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'));
+    expect(journal.entries[0].tag).toBe('0000_init');
+    // A copy of the migrations folder that only knows the first migration: the baseline database.
+    const baseline = fs.mkdtempSync(path.join(os.tmpdir(), 'mig-'));
+    fs.cpSync(MIGRATIONS, baseline, { recursive: true });
+    fs.writeFileSync(path.join(baseline, 'meta', '_journal.json'), JSON.stringify({ ...journal, entries: [journal.entries[0]] }));
+
+    const client = new PGlite();
+    const db = drizzle(client);
+    await migrate(db, { migrationsFolder: baseline });
+    const before = await client.query<{ n: number }>("SELECT count(*)::int AS n FROM information_schema.tables WHERE table_name = 'query_audit'");
+    expect(before.rows[0]!.n).toBe(0);
+
+    await migrate(db, { migrationsFolder: MIGRATIONS }); // the upgrade: must not try to recreate existing tables
+    await migrate(db, { migrationsFolder: MIGRATIONS }); // and running it again on start is a no-op
+    const cols = await client.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name = 'query_audit'");
+    expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(['question_sha256', 'flags', 'model', 'turn']));
+    await client.close();
+  });
+
+  it('only ever appends migrations', () => {
+    const journal = JSON.parse(fs.readFileSync(path.join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'));
+    expect(journal.entries.map((e: { idx: number }) => e.idx)).toEqual(journal.entries.map((_: unknown, i: number) => i));
+  });
+});

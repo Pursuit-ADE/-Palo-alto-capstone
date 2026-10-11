@@ -16,10 +16,11 @@ const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|n
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
+const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 /** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
 function hasModifier(text: string, registry: Registry): boolean {
-  if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text)) return true;
+  if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text) || ALL_STAGES.test(text)) return true;
   if (/ (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous) quarter /.test(text)) return true;
   if (Object.keys(registry.glossary.dimensionPhrases).some((p) => text.includes(` ${p} `))) return true;
   return findStages(text).length > 0;
@@ -36,14 +37,14 @@ function findPeriods(text: string, glossary: Glossary, asOfDate: string): { labe
   let unsupported = false;
   let rest = text;
   // Explicit fiscal quarters: "fy27-q1", "fy27 q1", "fy 2027 q1".
-  rest = rest.replace(/ fy ?-?(\d{2}|\d{4}) ?-? ?q([1-9]) /g, (_, y: string, q: string) => {
+  rest = rest.replace(/(?<= )fy ?-?(\d{2}|\d{4}) ?-? ?q([1-9])(?= )/g, (_, y: string, q: string) => {
     const label = `FY${y.slice(-2)}-Q${q}`;
     if (findPeriod(label)) labels.add(label);
     else unsupported = true;
     return ' ';
   });
   // Bare quarters ("q2") are in the current fiscal year.
-  rest = rest.replace(/ q([1-9]) /g, (_, q: string) => {
+  rest = rest.replace(/(?<= )q([1-9])(?= )/g, (_, q: string) => {
     const fy = resolvePeriod('current', asOfDate)?.slice(0, 4) ?? 'FY27';
     const label = `${fy}-Q${q}`;
     if (findPeriod(label)) labels.add(label);
@@ -65,7 +66,9 @@ function findPeriods(text: string, glossary: Glossary, asOfDate: string): { labe
 
 export type NormalizeResult =
   | { kind: 'intent'; intent: Intent }
-  | { kind: 'clarify'; question: string }
+  // `resume` is the partial request a clarification is waiting on (for example coverage with no quarter yet).
+  // The client sends it back as the previous intent, so the answer to the clarification finishes that request.
+  | { kind: 'clarify'; question: string; resume?: Intent }
   | { kind: 'unsupported'; message: string };
 
 function clean(phrase: string): string {
@@ -130,17 +133,29 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // open pipeline by stage?"). A newly named metric, or a full question restated, starts fresh.
   const inherit = prior && (continued || (prior.metric === metric.id && followUpCue)) ? prior : undefined;
 
+  const partial = (): Intent => {
+    const f: Intent['filters'] = {};
+    const r = regions.length ? regions : (inherit?.filters.regions ?? []);
+    if (r.length) f.regions = [...r];
+    return { metric: metric.id, filters: f, groupBy: [] };
+  };
+
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
     return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?` };
   }
   if (periods.labels.size > 1) {
-    return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?` };
+    return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?`, resume: partial() };
   }
   const period = [...periods.labels][0] ?? inherit?.filters.period;
 
   const mentionedStages = findStages(text);
-  const stages = mentionedStages.length ? mentionedStages : metric.kind === 'aggregate' ? (inherit?.filters.stages ?? []) : [];
+  // "all stages" clears an inherited stage filter; saying nothing about stages keeps it.
+  const stages = mentionedStages.length
+    ? mentionedStages
+    : ALL_STAGES.test(text) || metric.kind !== 'aggregate'
+      ? []
+      : (inherit?.filters.stages ?? []);
   if (stages.length && metric.kind === 'ratio') {
     return { kind: 'clarify', question: `${metric.name} can't be filtered by stage. Do you want ${metric.name.toLowerCase()} for all open deals?` };
   }
@@ -159,7 +174,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   }
 
   if (metric.kind === 'ratio' && metric.requiresPeriod && !period) {
-    return { kind: 'clarify', question: `${metric.name} needs a period. Which quarter do you mean, for example this quarter or next quarter?` };
+    return { kind: 'clarify', question: `${metric.name} needs a period. Which quarter do you mean, for example this quarter or next quarter?`, resume: partial() };
   }
 
   const filters: Intent['filters'] = {};
