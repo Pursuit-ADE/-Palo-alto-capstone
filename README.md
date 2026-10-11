@@ -63,6 +63,9 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 | Audit row for every question and dashboard query, including refusals; question stored as a hash; no answer if the audit write fails | `src/semantic/answer.ts`, `query_audit` | `tests/audit-and-limits.test.ts` |
 | Read-only app role, insert-only audit role, statement timeout | `src/db/client.ts`, `docker/init-roles.sql` | `tests/postgres-roles.test.ts` (CI job `postgres-roles`) |
 | Question length limit and per-user rate limit (20 per minute) | `src/semantic/answer.ts`, `src/server/limits.ts` | `tests/audit-and-limits.test.ts` |
+| Intent arrays bounded (3 regions, 10 stages, 2 unique breakdowns) | `src/registry/types.ts` | `tests/governed-query.test.ts` |
+| Questions sent by POST (Server Action), never in the URL | `app/actions.ts`, `app/ask-panel.tsx` | |
+| Security headers and a per-request nonce Content Security Policy | `next.config.ts`, `proxy.ts` | |
 | Test identities off unless explicitly enabled | `src/server/identity.ts` | `tests/audit-and-limits.test.ts` |
 | Reviewed changes to metrics, rules, query code and CI | `.github/CODEOWNERS` (enable "Require review from Code Owners" on main) | |
 | Dependency audit, secret scan (gitleaks, full history), CodeQL | `.github/workflows/` | every push |
@@ -70,6 +73,8 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 ## Not done yet (by roadmap week)
 
 - Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
+- Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
+- HSTS once the app is served over HTTPS.
 - Week 2: business rules in the context layer; run the app on Postgres mode by default.
 - Week 3: real AI model for intent, follow-up conversations, charts, red-team suite.
 - Week 4: alert rule catalog, subscriptions, private delivery with send-time permission checks.

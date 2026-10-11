@@ -33,7 +33,9 @@ CREATE TABLE "alert_deliveries" (
 	"channel" text NOT NULL,
 	"created_at" timestamp with time zone NOT NULL,
 	"delivered_at" timestamp with time zone,
-	"digest_id" text
+	"digest_id" text,
+	"claimed_at" timestamp with time zone,
+	"attempts" integer DEFAULT 0 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE "alert_subscriptions" (

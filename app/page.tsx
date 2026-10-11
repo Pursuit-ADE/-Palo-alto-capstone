@@ -1,11 +1,10 @@
 import { AS_OF_DATE, demoUsers } from '@/db/seed';
-import { answerIntent, ask, type Answer, type Reply } from '@/semantic/answer';
-import { IntentError } from '@/semantic/compile';
+import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
-import { ScopeViolation } from '@/semantic/scope';
 import { testIdentitiesEnabled } from '@/server/identity';
-import { questionLimiter } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
+import { AskPanel } from './ask-panel';
+import { format, cell } from './format';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,29 +12,14 @@ const USERS = demoUsers();
 
 const EXAMPLES = ['What is our open pipeline?', 'coverage by region for this quarter', 'open opportunities by stage', 'pipeline coverage'];
 
-function format(value: unknown, unit: string): string {
-  if (typeof value !== 'number') return String(value ?? '');
-  if (unit === 'currency') return value.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-  if (unit === 'ratio') return `${value.toFixed(2)}x`;
-  return value.toLocaleString('en-US');
-}
-
 function compactUsd(value: number): string {
   return value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : `$${Math.round(value / 1000)}K`;
 }
 
-function cell(k: string, v: unknown, unit: string): string {
-  if (k === 'value') return format(v, unit);
-  if (k === 'numerator' || k === 'denominator') return format(v, 'currency');
-  if (k === 'region') return String(v).replace(/^./, (c) => c.toUpperCase());
-  return String(v);
-}
-
-export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; q?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   if (!testIdentitiesEnabled()) return <SignInRequired />;
   const params = await searchParams;
   const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
-  const q = params.q ?? '';
   const registry = getRegistry();
   const database = await getDatabase();
   const me = USERS.find((u) => u.id === user)!;
@@ -49,18 +33,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
     answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard'),
   ]);
   const cov = Number(coverage.rows[0]?.value ?? 0);
-
-  let reply: Reply | { kind: 'refused'; message: string } | null = null;
-  if (q.trim() && !questionLimiter.allow(user)) {
-    reply = { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
-  } else if (q.trim()) {
-    try {
-      reply = await ask(database, registry, user, q);
-    } catch (e) {
-      if (e instanceof ScopeViolation || e instanceof IntentError) reply = { kind: 'refused', message: e.message };
-      else throw e;
-    }
-  }
 
   return (
     <>
@@ -133,27 +105,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           </section>
         </div>
 
-        <section className="card" aria-labelledby="ask-title">
-            <h2 id="ask-title">Ask the copilot</h2>
-            <p className="sub">Answers come only from the governed metrics below, scoped to {me.displayName.split(' (')[0]}.</p>
-            <form className="ask" method="get">
-              <input type="hidden" name="user" value={user} />
-              <input id="q" name="q" defaultValue={q} placeholder="Ask about open pipeline, pipeline coverage or open opportunities" maxLength={300} aria-label="Question" />
-              <button type="submit">Ask</button>
-            </form>
-            <div className="chips">
-              {EXAMPLES.map((e) => (
-                <a key={e} href={`/?user=${user}&q=${encodeURIComponent(e)}`}>{e}</a>
-              ))}
-            </div>
-
-            {reply?.kind === 'answer' && <AnswerView a={reply} />}
-            {reply && reply.kind !== 'answer' && (
-              <div className="answer refused" role="status">
-                {reply.kind === 'clarify' ? reply.question : reply.message}
-              </div>
-            )}
-          </section>
+        <AskPanel user={user} name={me.displayName.split(' (')[0]!} examples={EXAMPLES} />
 
         <section className="card" aria-labelledby="metrics-title">
           <h2 id="metrics-title">Governed metrics</h2>
@@ -171,30 +123,6 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
         </section>
       </main>
     </>
-  );
-}
-
-function AnswerView({ a }: { a: Answer }) {
-  const cols = Object.keys(a.rows[0] ?? { value: '' });
-  return (
-    <div className="answer">
-      <h3>{a.metric.name}</h3>
-      <div className="tablewrap">
-        <table>
-          <thead><tr>{cols.map((k) => (<th key={k}>{k}</th>))}</tr></thead>
-          <tbody>
-            {a.rows.map((r, i) => (
-              <tr key={i}>{cols.map((k) => (<td key={k}>{cell(k, r[k], a.metric.unit)}</td>))}</tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <div className="receipt">
-        <span><b>Scope</b> · {a.scope.replace(/^Scope: /, '')}</span>
-        <span><b>Source</b> · {a.metric.id} v{a.metric.version} · snapshot {a.provenance.snapshotId} (as of {a.provenance.asOfDate}) · result {a.provenance.resultHash}</span>
-        <span><b>Intent</b> · <code>{JSON.stringify(a.intent)}</code></span>
-      </div>
-    </div>
   );
 }
 

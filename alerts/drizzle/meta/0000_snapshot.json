@@ -1,5 +1,5 @@
 {
-  "id": "22099230-c432-4536-ac71-fb689c7c9485",
+  "id": "ba094981-827e-41ed-bf3a-ca3cc4921201",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -263,6 +263,19 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
         }
       },
       "indexes": {

@@ -154,6 +154,10 @@ export const alertDeliveries = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
     digestId: text('digest_id'),
+    // Set when a sender claims the alert (status 'sending'), so two senders never deliver the same alert,
+    // and a send cut off by a crash can be reclaimed once the claim is stale.
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    attempts: integer('attempts').notNull().default(0),
   },
   (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId)],
 );

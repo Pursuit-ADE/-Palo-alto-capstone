@@ -21,15 +21,16 @@ export function slackText(items: Delivery[], isDigest: boolean): string {
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
 }
 
-export function createChannels(opts: { slackWebhooks?: Record<string, string>; fetch?: Fetch } = {}): Channels {
-  const webhooks = opts.slackWebhooks ?? parseWebhooks(process.env.SLACK_USER_WEBHOOKS);
+export function createChannels(opts: { slackWebhooks?: Record<string, unknown>; fetch?: Fetch } = {}): Channels {
+  // Validated once at startup, whether passed in or read from the environment.
+  const webhooks = parseWebhooks(opts.slackWebhooks ?? process.env.SLACK_USER_WEBHOOKS);
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   return {
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
       if (channel === 'slack') {
         const url = webhooks[userId];
-        if (!url || !url.startsWith('https://hooks.slack.com/')) return false;
+        if (!url) return false;
         try {
           const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest) }) });
           return res.ok;
@@ -42,12 +43,30 @@ export function createChannels(opts: { slackWebhooks?: Record<string, string>; f
   };
 }
 
-function parseWebhooks(raw: string | undefined): Record<string, string> {
-  if (!raw) return {};
+/** Only https://hooks.slack.com/services/... URLs are accepted. */
+export function isSlackWebhook(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
   try {
-    const v = JSON.parse(raw) as unknown;
-    return v && typeof v === 'object' ? (v as Record<string, string>) : {};
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'hooks.slack.com' && url.pathname.startsWith('/services/') && !url.username && !url.password && !url.port;
   } catch {
-    return {};
+    return false;
   }
+}
+
+/** Keeps only valid per-user webhooks; anything malformed is dropped, so that user simply gets no Slack messages. */
+export function parseWebhooks(raw: string | Record<string, unknown> | undefined): Record<string, string> {
+  if (!raw) return {};
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+  const valid: Record<string, string> = {};
+  for (const [userId, webhook] of Object.entries(parsed)) if (isSlackWebhook(webhook)) valid[userId] = webhook;
+  return valid;
 }

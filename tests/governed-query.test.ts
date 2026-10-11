@@ -92,6 +92,15 @@ describe('intent validation and injection', () => {
     await expect(answerIntent(database, reg, 'u_analyst', { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: ['stage'] })).rejects.toBeInstanceOf(IntentError);
   });
 
+  it('rejects oversized or duplicated intent arrays before any query runs', async () => {
+    const tooManyStages = { metric: 'open_pipeline', filters: { stages: Array.from({ length: 11 }, (_, i) => `stage-${i}`) }, groupBy: [] };
+    const tooManyRegions = { metric: 'open_pipeline', filters: { regions: ['east', 'east', 'west', 'central'] }, groupBy: [] };
+    const duplicateGroupBy = { metric: 'open_pipeline', filters: {}, groupBy: ['stage', 'stage'] };
+    for (const bad of [tooManyStages, tooManyRegions, duplicateGroupBy]) {
+      await expect(answerIntent(database, reg, 'u_analyst', bad)).rejects.toBeInstanceOf(IntentError);
+    }
+  });
+
   it('treats a SQL-injection string in a filter as a plain value, not SQL', async () => {
     const r = await answerIntent(database, reg, 'u_analyst', {
       metric: 'open_opportunity_count',

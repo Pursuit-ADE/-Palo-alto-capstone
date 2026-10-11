@@ -6,8 +6,8 @@ import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { accountTeam, alertDeliveries, alertSubscriptions, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { createChannels, slackText, type Channels } from '@/alerts/channels';
-import { flushDigests, inbox, inQuietHours, runAlerts } from '@/alerts/engine';
+import { createChannels, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
+import { flushDigests, inbox, inQuietHours, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
 const rules = loadRules();
@@ -167,19 +167,35 @@ describe('retries', () => {
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
   });
 
-  it('finishes an alert left pending when a run crashed mid-send', async () => {
+  it('takes over a send that was cut off, but only once its claim is stale', async () => {
     await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T10:00:00Z'));
     await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
     const crash: Channels = { async deliver() { throw new Error('process stopped'); } };
     await expect(runAlerts(database.db, rules, crash, SINCE, DAY)).rejects.toThrow();
-    expect((await deliveries('u_ts_east'))[0]!.status).toBe('pending');
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('sending');
+    const early = recorder();
+    await runAlerts(database.db, rules, early, SINCE, new Date(DAY.getTime() + 60_000));
+    expect(early.calls).toHaveLength(0); // another sender may still be working on it
+    const late = recorder();
+    await runAlerts(database.db, rules, late, SINCE, new Date(DAY.getTime() + STALE_CLAIM_MS + 60_000));
+    expect(late.calls).toHaveLength(1);
+    const [row] = await deliveries('u_ts_east');
+    expect(row!.status).toBe('delivered');
+    expect(row!.attempts).toBe(2);
+  });
+
+  it('never lets two senders running at once deliver the same alert', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
     await runAlerts(database.db, rules, recorder(), SINCE, DAY);
-    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+    const ch = recorder();
+    await Promise.all([flushDigests(database.db, ch, DAY), flushDigests(database.db, ch, DAY)]);
+    expect(ch.calls).toHaveLength(1);
   });
 });
 
 describe('content (L6)', () => {
-  it('explains why it fired, names the rule version and links to the copilot as that user', async () => {
+  it('explains why it fired, names the rule version and links to the copilot without a user id', async () => {
     await addCase(database.db, 'case_t1', 'P1', new Date('2026-10-08T09:00:00Z'));
     await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case'));
     await runAlerts(database.db, rules, recorder(), SINCE, DAY, { copilotUrl: 'https://copilot.example' });
@@ -188,7 +204,8 @@ describe('content (L6)', () => {
     expect(a!.title).toBe(`P1 support case at ${name}`);
     expect(a!.explanation).toContain('an account on your account team');
     expect(a!.explanation).toContain('high_severity_case v1');
-    expect(a!.link.startsWith('https://copilot.example/?user=u_ts_east&q=')).toBe(true);
+    expect(a!.link.startsWith('https://copilot.example/?q=')).toBe(true);
+    expect(a!.link).not.toContain('user=');
   });
 
   it('treats event text as data: placeholders inside a case subject are not expanded', async () => {
@@ -222,6 +239,9 @@ describe('Slack channel (L5)', () => {
     const posted: string[] = [];
     const fake = async (url: string) => { posted.push(url); return { ok: true }; };
     const ok = createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T/B/east' }, fetch: fake });
+    expect(parseWebhooks({ a: 42, b: ['x'], c: 'https://hooks.slack.com.attacker.example/services/x', d: 'https://user@hooks.slack.com/services/x' })).toEqual({});
+    expect(parseWebhooks('not json')).toEqual({});
+    expect(parseWebhooks('["https://hooks.slack.com/services/x"]')).toEqual({});
     expect(await ok.deliver('slack', 'u_ts_east', [item], false)).toBe(true);
     expect(posted).toEqual(['https://hooks.slack.com/services/T/B/east']);
     const bad = createChannels({ slackWebhooks: { u_ts_east: 'https://attacker.example/hook' }, fetch: fake });
