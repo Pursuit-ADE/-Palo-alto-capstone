@@ -265,3 +265,19 @@ describe('recheck findings (copilot)', () => {
     expect(r.narrative).not.toMatch(/lowest|regions\)/);
   });
 });
+
+describe('clarification keeps what the question already named', () => {
+  it('keeps a breakdown: "pipeline coverage by region" then "this quarter"', async () => {
+    const c = await ask(database, reg, 'u_analyst', 'pipeline coverage by region');
+    if (c.kind !== 'clarify' || !c.resume) throw new Error('expected a resumable clarification');
+    const done = answered(await ask(database, reg, 'u_analyst', 'this quarter', { previous: c.resume }));
+    expect(done.intent).toEqual({ metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: ['region'] });
+  });
+
+  it('keeps a stage filter: "open pipeline in Engaging for Q1 and Q2" then "Q1"', async () => {
+    const c = await ask(database, reg, 'u_analyst', 'open pipeline in Engaging for Q1 and Q2');
+    if (c.kind !== 'clarify' || !c.resume) throw new Error('expected a resumable clarification');
+    const done = answered(await ask(database, reg, 'u_analyst', 'Q1', { previous: c.resume }));
+    expect(done.intent).toEqual({ metric: 'open_pipeline', filters: { stages: ['Engaging'], period: 'FY27-Q1' }, groupBy: [] });
+  });
+});

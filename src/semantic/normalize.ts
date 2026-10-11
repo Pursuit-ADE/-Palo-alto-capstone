@@ -133,11 +133,32 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // open pipeline by stage?"). A newly named metric, or a full question restated, starts fresh.
   const inherit = prior && (continued || (prior.metric === metric.id && followUpCue)) ? prior : undefined;
 
+  const mentionedStages = findStages(text);
+  // "all stages" clears an inherited stage filter; saying nothing about stages keeps it.
+  const stages = mentionedStages.length
+    ? mentionedStages
+    : ALL_STAGES.test(text) || metric.kind !== 'aggregate'
+      ? []
+      : (inherit?.filters.stages ?? []);
+
+  const groupBy: Dimension[] = [];
+  const dimHits = Object.entries(glossary.dimensionPhrases)
+    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
+    .filter((h) => h.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
+    for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
+  }
+
   const partial = (): Intent => {
     const f: Intent['filters'] = {};
     const r = regions.length ? regions : (inherit?.filters.regions ?? []);
     if (r.length) f.regions = [...r];
-    return { metric: metric.id, filters: f, groupBy: [] };
+    // Keep everything the question already named, so the reply to the clarification only adds what was missing.
+    const openStages = stages.filter((st) => st === 'Prospecting' || st === 'Engaging');
+    if (metric.kind === 'aggregate' && openStages.length) f.stages = openStages;
+    return { metric: metric.id, filters: f, groupBy: groupBy.filter((d) => metric.dimensions.includes(d)) };
   };
 
   const periods = findPeriods(text, glossary, asOfDate);
@@ -149,13 +170,6 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   }
   const period = [...periods.labels][0] ?? inherit?.filters.period;
 
-  const mentionedStages = findStages(text);
-  // "all stages" clears an inherited stage filter; saying nothing about stages keeps it.
-  const stages = mentionedStages.length
-    ? mentionedStages
-    : ALL_STAGES.test(text) || metric.kind !== 'aggregate'
-      ? []
-      : (inherit?.filters.stages ?? []);
   if (stages.length && metric.kind === 'ratio') {
     return { kind: 'clarify', question: `${metric.name} can't be filtered by stage. Do you want ${metric.name.toLowerCase()} for all open deals?` };
   }
@@ -163,15 +177,6 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     return { kind: 'clarify', question: `${metric.name} only counts open deals (Prospecting and Engaging). Won and lost deals aren't included.` };
   }
 
-  const groupBy: Dimension[] = [];
-  const dimHits = Object.entries(glossary.dimensionPhrases)
-    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
-    .filter((h) => h.at >= 0)
-    .sort((a, b) => a.at - b.at);
-  for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
-  if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
-    for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
-  }
 
   if (metric.kind === 'ratio' && metric.requiresPeriod && !period) {
     return { kind: 'clarify', question: `${metric.name} needs a period. Which quarter do you mean, for example this quarter or next quarter?`, resume: partial() };
