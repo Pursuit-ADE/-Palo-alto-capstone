@@ -5,7 +5,6 @@ name: alerts-ci
 on:
   push:
     branches: [main, 'week*']
-    paths: ['alerts/**', '.github/workflows/alerts-ci.yml']
   pull_request:
     paths: ['alerts/**', '.github/workflows/alerts-ci.yml']
   workflow_dispatch:
