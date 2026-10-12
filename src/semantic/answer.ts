@@ -55,6 +55,14 @@ export class SessionLocked extends Error {
   }
 }
 
+/** Thrown for a question carrying a link (indirect prompt injection, S1): blocked and logged, never fetched. */
+export class InjectionRefused extends Error {
+  constructor() {
+    super("Questions can't include links. The copilot never opens them; ask about the governed metrics directly.");
+    this.name = 'InjectionRefused';
+  }
+}
+
 /** The lock the caller enforces; see FlagGuard in src/server/limits.ts. */
 export interface Guard {
   isLocked(user: string, now?: number): boolean;
@@ -63,6 +71,7 @@ export interface Guard {
 
 function outcomeOf(e: unknown): { outcome: string; reason: string } {
   if (e instanceof SessionLocked) return { outcome: 'refused_locked', reason: e.message };
+  if (e instanceof InjectionRefused) return { outcome: 'refused_injection', reason: 'link' };
   if (e instanceof ScopeViolation) return { outcome: 'refused_scope', reason: e.message };
   if (e instanceof IntentError) return { outcome: 'refused_intent', reason: e.message };
   return { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' };
@@ -153,6 +162,8 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
     fields.flags = flags;
     if (flags.length) opts.guard?.record(userId);
+    // A link could carry instructions from someone else (indirect injection). Block it outright and log it.
+    if (flags.includes('link')) throw new InjectionRefused();
     const snapshot = await currentSnapshot(database);
     const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {

@@ -38,7 +38,7 @@ beforeEach(async () => {
   await database.db.delete(supportCases); // tests control their own case events
 });
 afterEach(async () => {
-  await database.client.close();
+  await database.close();
 });
 
 const deliveries = (userId?: string) =>

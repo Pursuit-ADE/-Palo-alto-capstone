@@ -4,7 +4,7 @@
 // logs. Next.js checks the request's Origin against the host for Server Actions.
 import { z } from 'zod';
 import { demoUsers } from '@/db/seed';
-import { ask, MAX_QUESTION_LENGTH, SessionLocked, type Reply } from '@/semantic/answer';
+import { ask, InjectionRefused, MAX_QUESTION_LENGTH, SessionLocked, type Reply } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
 import { deterministicModel, selectModel } from '@/semantic/model';
 import { ScopeViolation } from '@/semantic/scope';
@@ -48,7 +48,7 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   try {
     return await ask(database, registry, userId, parsed.data, { ...opts, model });
   } catch (e) {
-    if (e instanceof ScopeViolation || e instanceof IntentError || e instanceof SessionLocked) return { kind: 'refused', message: e.message };
+    if (e instanceof ScopeViolation || e instanceof IntentError || e instanceof SessionLocked || e instanceof InjectionRefused) return { kind: 'refused', message: e.message };
     // The AI model is unavailable (network, quota): fall back to the deterministic model, same checks.
     if (model !== deterministicModel) {
       try {

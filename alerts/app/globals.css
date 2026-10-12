@@ -109,3 +109,15 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .pill.sev-p2 { background: #fdf4dc; color: var(--warn); }
 .pill.sev-info { background: var(--orange-soft); color: var(--orange-dark); }
 .rules p { margin: 4px 0 0; font-size: 14px; color: var(--muted); }
+
+/* Week 4: preferences */
+.prefs { display: grid; gap: 14px; }
+.pref { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; }
+.pref-sub { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.pref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.pref-grid label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.pref-grid select { font: 14px var(--font); padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--fg); }
+.pref-actions { display: flex; gap: 12px; align-items: center; }
+.pref-actions button { font: 700 14px var(--font); color: #fff; background: var(--orange); border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+.ok-text { color: var(--ok); font-size: 13px; font-weight: 700; }
+.err-text { color: var(--bad); font-size: 13px; font-weight: 700; }

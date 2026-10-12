@@ -7,6 +7,7 @@ import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
 import { render, type AlertRule } from './rules';
+import { digestDue, normalizeFrequency } from './schedule';
 
 export interface AlertEvent {
   id: string;
@@ -143,7 +144,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
           if (!existing || existing.status !== 'pending') continue;
         }
         const critical = (rule.criticalSeverities as string[]).includes(ev.severity);
-        const sendNow = (sub.frequency === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
+        const sendNow = (normalizeFrequency(sub.frequency) === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
         if (sendNow) await send(db, rules, channels, [id], now);
         else await db.update(alertDeliveries).set({ status: 'queued_digest' }).where(and(eq(alertDeliveries.id, id), eq(alertDeliveries.status, 'pending')));
       }
@@ -238,13 +239,26 @@ export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channe
     .leftJoin(alertSubscriptions, and(eq(alertSubscriptions.userId, alertDeliveries.userId), eq(alertSubscriptions.ruleId, alertDeliveries.ruleId)))
     .where(inArray(alertDeliveries.status, ['queued_digest', 'failed', 'sending']));
   const byUser = new Map<string, string[]>();
+  const digestSubs = new Map<string, { userId: string; ruleId: string }>();
   for (const q of due) {
     // Quiet hours hold digests and retries, except a critical alert whose subscriber turned on the bypass.
     const critical = (rules.get(q.d.ruleId)?.criticalSeverities as string[] | undefined)?.includes(q.d.severity) ?? false;
     if (q.s && inQuietHours(q.s, now) && !(critical && q.s.criticalBypass)) continue;
+    // A queued digest waits for its daily, weekly or monthly slot. Retries of failed sends don't wait for it.
+    if (q.d.status === 'queued_digest' && q.s && !digestDue(q.s, now)) continue;
+    if (q.d.status === 'queued_digest' && q.s && normalizeFrequency(q.s.frequency) !== 'realtime') {
+      digestSubs.set(`${q.s.userId}|${q.s.ruleId}`, { userId: q.s.userId, ruleId: q.s.ruleId });
+    }
     byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
   }
   for (const [userId, ids] of byUser) await send(db, rules, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);
+  // The digest slot is used, whatever happened to individual alerts; failures retry on their own backoff.
+  for (const { userId, ruleId } of digestSubs.values()) {
+    await db
+      .update(alertSubscriptions)
+      .set({ lastDigestAt: now })
+      .where(and(eq(alertSubscriptions.userId, userId), eq(alertSubscriptions.ruleId, ruleId)));
+  }
 }
 
 /** The in-app inbox: only alerts that were actually delivered. Nothing held, blocked or failed is readable. */
