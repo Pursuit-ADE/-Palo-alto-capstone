@@ -24,7 +24,7 @@ describe.skipIf(!enabled)('alerts Postgres least privilege', () => {
     await database?.close();
   });
 
-  const denied = (sql: string) => expect(app.query(sql)).rejects.toThrow(/permission denied/);
+  const denied = (sql: string) => expect(app.query(sql)).rejects.toThrow(/permission denied|must be owner/);
 
   it('runs the scheduler and keeps its state across connections', async () => {
     expect(database.mode).toBe('postgres');

@@ -227,11 +227,11 @@ describe('recheck findings (copilot)', () => {
   });
 
   it('[2] never stores the model text in the audit log, only a reason code', async () => {
-    const question = 'Synthetic private question 7731 about open pipeline?';
+    const question = 'Synthetic private question quokkazebra about open pipeline?';
     const echo: IntentModel = { name: 'echo', propose: async (q) => ({ kind: 'clarify', question: q }) };
     await ask(database, reg, 'u_analyst', question, { model: echo });
     const rows = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_analyst'));
-    expect(JSON.stringify(rows)).not.toContain('7731');
+    expect(JSON.stringify(rows)).not.toContain('quokkazebra'); // letters outside hex, so no id or hash can contain it by chance
     expect(rows.some((r) => r.reason?.startsWith('clarify:'))).toBe(true);
   });
 
