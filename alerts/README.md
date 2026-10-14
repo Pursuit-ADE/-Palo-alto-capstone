@@ -45,6 +45,8 @@ The inbox follows current access: an alert about an account the user can no long
 
 Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is escaped for Slack, so it can't become a link or a mention.
 
+Migrations in `alerts/drizzle/` start at this release's baseline (the alerts service has not been deployed with a persistent database yet). From here on they are append-only: new numbered files, never edits.
+
 ## Configuration
 
 | Variable | Purpose |

@@ -161,11 +161,14 @@ describe('retries', () => {
     const down: Channels = { async deliver() { return false; } };
     await runAlerts(database.db, rules, down, SINCE, DAY);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('failed');
+    const rediscovered = recorder();
+    await runAlerts(database.db, rules, rediscovered, SINCE, new Date(DAY.getTime() + 3 * 60_000));
+    expect(rediscovered.calls).toHaveLength(0); // re-evaluating the event never resends a failed alert
     const tooSoon = recorder();
-    await runAlerts(database.db, rules, tooSoon, SINCE, new Date(DAY.getTime() + 60_000));
+    await flushDigests(database.db, rules, tooSoon, new Date(DAY.getTime() + 60_000));
     expect(tooSoon.calls).toHaveLength(0); // backoff: 2 minutes after the first attempt
     const ch = recorder();
-    await runAlerts(database.db, rules, ch, SINCE, new Date(DAY.getTime() + 3 * 60_000));
+    await flushDigests(database.db, rules, ch, new Date(DAY.getTime() + 3 * 60_000));
     expect(ch.calls).toHaveLength(1);
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
   });
@@ -211,6 +214,64 @@ describe('retries', () => {
     const [row] = await deliveries('u_ts_east');
     expect(row!.status).toBe('delivered');
     expect(row!.attempts).toBe(2);
+  });
+});
+
+describe('rediscovery and retries interleaved (recheck findings 4 and 9)', () => {
+  it('keeps the attempt cap and backoff when evaluation and flushing alternate', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    let calls = 0;
+    const down: Channels = { async deliver() { calls++; return false; } };
+    for (let sec = 0; sec < 5; sec++) {
+      const t = new Date(DAY.getTime() + sec * 1000);
+      await runAlerts(database.db, rules, down, SINCE, t);
+      await flushDigests(database.db, rules, down, t);
+    }
+    expect(calls).toBe(1); // one attempt, then backoff; rediscovery doesn't requeue it
+    const [row] = await deliveries('u_ts_east');
+    expect(row!.status).toBe('failed');
+    expect(row!.attempts).toBe(1);
+  });
+
+  it('does not send again while another sender still holds the alert', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    let release!: (ok: boolean) => void;
+    let slowCalls = 0;
+    const slow: Channels = { deliver: () => { slowCalls++; return new Promise<boolean>((r) => { release = r; }); } };
+    const active = flushDigests(database.db, rules, slow, DAY);
+    await new Promise((r) => setTimeout(r, 200));
+    const other = recorder();
+    const oneSecondLater = new Date(DAY.getTime() + 1000);
+    await runAlerts(database.db, rules, other, SINCE, oneSecondLater);
+    await flushDigests(database.db, rules, other, oneSecondLater);
+    expect(other.calls).toHaveLength(0);
+    release(true);
+    await active;
+    expect(slowCalls).toBe(1);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+  });
+
+  it('retries a failed P1 during quiet hours when the bypass is on, and holds a P2', async () => {
+    await addCase(database.db, 'case_p1', 'P1', new Date('2026-10-08T22:30:00Z'));
+    await addCase(database.db, 'case_p2', 'P2', new Date('2026-10-08T22:31:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { quietStartHour: 22, quietEndHour: 7, criticalBypass: true }));
+    await runAlerts(database.db, rules, { async deliver() { return false; } }, SINCE, NIGHT);
+    expect(Object.fromEntries((await deliveries('u_ts_east')).map((r) => [r.eventId, r.status]))).toEqual({ case_p1: 'failed', case_p2: 'queued_digest' });
+    const ch = recorder();
+    await flushDigests(database.db, rules, ch, new Date(NIGHT.getTime() + 3 * 60_000));
+    expect(ch.calls.flatMap((c) => c.ids)).toEqual(['alert_high_severity_case_u_ts_east_case_p1']);
+  });
+
+  it('holds a failed P1 during quiet hours when the bypass is off', async () => {
+    await addCase(database.db, 'case_p1', 'P1', new Date('2026-10-08T21:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { quietStartHour: 22, quietEndHour: 7, criticalBypass: false }));
+    await runAlerts(database.db, rules, { async deliver() { return false; } }, SINCE, new Date('2026-10-08T21:30:00Z'));
+    const ch = recorder();
+    await flushDigests(database.db, rules, ch, NIGHT);
+    expect(ch.calls).toHaveLength(0);
   });
 });
 
@@ -279,9 +340,10 @@ describe('fresh eligibility at delivery (L4)', () => {
     expect((await deliveries('u_ts_east'))[0]!.status).toBe('sending');
     const early = recorder();
     await runAlerts(database.db, rules, early, SINCE, new Date(DAY.getTime() + 60_000));
+    await flushDigests(database.db, rules, early, new Date(DAY.getTime() + 60_000));
     expect(early.calls).toHaveLength(0); // another sender may still be working on it
     const late = recorder();
-    await runAlerts(database.db, rules, late, SINCE, new Date(DAY.getTime() + STALE_CLAIM_MS + 60_000));
+    await flushDigests(database.db, rules, late, new Date(DAY.getTime() + STALE_CLAIM_MS + 60_000));
     expect(late.calls).toHaveLength(1);
     const [row] = await deliveries('u_ts_east');
     expect(row!.status).toBe('delivered');
