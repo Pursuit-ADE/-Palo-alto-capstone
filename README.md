@@ -14,10 +14,14 @@ Requires Node 20+. No Docker needed: the app and tests use an embedded Postgres 
 
 ```bash
 npm install
-npm test          # registry, golden phrases, seed and governed-query tests
+npm test          # registry, golden phrases, seed, governed-query, audit and limit tests
 npm run build
 npm start         # http://localhost:3000
 ```
+
+There is no sign-in yet, so the pages only run with test identities. Create `.env.local` with `ALLOW_TEST_IDENTITIES=true` before `npm start`. Leave it unset anywhere real users can reach the app.
+
+**Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
 Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused.
 
@@ -49,9 +53,29 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Fiscal quarters**: Palo Alto Networks' fiscal year starts Aug 1, so FY27-Q1 = Aug 1 to Oct 31, 2026 (assumption).
 - **Scope**: sales reps see their own deals; managers and the technical seller who supports a team see that team; the analyst sees everything. Coverage uses the same people's quotas.
 
+## Security controls
+
+| Control | Where | Proof |
+|---|---|---|
+| Scope comes from the database, never the question; out-of-scope regions refused | `src/semantic/scope.ts` | `tests/governed-query.test.ts` |
+| SQL from allowlisted names only, values as bound parameters, grouped results capped at 500 rows | `src/semantic/compile.ts` | injection test in `tests/governed-query.test.ts` |
+| Unknown users and unrecognized roles fail closed | `resolvePrincipal()` | `tests/audit-and-limits.test.ts` |
+| Audit row for every question and dashboard query, including refusals; question stored as a hash; no answer if the audit write fails | `src/semantic/answer.ts`, `query_audit` | `tests/audit-and-limits.test.ts` |
+| Read-only app role, insert-only audit role, statement timeout | `src/db/client.ts`, `docker/init-roles.sql` | `tests/postgres-roles.test.ts` (CI job `postgres-roles`) |
+| Question length limit and per-user rate limit (20 per minute) | `src/semantic/answer.ts`, `src/server/limits.ts` | `tests/audit-and-limits.test.ts` |
+| Intent arrays bounded (3 regions, 10 stages, 2 unique breakdowns) | `src/registry/types.ts` | `tests/governed-query.test.ts` |
+| Questions sent by POST (Server Action), never in the URL | `app/actions.ts`, `app/ask-panel.tsx` | |
+| Security headers and a per-request nonce Content Security Policy | `next.config.ts`, `proxy.ts` | |
+| Test identities off unless explicitly enabled | `src/server/identity.ts` | `tests/audit-and-limits.test.ts` |
+| Reviewed changes to metrics, rules, query code and CI | `.github/CODEOWNERS` (enable "Require review from Code Owners" on main) | |
+| Dependency audit, secret scan (gitleaks, full history), CodeQL | `.github/workflows/` | every push |
+
 ## Not done yet (by roadmap week)
 
-- Week 2: real Postgres with a read-only analytics role, query audit log, business rules in the context layer.
+- Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
+- Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
+- HSTS once the app is served over HTTPS.
+- Week 2: business rules in the context layer; run the app on Postgres mode by default.
 - Week 3: real AI model for intent, follow-up conversations, charts, red-team suite.
 - Week 4: alert rule catalog, subscriptions, private delivery with send-time permission checks.
 - Mock identity picker is for the demo only; it is not authentication.
@@ -63,4 +87,4 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Branches
 
-Each week of the build has its own branch: `week1` (this copilot), `week2`, and so on.
+Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on.

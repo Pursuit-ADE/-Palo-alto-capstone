@@ -69,12 +69,18 @@ export const Intent = z
     metric: Identifier,
     filters: z
       .object({
-        regions: z.array(z.enum(['central', 'east', 'west'])).min(1).optional(),
-        stages: z.array(z.string().max(40)).min(1).optional(),
+        // Bounded arrays: guards against reported resource exhaustion when validating unbounded arrays,
+        // and a model-generated intent should never be able to send thousands of values.
+        regions: z.array(z.enum(['central', 'east', 'west'])).min(1).max(3).optional(),
+        stages: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
         period: z.string().regex(/^FY\d{2}-Q[1-4]$/).optional(),
       })
       .strict(),
-    groupBy: z.array(Dimension).max(2).default([]),
+    groupBy: z
+      .array(Dimension)
+      .max(2)
+      .refine((items) => new Set(items).size === items.length, { message: 'groupBy dimensions must be unique' })
+      .default([]),
   })
   .strict();
 export type Intent = z.infer<typeof Intent>;

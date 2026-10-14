@@ -1,0 +1,33 @@
+# Alerts service (alerts/): build checks, tests and dependency scan. Secret scanning and CodeQL
+# in ci.yml and codeql.yml already cover the whole repository.
+name: alerts-ci
+
+on:
+  push:
+    branches: [main, 'week*']
+  pull_request:
+    paths: ['alerts/**', '.github/workflows/alerts-ci.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: alerts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: alerts/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Dependency scan
+        run: npm audit --audit-level=high

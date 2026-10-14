@@ -18,6 +18,9 @@ export class IntentError extends Error {
   }
 }
 
+// Upper bound on rows any governed query can return (results are aggregates; this caps a bad breakdown).
+export const MAX_RESULT_ROWS = 500;
+
 const DIMENSION_COLUMN: Record<Dimension, string> = { region: 'region_id', stage: 'stage', owner: 'owner_user_id' };
 
 /** Validates an intent from any source (mock normalizer or AI model) against the schema and the registry. */
@@ -31,7 +34,11 @@ export function validateIntent(raw: unknown, registry: Registry): { intent: Inte
     if (!metric.dimensions.includes(d)) throw new IntentError(`${metric.name} cannot be broken down by ${d}.`);
   }
   if (intent.filters.period && !findPeriod(intent.filters.period)) throw new IntentError(`Unknown period: ${intent.filters.period}`);
+  // Coverage divides by quota, which has no stage, so a stage filter can't be applied consistently.
+  // Refuse it rather than return an answer that silently ignores the filter.
+  if (metric.kind === 'ratio' && intent.filters.stages) throw new IntentError(`${metric.name} can't be filtered by stage.`);
   if (metric.kind === 'ratio' && metric.requiresPeriod && !intent.filters.period) {
+
     throw new IntentError(`${metric.name} needs a period.`);
   }
   return { intent, metric };
@@ -80,7 +87,7 @@ export function compile(intent: Intent, registry: Registry, principal: Principal
       `SELECT ${[...dims, `${measureSql(s, 't')} AS value`].join(', ')}`,
       `FROM ${s.table} t`,
       `WHERE ${where}`,
-      groupCols.length ? `GROUP BY ${groupCols.join(', ')} ORDER BY ${groupCols.join(', ')}` : '',
+      groupCols.length ? `GROUP BY ${groupCols.join(', ')} ORDER BY ${groupCols.join(', ')} LIMIT ${MAX_RESULT_ROWS}` : '',
     ].filter(Boolean).join('\n');
     return { text, params: p.values, regions };
   }

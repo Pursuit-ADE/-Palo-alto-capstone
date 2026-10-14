@@ -1,3 +1,5 @@
+# Postgres mode: owner (migrations and loading), app_readonly (answers questions), app_audit (writes the audit log).
+# Local development credentials only. See .env.example for the matching URLs.
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,3 +9,5 @@ services:
       POSTGRES_DB: copilot
     ports:
       - "127.0.0.1:5432:5432"
+    volumes:
+      - ./docker/init-roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro

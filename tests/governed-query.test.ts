@@ -14,7 +14,7 @@ beforeAll(async () => {
   database = await openDatabase();
 });
 afterAll(async () => {
-  await database.client.close();
+  await database.close();
 });
 
 const open = data.opportunities.filter((o) => !o.isClosed);
@@ -90,6 +90,26 @@ describe('intent validation and injection', () => {
     await expect(answerIntent(database, reg, 'u_analyst', { metric: 'drop_tables', filters: {}, groupBy: [] })).rejects.toBeInstanceOf(IntentError);
     await expect(answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: {}, groupBy: [], sql: 'SELECT 1' })).rejects.toBeInstanceOf(IntentError);
     await expect(answerIntent(database, reg, 'u_analyst', { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: ['stage'] })).rejects.toBeInstanceOf(IntentError);
+  });
+
+  it('refuses a stage filter on coverage instead of ignoring it', async () => {
+    await expect(
+      answerIntent(database, reg, 'u_analyst', { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1', stages: ['Prospecting'] }, groupBy: [] }),
+    ).rejects.toBeInstanceOf(IntentError);
+  });
+
+  it('applies a stage filter on open pipeline', async () => {
+    const r = await answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: { stages: ['Engaging'] }, groupBy: [] });
+    expect(r.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.stage === 'Engaging')), 2);
+  });
+
+  it('rejects oversized or duplicated intent arrays before any query runs', async () => {
+    const tooManyStages = { metric: 'open_pipeline', filters: { stages: Array.from({ length: 11 }, (_, i) => `stage-${i}`) }, groupBy: [] };
+    const tooManyRegions = { metric: 'open_pipeline', filters: { regions: ['east', 'east', 'west', 'central'] }, groupBy: [] };
+    const duplicateGroupBy = { metric: 'open_pipeline', filters: {}, groupBy: ['stage', 'stage'] };
+    for (const bad of [tooManyStages, tooManyRegions, duplicateGroupBy]) {
+      await expect(answerIntent(database, reg, 'u_analyst', bad)).rejects.toBeInstanceOf(IntentError);
+    }
   });
 
   it('treats a SQL-injection string in a filter as a plain value, not SQL', async () => {
