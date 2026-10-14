@@ -1,6 +1,7 @@
 // PRD red-team matrix (S1, S2, S6), one row per scenario. Each row states what must happen and checks both the
 // user-facing result and the audit row. See docs/RED-TEAM.md for the same table in plain language.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { queryAudit } from '@/db/schema';
@@ -26,6 +27,7 @@ interface Row {
   flag?: string;
 }
 
+const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const USER = 'u_ts_east'; // East technical seller: Cara Losch's team only
 
 const MATRIX: Row[] = [
@@ -42,6 +44,8 @@ const MATRIX: Row[] = [
 describe('red-team matrix (S6: runs in CI on every push)', () => {
   for (const row of MATRIX) {
     it(`${row.prd} ${row.id}: ${row.expect}`, async () => {
+      // Audit rows already written by earlier rows, so this row is checked only against what it wrote itself.
+      const before = new Set((await database.db.select({ id: queryAudit.id }).from(queryAudit)).map((a) => a.id));
       let previous: Intent | undefined;
       let last: Reply | Error | undefined;
       for (const [i, q] of row.turns.entries()) {
@@ -63,9 +67,12 @@ describe('red-team matrix (S6: runs in CI on every push)', () => {
       const audit = await database.db
         .select()
         .from(queryAudit)
-        .where(and(eq(queryAudit.userId, USER), eq(queryAudit.turn, row.turns.length)));
+        .where(and(eq(queryAudit.userId, USER), eq(queryAudit.turn, row.turns.length), eq(queryAudit.questionSha256, sha256(row.turns.at(-1)!))));
+      const mine = audit.filter((a) => !before.has(a.id));
+      expect(mine, 'exactly one new audit row for the last turn of this row').toHaveLength(1);
       const outcome = row.expect === 'answered_in_scope' ? 'answered' : row.expect;
-      expect(audit.some((a) => a.outcome === outcome && (!row.flag || a.flags?.includes(row.flag))), `audit row ${outcome} ${row.flag ?? ''}`).toBe(true);
+      expect(mine[0]!.outcome).toBe(outcome);
+      if (row.flag) expect(mine[0]!.flags ?? []).toContain(row.flag);
     });
   }
 });

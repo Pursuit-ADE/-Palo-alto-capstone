@@ -41,6 +41,8 @@ export async function savePreference(db: Db, rules: Map<string, AlertRule>, user
     await db.delete(alertSubscriptions).where(where);
     return;
   }
+  // Quiet hours need both ends. Half a window is refused rather than silently stored as no quiet hours.
+  if ((p.quietStartHour === '') !== (p.quietEndHour === '')) throw new PreferenceError('Choose both a start and an end for quiet hours, or neither.');
   const quiet = p.quietStartHour === '' || p.quietEndHour === '' ? { quietStartHour: null, quietEndHour: null } : { quietStartHour: p.quietStartHour, quietEndHour: p.quietEndHour };
   const values = { frequency: p.frequency, channel: p.channel, criticalBypass: p.criticalBypass, ...quiet };
   await db

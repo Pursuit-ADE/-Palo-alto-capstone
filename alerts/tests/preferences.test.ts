@@ -40,6 +40,8 @@ describe('preferences (L3)', () => {
       { ...base, channel: 'email' },
       { ...base, ruleId: 'x'.repeat(100) },
       { ...base, userId: 'u_analyst' },
+      { ...base, quietStartHour: 22, quietEndHour: '' }, // half a quiet window
+      { ...base, quietStartHour: '', quietEndHour: 7 },
     ]) {
       await expect(savePreference(database.db, rules, 'u_ts_east', bad)).rejects.toBeInstanceOf(PreferenceError);
     }
