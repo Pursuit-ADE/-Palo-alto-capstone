@@ -3,7 +3,7 @@
 // The real model (Week 3) must produce the same structured Intent and passes the same validation.
 import type { Registry } from '../registry/load';
 import type { Dimension, Intent } from '../registry/types';
-import { QUOTA_PERIODS } from '../db/seed';
+import { entityNames, QUOTA_PERIODS } from '../db/seed';
 import type { Glossary } from '../registry/types';
 import { findPeriod, resolvePeriod } from './periods';
 
@@ -17,6 +17,23 @@ const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|i
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
+
+// Selectors the registry can't express. Matching the metric while ignoring them would answer a narrower
+// question with the whole scope's number, so they get a clarifying question instead (PRD A2).
+const AMOUNT = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding) \d| \d+ ?(k|m|mm|million|thousand|bn|billion) | (deal size|deal sizes|size of deal|size of deals) /;
+const SECTOR = / (sector|sectors|industry|industries|vertical|verticals) /;
+
+function unsupportedSelector(phrase: string, text: string): string | undefined {
+  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase)) return 'deal size';
+  if (SECTOR.test(text)) return 'sector';
+  const names = entityNames();
+  const has = (n: string) => text.includes(clean(n));
+  if (names.products.some(has)) return 'product';
+  if (names.accounts.some(has)) return 'account';
+  if (names.sectors.some(has)) return 'sector';
+  if (names.people.some(has)) return 'person';
+  return undefined;
+}
 
 /** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
 function hasModifier(text: string, registry: Registry): boolean {
@@ -119,6 +136,13 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // never a quietly different answer.
   if (EXCLUSION.test(text)) {
     return { kind: 'clarify', question: "I can't leave out a region or stage yet. Which regions or stages do you want included?" };
+  }
+  const unsupported = unsupportedSelector(phrase, text);
+  if (unsupported) {
+    return {
+      kind: 'clarify',
+      question: `I can't filter ${metric.name.toLowerCase()} by ${unsupported} yet, so I won't answer for everything instead. I can break it down by ${metric.dimensions.join(', ')}, or filter by region${metric.kind === 'aggregate' ? ', stage' : ''} and quarter.`,
+    };
   }
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
   if (unknownRegion) {

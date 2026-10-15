@@ -10,7 +10,7 @@ New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
 
 ## Run it
 
-Requires Node 20+. No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
+Requires Node 22.12 or newer (CI uses Node 24). No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
 
 ```bash
 npm install

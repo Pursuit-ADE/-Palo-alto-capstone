@@ -4,13 +4,16 @@ This is a **governed analytics copilot** for the ALTO PALS capstone. Someone ask
 
 ## Run it
 
+Needs Node 22.12 or newer (CI uses Node 24).
+
 ```bash
 npm install
 npm run build
+echo ALLOW_TEST_IDENTITIES=true > .env.local
 npm start
 ```
 
-Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
+There is no sign-in yet, so the page only runs with test identities, and `.env.local` turns them on for your own laptop. Leave it off anywhere other people can reach the app. Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
 
 ## What a good answer looks like
 
@@ -42,7 +45,7 @@ These live in `registry/metrics/` and are listed at the bottom of the page. Chan
 
 Coverage always needs a period. "This quarter" means the fiscal quarter that contains the snapshot date. The fiscal year in this demo starts **August 1**, so **FY27-Q1 is August 1 through October 31, 2026**. The snapshot date is October 8, 2026, so "this quarter" is FY27-Q1.
 
-For a seller, coverage uses the pipeline on that seller's account team, divided by the **region** quota.
+For a seller, coverage uses the pipeline on that seller's account team, divided by the quota of the same people (that seller or team), not the whole region's quota.
 
 ## Who can see what
 
@@ -73,13 +76,15 @@ Every business row is stamped with snapshot `snap_alto-pals-v2`.
 
 ## What is built, and what is later
 
-**Week 1 (done):** the registry, the stand-in "model," permission checks, the SQL compiler, the preview page, and tests (all passing), plus CI with dependency, secret and CodeQL scans.
+**Week 1 (done):** the registry, the stand-in "model," permission checks, the SQL compiler, the preview page, and tests, plus CI with dependency, secret and CodeQL scans.
 
-**Week 2:** a real Postgres database, a read-only analytics role, a query audit log, and more business rules in the glossary.
+**Week 2 (done):** Postgres mode with a read-only analytics role and an insert-only audit role, the query audit log, and the private alerts service in `alerts/` (high-severity support case and CXO engagement).
 
-**Week 3:** a real AI model. It still has to emit the same structured intent and pass the same checks. Also follow-up questions, charts, and a red-team suite.
+**Week 3 (done):** follow-up questions, Claude as an optional question reader (off unless `INTENT_MODEL=claude`), charts and plain-language summaries, and the red-team suite.
 
-**Week 4:** private alerts. The support-case and engagement tables are already in the schema for that, but nothing sends alerts yet.
+**Week 4 (on the week4 branch):** alert settings each person edits, weekly and monthly digests, a background scheduler, Postgres mode for alerts, and the full red-team matrix (`docs/RED-TEAM.md`).
+
+Not built yet: real sign-in, email alerts, per-user time zones, and onboarding a second dataset.
 
 ## Where to look in the repo
 

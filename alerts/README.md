@@ -6,7 +6,7 @@ Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, D
 
 ## Run it
 
-Requires Node 20+. No Docker needed: an embedded Postgres (PGlite) is loaded on start.
+Requires Node 22.12 or newer (CI uses Node 24). No Docker needed: an embedded Postgres (PGlite) is loaded on start.
 
 ```bash
 npm install
@@ -43,7 +43,7 @@ The inbox follows current access: an alert about an account the user can no long
 | L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks with no shared fallback |
 | L6 explanation and copilot link | `explain` template per rule; link opens the copilot with that rule's fixed question. Identity comes from the copilot's own sign-in; in test mode only, the test identity is carried along |
 
-Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is escaped for Slack, so it can't become a link or a mention.
+Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is made safe for Slack: angle-bracket links and mentions are escaped, and bare URLs and domain names are defanged (`https[:]//evil[.]example`), so a case subject is readable but never clickable. Only the "Ask the copilot" link is a real link. The seller still reads the text, so a real alert never asks for a password.
 
 Migrations in `alerts/drizzle/` start at this release's baseline (the alerts service has not been deployed with a persistent database yet). From here on they are append-only: new numbered files, never edits.
 
