@@ -84,7 +84,7 @@ Every business row is stamped with snapshot `snap_alto-pals-v2`.
 
 **Week 4 (on the week4 branch):** alert settings each person edits, weekly and monthly digests, a background scheduler, Postgres mode for alerts, and the full red-team matrix (`docs/RED-TEAM.md`).
 
-Not built yet: real sign-in, email alerts, per-user time zones, and onboarding a second dataset.
+Not built yet: real sign-in, email alerts, per-user time zones, onboarding a second dataset, more business rules in the glossary, and running on Postgres by default (`npm start` still uses the embedded database; Postgres mode needs the database URLs).
 
 ## Where to look in the repo
 
