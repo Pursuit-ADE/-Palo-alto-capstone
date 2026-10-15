@@ -83,7 +83,8 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
 - HSTS once the app is served over HTTPS.
 - Week 2: business rules in the context layer; run the app on Postgres mode by default.
-- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. Pending the client's answer on allowed AI providers.
+- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
+- Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
 - Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
 - The test identity picker is not authentication.
