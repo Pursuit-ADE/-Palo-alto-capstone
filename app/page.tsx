@@ -1,7 +1,10 @@
 import { AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
+import { redirect } from 'next/navigation';
 import { testIdentitiesEnabled } from '@/server/identity';
+import { currentUserId } from '@/server/session';
+import { logOutAction } from './auth-actions';
 import { promptFor } from '@/server/prompts';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -18,9 +21,12 @@ function compactUsd(value: number): string {
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
-  if (!testIdentitiesEnabled()) return <SignInRequired />;
+  // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
+  // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
+  const signedIn = await currentUserId();
+  if (!signedIn && !testIdentitiesEnabled()) redirect('/login');
   const params = await searchParams;
-  const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
+  const user = signedIn ?? (USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east');
   const registry = getRegistry();
   const database = await getDatabase();
   const me = USERS.find((u) => u.id === user)!;
@@ -46,22 +52,29 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             </div>
           </div>
           <span className="badge">Maven CRM data</span>
-          <form className="who" method="get">
-            <label htmlFor="user">Viewing as</label>
-            <select id="user" name="user" defaultValue={user}>
-              {USERS.map((u) => (
-                <option key={u.id} value={u.id}>{u.displayName}</option>
-              ))}
-            </select>
-            <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
-          </form>
+          {signedIn ? (
+            <form className="who" action={logOutAction}>
+              <span>Signed in as {me.displayName}</span>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Log out</button>
+            </form>
+          ) : (
+            <form className="who" method="get">
+              <label htmlFor="user">Viewing as</label>
+              <select id="user" name="user" defaultValue={user}>
+                {USERS.map((u) => (
+                  <option key={u.id} value={u.id}>{u.displayName}</option>
+                ))}
+              </select>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
+            </form>
+          )}
         </div>
       </header>
 
       <main>
         <div className="page-head">
           <h1>Pipeline overview</h1>
-          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). Identity switch for testing, not a login yet.</p>
+          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
         </div>
 
         <div className="overview">
@@ -127,13 +140,3 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   );
 }
 
-function SignInRequired() {
-  return (
-    <main>
-      <div className="page-head">
-        <h1>Sign-in is not set up yet</h1>
-        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
-      </div>
-    </main>
-  );
-}

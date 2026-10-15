@@ -8,6 +8,7 @@ import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
 import { selectModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
 import { testIdentitiesEnabled } from '@/server/identity';
+import { currentUserId } from '@/server/session';
 import { dbSessionGuard } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
@@ -20,11 +21,12 @@ const Turn = z.coerce.number().int().min(1).max(50);
 const DEMO_IDS = new Set(demoUsers().map((u) => u.id));
 
 export async function askCopilot(_prev: AskResult, formData: FormData): Promise<AskResult> {
-  // Test identities only. With real sign-in, the user id comes from the verified session here, never the form.
-  const userId = formData.get('user');
-  if (!testIdentitiesEnabled() || typeof userId !== 'string' || !DEMO_IDS.has(userId)) {
-    return { kind: 'refused', message: 'Sign-in is not set up yet.' };
-  }
+  // The user id comes from the session. A signed-in person can't ask as anyone else: the form's user field is
+  // ignored. Only with no session and ALLOW_TEST_IDENTITIES=true (local testing) is the form's test identity used.
+  const signedIn = await currentUserId();
+  const formUser = formData.get('user');
+  const userId = signedIn ?? (testIdentitiesEnabled() && typeof formUser === 'string' && DEMO_IDS.has(formUser) ? formUser : undefined);
+  if (!userId) return { kind: 'refused', message: 'Please log in to ask a question.' };
   const parsed = Question.safeParse(formData.get('example') ?? formData.get('q'));
   if (!parsed.success) return { kind: 'refused', message: `Ask a question of 1 to ${MAX_QUESTION_LENGTH} characters.` };
 

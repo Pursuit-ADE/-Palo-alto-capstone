@@ -117,6 +117,24 @@ export const engagements = pgTable('engagements', {
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
 });
 
+// Demo sign-in (Week 5). An account belongs to one demo person; the person, and so the role, comes from the invite
+// code used to create it, never from the form. Passwords are stored as scrypt hashes, session tokens as SHA-256
+// hashes. Only the audit login can read or write these tables; the read-only login cannot.
+export const appAccounts = pgTable('app_accounts', {
+  username: text('username').primaryKey(),
+  userId: text('user_id').notNull().references(() => appUsers.id),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+export const appSessions = pgTable('app_sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  username: text('username').notNull().references(() => appAccounts.username, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});
+
 // Rate-limit hits and session-lock expiry. The audit role may read and update only this table.
 // The read-only app role may not. PGlite uses the same connection, so the laptop demo still works.
 export const sessionGuard = pgTable('session_guard', {

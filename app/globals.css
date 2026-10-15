@@ -109,3 +109,15 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .chart-bar { fill: var(--orange); }
 .chart-label, .chart-value { font: 12px var(--font); fill: var(--fg); }
 .chart-value { fill: var(--muted); }
+
+/* Demo sign-in (Week 5) */
+.auth-page { max-width: 460px; }
+.auth-form { display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
+.auth-form label { font-weight: 600; font-size: 14px; }
+.auth-form input { font: 15px var(--font); padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; min-width: 0; }
+.auth-form input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
+.auth-form button { margin-top: 8px; font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 16px; cursor: pointer; }
+.auth-form button:disabled { opacity: .6; cursor: default; }
+.auth-error { color: var(--bad); font-weight: 600; margin: 4px 0 0; }
+.hint { color: var(--muted); font-size: 14px; margin: 0; }
+.who span { font-size: 14px; color: var(--chrome-fg); }

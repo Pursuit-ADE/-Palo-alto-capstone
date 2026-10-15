@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "eval:golden": "tsx scripts/eval-golden.ts"
+    "eval:golden": "tsx scripts/eval-golden.ts",
+    "invites": "tsx scripts/invites.ts"
   },
   "engines": {
     "node": ">=22.12.0"

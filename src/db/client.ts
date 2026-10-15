@@ -93,6 +93,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT INSERT ON query_audit TO app_audit;
     REVOKE SELECT ON session_guard FROM app_readonly;
     GRANT SELECT, INSERT, UPDATE, DELETE ON session_guard TO app_audit;
+    -- Demo sign-in: accounts and sessions are read and written by the audit login only.
+    GRANT SELECT, INSERT, DELETE ON app_accounts, app_sessions TO app_audit;
   `);
 }
 
