@@ -9,6 +9,10 @@ const RULES: [code: string, pattern: RegExp][] = [
   ['link', /\bhttps?:\/\/|\bwww\.\S+/i],
   // Pressure in the red-team sense: threats to the asker's job, not words like "urgent".
   ['pressure', /\b(get fired|getting fired|lose my job|losing my job|i beg you|life or death)\b/i],
+  // Softer persuasion: claiming others already have access, or asking for an exception. Logged only, so a run
+  // of these attempts shows up in the audit log; scope still comes from the database.
+  ['social_proof', /\b(everyone|everybody|all of us|the rest of (my|the) team|my (whole )?team|other (reps|sellers))\b.{0,30}\b(can see|can access|has access|have access|already (see|sees|has|have|got))\b/i],
+  ['flattery', /\bjust this once\b|\bas a (special )?favou?r\b|\bdo me a favou?r\b|\bbetween (you and me|us)\b|\byou'?re (so|really|the most) (helpful|smart|kind|great)\b|\bno one will know\b/i],
 ];
 
 const WIDENING = /\b(all regions|every region|everyone'?s|all teams|whole company|company[- ]wide|other (reps|teams|regions))\b/i;
