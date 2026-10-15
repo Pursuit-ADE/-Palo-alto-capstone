@@ -56,15 +56,16 @@ const parseTimes = (raw: string): number[] => {
 
 /**
  * Rate limit and session lock stored in session_guard, so every process that shares the database
- * sees the same counters. Two requests at the same instant can both pass the check; the gateway
- * limit is still the place to close that race.
+ * sees the same counters. Each update locks that user's row (SELECT ... FOR UPDATE), so two requests at the
+ * same instant are counted one after the other instead of both reading the old count. A gateway limit is
+ * still the place to stop floods before they reach the app.
  */
 export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = 10 * 60_000) {
   return {
     async allow(user: string, now: number = Date.now()): Promise<boolean> {
       return db.transaction(async (tx) => {
         await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
-        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user));
+        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
         const recent = parseTimes(current?.hits ?? '[]').filter((t) => now - t < windowMs);
         if (recent.length >= max) {
           await tx.update(sessionGuard).set({ hits: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
@@ -82,7 +83,7 @@ export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged =
     async record(user: string, now: number = Date.now()): Promise<void> {
       await db.transaction(async (tx) => {
         await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
-        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user));
+        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
         if ((current?.lockedUntil?.getTime() ?? 0) > now) return;
         const recent = [...parseTimes(current?.flagged ?? '[]').filter((t) => now - t < flagWindowMs), now];
         if (recent.length >= maxFlagged) {
