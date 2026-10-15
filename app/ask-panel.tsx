@@ -37,7 +37,8 @@ export function AskPanel({ user, name, examples, initialQuestion = '' }: { user:
         setTurns((t) => [...t, { id: Date.now(), question: q, result }].slice(-MAX_TURNS_SHOWN));
         if (result?.kind === 'answer') setPrevious(result.intent);
         // A clarification waits on a partial request (e.g. coverage with no quarter); the reply finishes it.
-        else if (result?.kind === 'clarify' && result.resume) setPrevious(result.resume);
+        // A clarification with nothing to resume clears the state, so a bare reply can't continue an older question.
+        else if (result?.kind === 'clarify') setPrevious(result.resume ?? null);
         if (inputRef.current) inputRef.current.value = '';
       } catch {
         setFailed(true);

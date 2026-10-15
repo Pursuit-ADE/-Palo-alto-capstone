@@ -4,10 +4,9 @@
 // logs. Next.js checks the request's Origin against the host for Server Actions.
 import { z } from 'zod';
 import { demoUsers } from '@/db/seed';
-import { ask, InjectionRefused, MAX_QUESTION_LENGTH, SessionLocked, type Reply } from '@/semantic/answer';
-import { IntentError } from '@/semantic/compile';
-import { deterministicModel, selectModel } from '@/semantic/model';
-import { ScopeViolation } from '@/semantic/scope';
+import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
+import { selectModel } from '@/semantic/model';
+import { askWithFallback } from '@/server/ask';
 import { testIdentitiesEnabled } from '@/server/identity';
 import { dbSessionGuard } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
@@ -46,19 +45,5 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   const opts = { previous, turn: turn.success ? turn.data : 1, guard };
 
   const registry = getRegistry();
-  const model = selectModel();
-  try {
-    return await ask(database, registry, userId, parsed.data, { ...opts, model });
-  } catch (e) {
-    if (e instanceof ScopeViolation || e instanceof IntentError || e instanceof SessionLocked || e instanceof InjectionRefused) return { kind: 'refused', message: e.message };
-    // The AI model is unavailable (network, quota): fall back to the deterministic model, same checks.
-    if (model !== deterministicModel) {
-      try {
-        return await ask(database, registry, userId, parsed.data, { ...opts, model: deterministicModel });
-      } catch (e2) {
-        if (e2 instanceof ScopeViolation || e2 instanceof IntentError) return { kind: 'refused', message: e2.message };
-      }
-    }
-    return { kind: 'refused', message: 'Something went wrong answering that question. Please try again.' };
-  }
+  return askWithFallback(database, registry, userId, parsed.data, opts, selectModel());
 }

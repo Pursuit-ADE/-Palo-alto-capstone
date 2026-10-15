@@ -14,9 +14,18 @@ export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
 }
 
-/** Escapes Slack's control characters so event text can't become links, mentions or formatting. */
+/**
+ * Makes event text safe to show in Slack. Escaping stops angle-bracket links and mentions. Slack also turns
+ * bare URLs and domain names into links, so those are defanged ("https[:]//evil[.]example"): readable, but not
+ * clickable. Only the copilot link we build ourselves is a real link.
+ */
 export function slackEscape(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\b([a-z][a-z0-9+.-]*):\/\//gi, '$1[:]//')
+    .replace(/\b([a-z0-9-]+)\.(?=[a-z])/gi, '$1[.]');
 }
 
 export function slackText(items: Delivery[], isDigest: boolean): string {
@@ -35,7 +44,7 @@ export function createChannels(opts: { slackWebhooks?: Record<string, unknown>; 
         const url = webhooks[userId];
         if (!url) return false;
         try {
-          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest) }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
+          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
           return res.ok;
         } catch {
           return false;
