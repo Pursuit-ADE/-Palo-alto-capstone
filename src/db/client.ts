@@ -45,6 +45,11 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
     }
     return openPostgres(DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL, seed);
   }
+  // The embedded database has no separate read-only and audit logins and forgets everything on restart, so a
+  // production server refuses it unless it is explicitly the laptop demo.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITIES !== 'true' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
+    throw new Error('Production needs Postgres mode (DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
+  }
   const client = new PGlite();
   const db = drizzlePglite(client, { schema }) as unknown as Db;
   await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
@@ -76,14 +81,15 @@ async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, 
   };
 }
 
-/** Least privilege: the app role can only read; the audit role can only append to the audit log. */
+/** Least privilege: the app role can only read the governed tables; the audit role can only append to the audit log. */
 async function applyGrants(owner: pg.Pool) {
   await owner.query(`
     REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_readonly, app_audit;
     REVOKE CREATE ON SCHEMA public FROM PUBLIC;
     GRANT USAGE ON SCHEMA public TO app_readonly, app_audit;
-    GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly;
-    REVOKE SELECT ON query_audit FROM app_readonly;
+    -- Only the tables the governed query path reads. Contacts, support cases, engagements and the audit log
+    -- are not readable, so a bug above the database can't reach them through this login.
+    GRANT SELECT ON data_snapshots, regions, app_users, products, accounts, account_team, opportunities, quotas TO app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
   `);
 }

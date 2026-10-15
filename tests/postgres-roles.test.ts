@@ -43,6 +43,10 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(app, 'CREATE TABLE stolen (x int)');
     await denied(app, 'DROP TABLE quotas');
     await denied(app, 'SELECT * FROM query_audit');
+    // Tables outside the governed query path are not readable either.
+    await denied(app, 'SELECT * FROM contacts');
+    await denied(app, 'SELECT * FROM support_cases');
+    await denied(app, 'SELECT * FROM engagements');
   });
 
   it('the app role has a statement timeout', async () => {
