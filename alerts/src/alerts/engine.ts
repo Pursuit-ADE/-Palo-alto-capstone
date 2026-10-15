@@ -7,7 +7,7 @@ import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
 import { render, type AlertRule } from './rules';
-import { digestDue, normalizeFrequency } from './schedule';
+import { digestDue, lastSlot, normalizeFrequency } from './schedule';
 
 export interface AlertEvent {
   id: string;
@@ -246,7 +246,12 @@ export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channe
     if (q.s && inQuietHours(q.s, now) && !(critical && q.s.criticalBypass)) continue;
     // A queued digest waits for its daily, weekly or monthly slot. Retries of failed sends don't wait for it.
     if (q.d.status === 'queued_digest' && q.s && !digestDue(q.s, now)) continue;
-    if (q.d.status === 'queued_digest' && q.s && normalizeFrequency(q.s.frequency) !== 'realtime') {
+    const frequency = q.s ? normalizeFrequency(q.s.frequency) : 'realtime';
+    // After the first digest, a digest carries only what was queued before its slot: an alert created after
+    // the slot waits for the next one, even when the slot itself had nothing to send. (A new subscriber's
+    // first digest goes out with whatever is already queued.)
+    if (q.d.status === 'queued_digest' && frequency !== 'realtime' && q.s?.lastDigestAt && q.d.createdAt > lastSlot(frequency, now)) continue;
+    if (q.d.status === 'queued_digest' && q.s && frequency !== 'realtime') {
       digestSubs.set(`${q.s.userId}|${q.s.ruleId}`, { userId: q.s.userId, ruleId: q.s.ruleId });
     }
     byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);

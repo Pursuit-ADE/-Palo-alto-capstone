@@ -87,9 +87,9 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
 - A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
 - HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
-- Week 2: business rules in the context layer; run the app on Postgres mode by default.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. Pending the client's answer on allowed AI providers.
-- Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
+- Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
+- Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
 - The test identity picker is not authentication.
 
 ## Project documents

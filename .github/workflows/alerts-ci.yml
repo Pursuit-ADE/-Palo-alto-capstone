@@ -6,7 +6,7 @@ on:
   push:
     branches: [main, 'week*']
   pull_request:
-    paths: ['alerts/**', '.github/workflows/alerts-ci.yml']
+    paths: ['alerts/**', 'docker/init-roles.sql', '.github/workflows/alerts-ci.yml']
   workflow_dispatch:
 
 permissions:

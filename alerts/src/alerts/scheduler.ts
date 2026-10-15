@@ -9,10 +9,20 @@ import type { AlertRule } from './rules';
 
 const CURSOR_ID = 'events';
 
+/**
+ * How far back each tick looks again before the cursor. Events are matched on their business time (when a
+ * case was opened), but an import can land after that time has passed; looking back catches it, and
+ * deduplication stops a second alert for anything already seen. Override with ALERTS_LATE_WINDOW_HOURS.
+ */
+export function lateWindowMs(env: Record<string, string | undefined> = process.env): number {
+  const hours = Number(env.ALERTS_LATE_WINDOW_HOURS ?? 72);
+  return (Number.isFinite(hours) && hours >= 0 ? Math.min(hours, 24 * 31) : 72) * 3_600_000;
+}
+
 /** One scheduler tick. `start` is where evaluation begins the very first time. Returns the alerts created. */
 export async function tick(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date, start: Date, opts: EngineOptions = {}) {
   const [cursor] = await db.select().from(alertCursor).where(eq(alertCursor.id, CURSOR_ID));
-  const since = cursor?.evaluatedUntil ?? start;
+  const since = cursor ? new Date(Math.max(start.getTime(), cursor.evaluatedUntil.getTime() - lateWindowMs())) : start;
   const created = since < now ? await runAlerts(db, rules, channels, since, now, opts) : [];
   await flushDigests(db, rules, channels, now);
   await db
