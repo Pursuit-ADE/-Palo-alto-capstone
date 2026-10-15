@@ -87,7 +87,8 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
 - A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
 - HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
-- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. Pending the client's answer on allowed AI providers.
+- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
+- Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
 - Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
 - More business rules in the glossary, and running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
