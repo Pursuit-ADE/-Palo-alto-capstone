@@ -76,7 +76,7 @@ async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, 
   };
 }
 
-/** Least privilege: the app role can only read; the audit role can only append to the audit log. */
+/** Least privilege: the app role can only read; the audit role can append to the audit log and update the session guard. */
 async function applyGrants(owner: pg.Pool) {
   await owner.query(`
     REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_readonly, app_audit;
@@ -85,6 +85,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT SELECT ON ALL TABLES IN SCHEMA public TO app_readonly;
     REVOKE SELECT ON query_audit FROM app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
+    REVOKE SELECT ON session_guard FROM app_readonly;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON session_guard TO app_audit;
   `);
 }
 

@@ -85,11 +85,10 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 ## Not done yet (by roadmap week)
 
 - Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
-- Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
-- HSTS once the app is served over HTTPS.
+- A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
+- HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
 - Week 2: business rules in the context layer; run the app on Postgres mode by default.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. Pending the client's answer on allowed AI providers.
-- Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
 - Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
 - The test identity picker is not authentication.
 
