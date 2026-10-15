@@ -4,7 +4,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { appUsers, dataSnapshots, queryAudit } from '@/db/schema';
 import { loadRegistry } from '@/registry/load';
-import { answerIntent, ask, MAX_QUESTION_LENGTH } from '@/semantic/answer';
+import { answerIntent, ask, MAX_QUESTION_LENGTH, questionFingerprint } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
 import { ScopeViolation } from '@/semantic/scope';
 import { RateLimiter } from '@/server/limits';
@@ -42,7 +42,7 @@ describe('query audit log (S4)', () => {
       metricVersion: 1,
       regions: ['east'],
       resultHash: r.provenance.resultHash,
-      questionSha256: createHash('sha256').update(phrase).digest('hex'),
+      questionSha256: questionFingerprint(phrase),
     });
     expect(JSON.stringify(row)).not.toContain(phrase);
   });
@@ -78,7 +78,7 @@ describe('limits (T-07)', () => {
   it('refuses questions over the length limit', async () => {
     const long = 'pipeline '.repeat(MAX_QUESTION_LENGTH);
     await expect(ask(database, reg, 'u_analyst', long)).rejects.toBeInstanceOf(IntentError);
-    const [row] = await database.db.select().from(queryAudit).where(eq(queryAudit.questionSha256, createHash('sha256').update(long).digest('hex')));
+    const [row] = await database.db.select().from(queryAudit).where(eq(queryAudit.questionSha256, questionFingerprint(long)));
     expect(row!.outcome).toBe('refused_intent');
   });
 
@@ -131,5 +131,14 @@ describe('snapshot selection', () => {
     } finally {
       await db2.close();
     }
+  });
+});
+
+describe('audit fingerprints', () => {
+  it('are keyed (HMAC), so likely questions cannot be matched with a plain hash', () => {
+    const q = 'What is our open pipeline?';
+    expect(questionFingerprint(q)).toMatch(/^[0-9a-f]{64}$/);
+    expect(questionFingerprint(q)).toBe(questionFingerprint(q));
+    expect(questionFingerprint(q)).not.toBe(createHash('sha256').update(q).digest('hex'));
   });
 });

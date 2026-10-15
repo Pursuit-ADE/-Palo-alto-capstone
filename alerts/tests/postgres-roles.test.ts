@@ -43,5 +43,9 @@ describe.skipIf(!enabled)('alerts Postgres least privilege', () => {
     await denied("INSERT INTO regions (id, name) VALUES ('north', 'North')");
     await denied('CREATE TABLE stolen (x int)');
     await denied('DROP TABLE alert_cursor');
+    // Only the tables alerts need are readable: no deals, quotas or products.
+    await denied('SELECT * FROM opportunities');
+    await denied('SELECT * FROM quotas');
+    await denied('SELECT * FROM products');
   });
 });

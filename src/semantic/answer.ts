@@ -1,6 +1,6 @@
 // End-to-end governed answer: phrase -> intent -> validation -> scope -> compiled SQL -> result with provenance.
 // Every call writes one audit row (PRD S4), including refusals. If the audit row can't be written, no answer is returned.
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { desc } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { dataSnapshots, queryAudit } from '../db/schema';
@@ -32,6 +32,16 @@ export type Reply = Answer | { kind: 'clarify'; question: string; resume?: Inten
 type AuditFields = Partial<typeof queryAudit.$inferInsert>;
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+// Questions are short and predictable, so a plain hash could be reversed by hashing likely questions. The
+// audit log stores a keyed hash (HMAC-SHA-256) instead. Set AUDIT_HASH_KEY to keep fingerprints comparable
+// across restarts and instances; without it, each process uses its own random key.
+const AUDIT_KEY = process.env.AUDIT_HASH_KEY || randomBytes(32).toString('hex');
+
+/** The audit fingerprint of a question (or of model text that may echo it). Never the text itself. */
+export function questionFingerprint(text: string): string {
+  return createHmac('sha256', AUDIT_KEY).update(text).digest('hex');
+}
 
 /** The snapshot answers come from: always the newest one, chosen explicitly rather than by row order. */
 export async function currentSnapshot(database: Database) {
@@ -118,7 +128,7 @@ async function audited<T extends Reply>(
   body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
 ): Promise<T> {
   const requestId = randomUUID();
-  const fields: AuditFields = { questionSha256: question === null ? null : sha256(question) };
+  const fields: AuditFields = { questionSha256: question === null ? null : questionFingerprint(question) };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
     fields.role = p.role;
@@ -177,7 +187,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
-      fields.reason = `${n.kind}:${sha256(n.kind === 'clarify' ? n.question : n.message).slice(0, 16)}`;
+      fields.reason = `${n.kind}:${questionFingerprint(n.kind === 'clarify' ? n.question : n.message).slice(0, 16)}`;
       return n;
     }
     // Scope is resolved again after the model returns: a role or team change made while the model was

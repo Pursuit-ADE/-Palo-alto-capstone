@@ -37,6 +37,11 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
     }
     return openPostgres(ALERTS_DATABASE_URL, MIGRATION_DATABASE_URL, seed);
   }
+  // The embedded database forgets everything on restart and has no separate login, so a production server
+  // refuses it unless it is explicitly the laptop demo.
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITIES !== 'true' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
+    throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL and MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
+  }
   const client = new PGlite();
   const db = drizzlePglite(client, { schema }) as unknown as Db;
   await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
@@ -58,13 +63,14 @@ async function openPostgres(appUrl: string, ownerUrl: string, seed: string): Pro
   return { db: drizzlePg(app, { schema }) as unknown as Db, mode: 'postgres', close: () => app.end() };
 }
 
-/** Least privilege: read everything it needs, write only its own state, delete only its own subscriptions, never change the schema. */
+/** Least privilege: read only what alerts need, write only its own state, delete only its own subscriptions, never change the schema. */
 async function applyGrants(owner: pg.Pool) {
   await owner.query(`
     REVOKE ALL ON ALL TABLES IN SCHEMA public FROM alerts_app;
     REVOKE CREATE ON SCHEMA public FROM PUBLIC;
     GRANT USAGE ON SCHEMA public TO alerts_app;
-    GRANT SELECT ON ALL TABLES IN SCHEMA public TO alerts_app;
+    -- Only what alert matching, routing and the inbox read: no deals, quotas, products or regions.
+    GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT INSERT, UPDATE ON alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
   `);
