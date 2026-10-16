@@ -62,7 +62,8 @@ describe('A7 dataset onboarding', () => {
       seed: 'northstar-v1',
       writtenAt: '2026-10-14T00:00:00.000Z',
     });
-    const dest = path.join(os.tmpdir(), `onboard-active-${Date.now()}.json`);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onboard-confirm-'));
+    const dest = path.join(dir, 'active.json');
     writeConfirmation(confirmation, dest);
     expect(JSON.parse(fs.readFileSync(dest, 'utf8')).status).toBe('confirmed');
     expect(fs.existsSync(path.join(process.cwd(), 'registry', 'metrics', 'northstar.json'))).toBe(false);
