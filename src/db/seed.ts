@@ -28,10 +28,27 @@ export const REGIONS = [
 // Identities shown in the demo picker. Sales reps and managers are real names from the sample.
 export const DEMO_USER_IDS = ['u_ts_east', 'u_ts_west', 'u_darcel_schlecht', 'u_mgr_melvin_marxen', 'u_analyst'] as const;
 
-const DATA_DIR = path.join(process.cwd(), 'data', 'maven-crm');
+const DEFAULT_DATA_DIR = path.join(process.cwd(), 'data', 'maven-crm');
 
-function parseCsv(file: string): Record<string, string>[] {
-  const text = fs.readFileSync(path.join(DATA_DIR, file), 'utf8').replace(/\r/g, '');
+export function resolveDataDir(override?: string): string {
+  return path.resolve(override || process.env.DATASET_DIR || DEFAULT_DATA_DIR);
+}
+
+export function activeDatasetLabel(override?: string): string {
+  const dir = resolveDataDir(override);
+  const folder = path.basename(dir);
+  if (folder === 'maven-crm') return 'Maven CRM data';
+  if (folder === 'northstar-crm') return 'Northstar CRM data';
+  return `${folder.replace(/[-_]+/g, ' ')} data`;
+}
+
+export function defaultSeedForDir(override?: string): string {
+  const dir = resolveDataDir(override);
+  return dir === path.resolve(DEFAULT_DATA_DIR) ? DEFAULT_SEED : path.basename(dir);
+}
+
+function parseCsv(file: string, dataDir = DEFAULT_DATA_DIR): Record<string, string>[] {
+  const text = fs.readFileSync(path.join(dataDir, file), 'utf8').replace(/\r/g, '');
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -127,23 +144,25 @@ export function entityNames() {
   return entityNamesCache;
 }
 
-export function buildSeed(seed: string = DEFAULT_SEED) {
-  const rand = mulberry32(hashString(seed));
+export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
+  const dataDir = resolveDataDir(options.dataDir);
+  const resolvedSeed = seed ?? defaultSeedForDir(options.dataDir);
+  const rand = mulberry32(hashString(resolvedSeed));
   const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] as T;
   const int = (min: number, max: number) => min + Math.floor(rand() * (max - min + 1));
-  const snapshotId = `snap_${seed}`;
+  const snapshotId = `snap_${resolvedSeed}`;
 
   const snapshot = {
     id: snapshotId,
-    seed,
+    seed: resolvedSeed,
     asOfDate: AS_OF_DATE,
     loadedAt: new Date(`${AS_OF_DATE}T06:00:00Z`),
-    notes: `Maven Analytics CRM Sales Opportunities sample (public domain, fictional company), dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`,
+    notes: `CRM sample from ${path.relative(process.cwd(), dataDir) || dataDir}, dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`,
   };
   const regions = REGIONS.map((r) => ({ ...r }));
 
   // People: sales agents and managers from the sample, plus synthetic technical sellers and an analyst.
-  const teams = parseCsv('sales_teams.csv');
+  const teams = parseCsv('sales_teams.csv', dataDir);
   const managerIds = new Map<string, { id: string; region: string }>();
   for (const t of teams) {
     if (!managerIds.has(t.manager!)) managerIds.set(t.manager!, { id: `u_mgr_${slug(t.manager!)}`, region: t.regional_office!.toLowerCase() });
@@ -159,16 +178,18 @@ export function buildSeed(seed: string = DEFAULT_SEED) {
     agentIds.set(t.sales_agent!, { id, region });
     users.push({ id, displayName: `${t.sales_agent} (Sales rep, ${t.regional_office})`, role: 'sales_rep', regionId: region, managerId: managerIds.get(t.manager!)!.id, source: 'maven' });
   }
+  const eastMgr = [...managerIds.values()].find((m) => m.region === 'east')!.id;
+  const westMgr = [...managerIds.values()].find((m) => m.region === 'west')!.id;
   users.push(
-    { id: 'u_ts_east', displayName: 'Jordan Lee (Technical seller, East)', role: 'technical_seller', regionId: 'east', managerId: managerIds.get('Cara Losch')!.id, source: 'synthetic' },
-    { id: 'u_ts_west', displayName: 'Sam Rivera (Technical seller, West)', role: 'technical_seller', regionId: 'west', managerId: managerIds.get('Celia Rouche')!.id, source: 'synthetic' },
+    { id: 'u_ts_east', displayName: 'Jordan Lee (Technical seller, East)', role: 'technical_seller', regionId: 'east', managerId: managerIds.get('Cara Losch')?.id ?? eastMgr, source: 'synthetic' },
+    { id: 'u_ts_west', displayName: 'Sam Rivera (Technical seller, West)', role: 'technical_seller', regionId: 'west', managerId: managerIds.get('Celia Rouche')?.id ?? westMgr, source: 'synthetic' },
     { id: 'u_analyst', displayName: 'Avery Patel (Customer analytics, all regions)', role: 'analyst', regionId: null, managerId: null, source: 'synthetic' },
   );
 
-  const products = parseCsv('products.csv').map((p) => ({ id: p.product!, series: p.series!, listPrice: Number(p.sales_price).toFixed(2) }));
+  const products = parseCsv('products.csv', dataDir).map((p) => ({ id: p.product!, series: p.series!, listPrice: Number(p.sales_price).toFixed(2) }));
   const listPrice = new Map(products.map((p) => [p.id, Number(p.listPrice)]));
 
-  const accounts = parseCsv('accounts.csv').map((a) => ({
+  const accounts = parseCsv('accounts.csv', dataDir).map((a) => ({
     id: `acc_${slug(a.account!)}`,
     snapshotId,
     name: a.account!,
@@ -181,7 +202,7 @@ export function buildSeed(seed: string = DEFAULT_SEED) {
   }));
   const accountId = new Map(accounts.map((a) => [a.name, a.id]));
 
-  const opportunities = parseCsv('sales_pipeline.csv').map((o) => {
+  const opportunities = parseCsv('sales_pipeline.csv', dataDir).map((o) => {
     const agent = agentIds.get(o.sales_agent!)!;
     const product = PRODUCT_FIX[o.product!] ?? o.product!;
     const isClosed = o.deal_stage === 'Won' || o.deal_stage === 'Lost';
@@ -284,5 +305,15 @@ export function buildSeed(seed: string = DEFAULT_SEED) {
 
 /** Identities for the demo picker, in display order. */
 export function demoUsers(data: Dataset = buildSeed()) {
-  return DEMO_USER_IDS.map((id) => data.users.find((u) => u.id === id)!).filter(Boolean);
+  const picked = DEMO_USER_IDS.map((id) => data.users.find((u) => u.id === id)!).filter(Boolean);
+  if (picked.length === DEMO_USER_IDS.length) return picked;
+  const rep = data.users.find((u) => u.role === 'sales_rep');
+  const mgr = data.users.find((u) => u.role === 'sales_manager');
+  return [
+    data.users.find((u) => u.id === 'u_ts_east')!,
+    data.users.find((u) => u.id === 'u_ts_west')!,
+    ...(rep ? [rep] : []),
+    ...(mgr ? [mgr] : []),
+    data.users.find((u) => u.id === 'u_analyst')!,
+  ].filter(Boolean);
 }

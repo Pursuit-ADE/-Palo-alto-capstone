@@ -1,4 +1,4 @@
-import { AS_OF_DATE, demoUsers } from '@/db/seed';
+import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
@@ -46,12 +46,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
+            <span className="mark" aria-hidden="true" />
             <div>
               <strong>Governed Analytics Copilot</strong>
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Maven CRM data</span>
+          <span className="badge">{activeDatasetLabel()}</span>
           {signedIn ? (
             <form className="who" action={logOutAction}>
               <span>Signed in as {me.displayName}</span>
