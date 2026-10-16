@@ -12,6 +12,7 @@
     "db:generate": "drizzle-kit generate",
     "eval:golden": "tsx scripts/eval-golden.ts",
     "invites": "tsx scripts/invites.ts",
+    "docs:dictionary": "tsx scripts/data-dictionary.ts",
     "onboard:profile": "tsx scripts/onboard-dataset.ts profile",
     "onboard:propose": "tsx scripts/onboard-dataset.ts propose",
     "onboard:confirm": "tsx scripts/onboard-dataset.ts confirm"

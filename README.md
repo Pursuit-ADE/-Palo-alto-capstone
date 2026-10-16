@@ -6,7 +6,7 @@ A governed AI analytics copilot that sits next to certified dashboards. The AI o
 
 **No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
 
-New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
+New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md).
 
 ## Run it
 
