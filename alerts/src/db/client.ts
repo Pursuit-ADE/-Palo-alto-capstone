@@ -79,6 +79,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT INSERT, UPDATE ON alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
+    -- Demo sign-in (Week 5): accounts and sessions; no UPDATE, so an account's person can't be changed.
+    GRANT SELECT, INSERT, DELETE ON app_accounts, app_sessions TO alerts_app;
   `);
 }
 

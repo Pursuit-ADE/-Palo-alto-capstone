@@ -172,3 +172,21 @@ export const alertCursor = pgTable('alert_cursor', {
   id: text('id').primaryKey(),
   evaluatedUntil: timestamp('evaluated_until', { withTimezone: true }).notNull(),
 });
+
+// Demo sign-in (Week 5). An account belongs to one demo person; the person, and so the role, comes from the invite
+// code used to create it, never from the form. Passwords are stored as scrypt hashes, session tokens as SHA-256
+// hashes. Shared invite codes with the copilot (same DEMO_INVITE_SECRET); separate accounts and sessions.
+export const appAccounts = pgTable('app_accounts', {
+  username: text('username').primaryKey(),
+  userId: text('user_id').notNull().references(() => appUsers.id),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+});
+
+export const appSessions = pgTable('app_sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  username: text('username').notNull().references(() => appAccounts.username, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+});

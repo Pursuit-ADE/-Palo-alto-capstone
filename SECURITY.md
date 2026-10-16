@@ -21,7 +21,7 @@ The repository uses only the public-domain Maven Analytics CRM sample (a fiction
 - Authorization is enforced outside the AI layer, from the database: role, region and team scope.
 - Questions run under a read-only database role with a statement timeout; the audit log is written by an insert-only role.
 - Every question and refusal is audited, with the question stored only as a hash.
-- The copilot has demo accounts (invite codes, server-side sessions); the alerts app does not yet. The test identity switch is off unless `ALLOW_TEST_IDENTITIES=true`, and must never be enabled where real users or real data are present. Production identity must come from a verified server-side session (SSO/OIDC).
+- Both apps have demo accounts (invite codes, server-side sessions); each app keeps its own accounts and sessions. The test identity switch is off unless `ALLOW_TEST_IDENTITIES=true`, and must never be enabled where real users or real data are present. Production identity must come from a verified server-side session (SSO/OIDC).
 
 ## Before any shared deployment
 

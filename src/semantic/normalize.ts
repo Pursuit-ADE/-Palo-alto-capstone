@@ -36,7 +36,8 @@ const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 
 function unknownName(phrase: string): boolean {
   for (const m of phrase.matchAll(NAMED)) {
     const words = m[1]!.toLowerCase().split(/\s+/);
-    if (!words.every((w) => KNOWN_WORDS.has(w.replace(/[^a-z0-9]/g, '')))) return true;
+    const known = (w: string) => KNOWN_WORDS.has(w) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(w);
+    if (!words.every((w) => known(w.replace(/[^a-z0-9]/g, '')))) return true;
   }
   return false;
 }
@@ -191,6 +192,11 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     .filter((h) => h.at >= 0)
     .sort((a, b) => a.at - b.at);
   for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  // A breakdown this metric doesn't have is asked about, not silently dropped.
+  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
+  if (unsupportedDim) {
+    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
+  }
   if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
     for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
   }

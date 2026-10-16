@@ -92,7 +92,6 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 ## Not done yet (by roadmap week)
 
 - Company sign-in (Active Directory and SSO through OIDC) instead of demo accounts; the session code is the place it plugs in.
-- The alerts app still uses the test identity switch; it moves to the same sign-in next.
 - A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
 - HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
