@@ -67,6 +67,11 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Alerts (`alerts/`):** weekly and monthly digests on a real schedule (Mondays and the 1st, 13:00 UTC) alongside right-away and daily; a preferences screen where each person subscribes and sets frequency, channel, quiet hours and the P1 bypass; a scheduler (`ALERTS_SCHEDULER=true`) that only checks new events and resumes from a stored cursor; and a persistent Postgres mode with a least-privilege `alerts_app` login, tested in CI. See `alerts/README.md`.
 - **Red-team suite completed (S1, S2, S6):** `tests/redteam-matrix.test.ts` runs one row per PRD scenario and checks both the answer and the audit row. Questions containing a link are now blocked and logged (`refused_injection`), not just flagged. The matrix in plain language is in `docs/RED-TEAM.md`.
 
+## Week 5: dataset onboarding (A7) and demo sign-in
+
+- **Dataset onboarding (A7):** `src/onboard/*` and `scripts/onboard-dataset.ts` profile a second CRM folder (`data/northstar-crm/`), propose only the three existing governed metrics from `registry/metrics/*.json`, require human confirmation (`npm run onboard:confirm -- --by "<name>"`), and make the dataset queryable (`DATASET_DIR=data/northstar-crm`) without inventing metrics or SQL. See [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+- **Demo sign-in:** Invite-code account creation (`npm run invites`), scrypt password hashing, and server-side session cookies (`src/server/auth.ts`, `src/server/session.ts`), with Active Directory / SSO documented for production rollout.
+
 ## Security controls
 
 | Control | Where | Proof |

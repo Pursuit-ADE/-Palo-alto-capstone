@@ -37,13 +37,13 @@ const MIGRATIONS = path.join(process.cwd(), 'drizzle');
 export const STATEMENT_TIMEOUT_MS = 5000;
 
 /** Opens a database, applies migrations and loads the dataset if it is empty. */
-export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Database> {
+export async function openDatabase(seed?: string, options: { dataDir?: string } = {}): Promise<Database> {
   const { DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (DATABASE_URL || AUDIT_DATABASE_URL || MIGRATION_DATABASE_URL) {
     if (!DATABASE_URL || !AUDIT_DATABASE_URL || !MIGRATION_DATABASE_URL) {
       throw new Error('Postgres mode needs DATABASE_URL, AUDIT_DATABASE_URL and MIGRATION_DATABASE_URL together');
     }
-    return openPostgres(DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL, seed);
+    return openPostgres(DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL, seed, options);
   }
   // The embedded database has no separate read-only and audit logins and forgets everything on restart, so a
   // production server refuses it unless it is explicitly the laptop demo.
@@ -53,16 +53,16 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   const client = new PGlite();
   const db = drizzlePglite(client, { schema }) as unknown as Db;
   await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
-  if ((await db.select().from(schema.dataSnapshots)).length === 0) await loadSeed(db, seed);
+  if ((await db.select().from(schema.dataSnapshots)).length === 0) await loadSeed(db, seed, options);
   return { db, client, auditDb: db, mode: 'pglite', close: () => client.close() };
 }
 
-async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, seed: string): Promise<Database> {
+async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, seed: string | undefined, options: { dataDir?: string } = {}): Promise<Database> {
   const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 });
   try {
     const ownerDb = drizzlePg(owner, { schema });
     await migratePg(ownerDb, { migrationsFolder: MIGRATIONS });
-    if ((await ownerDb.select().from(schema.dataSnapshots)).length === 0) await loadSeed(ownerDb as unknown as Db, seed);
+    if ((await ownerDb.select().from(schema.dataSnapshots)).length === 0) await loadSeed(ownerDb as unknown as Db, seed, options);
     await applyGrants(owner);
   } finally {
     await owner.end();
@@ -104,8 +104,8 @@ function chunks<T>(rows: T[], size = 500): T[][] {
   return out;
 }
 
-export async function loadSeed(db: Db, seed: string = DEFAULT_SEED) {
-  const s = buildSeed(seed);
+export async function loadSeed(db: Db, seed?: string, options: { dataDir?: string } = {}) {
+  const s = buildSeed(seed, { dataDir: options.dataDir ?? process.env.DATASET_DIR });
   await db.transaction(async (tx) => {
     await tx.insert(schema.dataSnapshots).values(s.snapshot);
     await tx.insert(schema.regions).values(s.regions);
