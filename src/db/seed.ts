@@ -122,26 +122,28 @@ const ASSETS = ['Zero Trust whitepaper', 'SOC modernization whitepaper', 'Cloud 
 
 export type Dataset = ReturnType<typeof buildSeed>;
 
-let entityNamesCache: { products: string[]; accounts: string[]; people: string[]; sectors: string[] } | undefined;
+const entityNamesCache = new Map<string, { products: string[]; accounts: string[]; people: string[]; sectors: string[] }>();
 
 /**
- * Names the data holds that a question can't filter by yet: products and product series, accounts, sectors,
- * and people. The normalizer asks a clarifying question when one appears, instead of quietly answering for
- * the whole scope.
+ * Names the active dataset holds that a question can't filter by yet: products and product series, accounts,
+ * sectors, and people. The normalizer asks a clarifying question when one appears, instead of quietly answering
+ * for the whole scope. Read from the same folder the database was loaded from.
  */
-export function entityNames() {
-  if (!entityNamesCache) {
-    const products = parseCsv('products.csv');
-    const accounts = parseCsv('accounts.csv');
-    const teams = parseCsv('sales_teams.csv');
-    entityNamesCache = {
+export function entityNames(dataDir: string = resolveDataDir()) {
+  let names = entityNamesCache.get(dataDir);
+  if (!names) {
+    const products = parseCsv('products.csv', dataDir);
+    const accounts = parseCsv('accounts.csv', dataDir);
+    const teams = parseCsv('sales_teams.csv', dataDir);
+    names = {
       products: [...new Set(products.flatMap((p) => [p.product!, p.series!]))],
       accounts: accounts.map((a) => a.account!),
       people: [...new Set(teams.flatMap((t) => [t.sales_agent!, t.manager!]))],
       sectors: [...new Set(accounts.map((a) => SECTOR_FIX[a.sector!] ?? a.sector!))],
     };
+    entityNamesCache.set(dataDir, names);
   }
-  return entityNamesCache;
+  return names;
 }
 
 export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
@@ -157,7 +159,10 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
     seed: resolvedSeed,
     asOfDate: AS_OF_DATE,
     loadedAt: new Date(`${AS_OF_DATE}T06:00:00Z`),
-    notes: `CRM sample from ${path.relative(process.cwd(), dataDir) || dataDir}, dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`,
+    notes:
+      dataDir === path.resolve(DEFAULT_DATA_DIR)
+        ? `Maven Analytics CRM Sales Opportunities sample (public domain, fictional company), dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`
+        : `CRM sample from ${path.relative(process.cwd(), dataDir) || dataDir}, dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`,
   };
   const regions = REGIONS.map((r) => ({ ...r }));
 

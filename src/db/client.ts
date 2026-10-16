@@ -14,7 +14,8 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
-import { buildSeed, DEFAULT_SEED } from './seed';
+import { buildSeed, DEFAULT_SEED, resolveDataDir } from './seed';
+import { assertDatasetConfirmed } from '../onboard/confirm';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -105,7 +106,11 @@ function chunks<T>(rows: T[], size = 500): T[][] {
 }
 
 export async function loadSeed(db: Db, seed?: string, options: { dataDir?: string } = {}) {
-  const s = buildSeed(seed, { dataDir: options.dataDir ?? process.env.DATASET_DIR });
+  // A second dataset chosen by DATASET_DIR needs a person's confirmation first (PRD A7). Tests and scripts that
+  // pass a folder explicitly are already choosing it in code.
+  const envDir = process.env.DATASET_DIR;
+  if (!options.dataDir && envDir && resolveDataDir(envDir) !== resolveDataDir(path.join('data', 'maven-crm'))) assertDatasetConfirmed(envDir);
+  const s = buildSeed(seed, { dataDir: options.dataDir ?? envDir });
   await db.transaction(async (tx) => {
     await tx.insert(schema.dataSnapshots).values(s.snapshot);
     await tx.insert(schema.regions).values(s.regions);

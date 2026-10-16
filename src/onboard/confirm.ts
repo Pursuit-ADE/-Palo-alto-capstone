@@ -47,6 +47,23 @@ export function writeConfirmation(confirmation: OnboardConfirmation, dest: strin
   return dest;
 }
 
+/**
+ * A dataset folder other than the default may only be loaded from DATASET_DIR after a person confirmed it
+ * (`npm run onboard:confirm`). Reads onboarding/active.json, or ONBOARDING_CONFIRMATION if set.
+ */
+export function assertDatasetConfirmed(datasetDir: string, file: string = process.env.ONBOARDING_CONFIRMATION || DEFAULT_ACTIVE_PATH): void {
+  const wanted = path.resolve(datasetDir);
+  let confirmed: OnboardConfirmation | undefined;
+  try {
+    confirmed = readConfirmation(file);
+  } catch {
+    confirmed = undefined;
+  }
+  if (!confirmed || path.resolve(confirmed.datasetDir) !== wanted) {
+    throw new OnboardError(`Dataset ${datasetDir} is not confirmed. Run npm run onboard:propose and npm run onboard:confirm first.`);
+  }
+}
+
 export function readConfirmation(file: string): OnboardConfirmation {
   return OnboardConfirmation.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
 }

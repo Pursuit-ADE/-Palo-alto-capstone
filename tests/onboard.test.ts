@@ -8,7 +8,8 @@ import { confirmOnboarding, OnboardError, writeConfirmation } from '@/onboard/co
 import { profileDataset } from '@/onboard/profile';
 import { proposeMetrics } from '@/onboard/propose';
 import { loadRegistry } from '@/registry/load';
-import { answerIntent } from '@/semantic/answer';
+import { answerIntent, ask } from '@/semantic/answer';
+import { inviteCode, userForInvite } from '@/server/auth';
 
 const NORTHSTAR = path.join(process.cwd(), 'data', 'northstar-crm');
 const MAVEN = path.join(process.cwd(), 'data', 'maven-crm');
@@ -104,5 +105,38 @@ describe('A7 confirmed dataset is queryable', () => {
     const { ScopeViolation } = await import('@/semantic/scope');
     const { ask } = await import('@/semantic/answer');
     await expect(ask(database, loadRegistry(), 'u_ts_east', 'number of open deals in the west')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+});
+
+// Review of #12: with the second dataset active, names from that dataset are recognized, invite codes follow
+// its demo people, and DATASET_DIR alone can't load a dataset nobody confirmed.
+describe('second dataset, after review', () => {
+  const env = process.env as Record<string, string | undefined>;
+  const saved = { d: env.DATASET_DIR, c: env.ONBOARDING_CONFIRMATION };
+  afterAll(() => {
+    for (const [k, v] of [['DATASET_DIR', saved.d], ['ONBOARDING_CONFIRMATION', saved.c]] as const) {
+      if (v === undefined) delete env[k];
+      else env[k] = v;
+    }
+  });
+
+  it('refuses to load an unconfirmed DATASET_DIR, and loads it once confirmed', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'onboard-'));
+    env.DATASET_DIR = NORTHSTAR;
+    env.ONBOARDING_CONFIRMATION = path.join(dir, 'active.json');
+    await expect(openDatabase()).rejects.toThrow(/not confirmed/);
+    const proposal = proposeMetrics(profileDataset(NORTHSTAR));
+    writeConfirmation(confirmOnboarding(proposal, { confirmedBy: 'Review test', metricIds: ['open_pipeline'] }), env.ONBOARDING_CONFIRMATION);
+    const db = await openDatabase();
+    try {
+      // A filter on a Northstar account name gets a clarifying question, not the whole-scope number.
+      const r = await ask(db, loadRegistry(), 'u_analyst', 'open pipeline for Amberline');
+      expect(r.kind).toBe('clarify');
+      // Invite codes follow the demo people of the dataset that is loaded.
+      expect(userForInvite(inviteCode('u_priya_nair', 'secret'), 'secret')).toBe('u_priya_nair');
+      expect(userForInvite(inviteCode('u_darcel_schlecht', 'secret'), 'secret')).toBeUndefined();
+    } finally {
+      await db.close();
+    }
   });
 });

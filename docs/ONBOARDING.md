@@ -40,6 +40,8 @@ npm run onboard:confirm -- onboarding/proposal.json --by "Your Name" --metrics o
 DATASET_DIR=data/northstar-crm npm run dev
 ```
 
+The app refuses to load a `DATASET_DIR` other than the default unless `onboarding/active.json` confirms that same folder. Filters on the new dataset's product, account, sector and people names get a clarifying question, and `npm run invites` prints codes for the new dataset's demo people.
+
 Ask “What is our open pipeline?” as Avery Patel (analyst). Northstar’s open
 pipeline is **$16,500** (six open deals at list price). Maven’s number is
 different, which is the proof the new snapshot is the one being queried.

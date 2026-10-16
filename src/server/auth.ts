@@ -11,7 +11,19 @@ import { promisify } from 'node:util';
 import { and, eq, gt } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { appAccounts, appSessions } from '../db/schema';
-import { DEMO_USER_IDS } from '../db/seed';
+import { demoUsers, resolveDataDir } from '../db/seed';
+
+// The demo people of the dataset that is loaded (Maven by default, or a confirmed second dataset).
+const demoIdsByDir = new Map<string, string[]>();
+export function activeDemoIds(): string[] {
+  const dir = resolveDataDir();
+  let ids = demoIdsByDir.get(dir);
+  if (!ids) {
+    ids = demoUsers().map((u) => u.id);
+    demoIdsByDir.set(dir, ids);
+  }
+  return ids;
+}
 
 const scryptAsync = promisify(scrypt) as (pw: string, salt: Buffer, len: number, opts: { N: number; r: number; p: number; maxmem: number }) => Promise<Buffer>;
 const SCRYPT = { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
@@ -46,10 +58,10 @@ export function inviteCode(userId: string, secret: string): string {
 }
 
 /** The demo person an invite code belongs to, or undefined. */
-export function userForInvite(code: string, secret: string | undefined): string | undefined {
+export function userForInvite(code: string, secret: string | undefined, ids: readonly string[] = activeDemoIds()): string | undefined {
   if (!secret) return undefined;
   const given = Buffer.from(code.trim().toUpperCase());
-  for (const id of DEMO_USER_IDS) {
+  for (const id of ids) {
     const want = Buffer.from(inviteCode(id, secret));
     if (given.length === want.length && timingSafeEqual(given, want)) return id;
   }
