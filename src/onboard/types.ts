@@ -1,10 +1,11 @@
 import { z } from 'zod';
 
+// Every column the seed loader reads. Optional values may be blank, but the column must exist.
 export const REQUIRED_CRM_FILES = {
-  accounts: ['account'],
-  products: ['product', 'sales_price'],
+  accounts: ['account', 'sector', 'year_established', 'revenue', 'employees', 'office_location', 'subsidiary_of'],
+  products: ['product', 'series', 'sales_price'],
   sales_teams: ['sales_agent', 'manager', 'regional_office'],
-  sales_pipeline: ['opportunity_id', 'sales_agent', 'product', 'deal_stage'],
+  sales_pipeline: ['opportunity_id', 'sales_agent', 'product', 'account', 'deal_stage', 'engage_date', 'close_date', 'close_value'],
 } as const;
 
 export const GOVERNED_METRIC_IDS = ['open_pipeline', 'pipeline_coverage', 'open_opportunity_count'] as const;
@@ -21,6 +22,8 @@ export const DatasetProfile = z.object({
   files: z.array(FileProfile),
   missingFiles: z.array(z.string()),
   missingColumns: z.record(z.string(), z.array(z.string())),
+  /** Value problems the loader would fail on: blanks, bad numbers or dates, broken references, missing regions. */
+  problems: z.array(z.string()).default([]),
   mavenShaped: z.boolean(),
 });
 export type DatasetProfile = z.infer<typeof DatasetProfile>;

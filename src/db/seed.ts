@@ -107,8 +107,8 @@ const SHIFT_DAYS = daysBetween(SOURCE_END_DATE, AS_OF_DATE);
 export const shiftDate = (iso: string) => addDays(iso, SHIFT_DAYS);
 
 // Known typos and naming mismatches in the public sample.
-const SECTOR_FIX: Record<string, string> = { technolgy: 'technology' };
-const PRODUCT_FIX: Record<string, string> = { GTXPro: 'GTX Pro' };
+export const SECTOR_FIX: Record<string, string> = { technolgy: 'technology' };
+export const PRODUCT_FIX: Record<string, string> = { GTXPro: 'GTX Pro' };
 
 const TITLES = [
   { title: 'Chief Information Security Officer', cxo: true },

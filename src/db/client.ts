@@ -14,7 +14,7 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
-import { buildSeed, DEFAULT_SEED, resolveDataDir } from './seed';
+import { buildSeed, defaultSeedForDir, resolveDataDir } from './seed';
 import { assertDatasetConfirmed } from '../onboard/confirm';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -53,8 +53,13 @@ export async function openDatabase(seed?: string, options: { dataDir?: string } 
   }
   const client = new PGlite();
   const db = drizzlePglite(client, { schema }) as unknown as Db;
-  await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
-  if ((await db.select().from(schema.dataSnapshots)).length === 0) await loadSeed(db, seed, options);
+  try {
+    await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
+    await prepareDataset(db, seed, options);
+  } catch (e) {
+    await client.close(); // a failed start doesn't leave the embedded database open
+    throw e;
+  }
   return { db, client, auditDb: db, mode: 'pglite', close: () => client.close() };
 }
 
@@ -63,7 +68,7 @@ async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, 
   try {
     const ownerDb = drizzlePg(owner, { schema });
     await migratePg(ownerDb, { migrationsFolder: MIGRATIONS });
-    if ((await ownerDb.select().from(schema.dataSnapshots)).length === 0) await loadSeed(ownerDb as unknown as Db, seed, options);
+    await prepareDataset(ownerDb as unknown as Db, seed, options);
     await applyGrants(owner);
   } finally {
     await owner.end();
@@ -105,12 +110,36 @@ function chunks<T>(rows: T[], size = 500): T[][] {
   return out;
 }
 
-export async function loadSeed(db: Db, seed?: string, options: { dataDir?: string } = {}) {
-  // A second dataset chosen by DATASET_DIR needs a person's confirmation first (PRD A7). Tests and scripts that
-  // pass a folder explicitly are already choosing it in code.
+export class DatasetMismatch extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DatasetMismatch';
+  }
+}
+
+/**
+ * Makes sure the database holds the dataset this server was started for. An empty database is loaded. A
+ * database that already holds another dataset is refused rather than shown under the new name: labels, demo
+ * people, invite codes and filter checks all follow the requested folder, so they must match what is stored.
+ * A second dataset chosen by DATASET_DIR also needs a person's confirmation first (PRD A7); tests and scripts that
+ * pass a folder explicitly are already choosing it in code.
+ */
+export async function prepareDataset(db: Db, seed?: string, options: { dataDir?: string } = {}) {
   const envDir = process.env.DATASET_DIR;
   if (!options.dataDir && envDir && resolveDataDir(envDir) !== resolveDataDir(path.join('data', 'maven-crm'))) assertDatasetConfirmed(envDir);
-  const s = buildSeed(seed, { dataDir: options.dataDir ?? envDir });
+  const dataDir = options.dataDir ?? envDir;
+  const expected = `snap_${seed ?? defaultSeedForDir(dataDir)}`;
+  const stored = await db.select({ id: schema.dataSnapshots.id }).from(schema.dataSnapshots);
+  if (stored.length === 0) return loadSeed(db, seed, { dataDir });
+  if (!stored.some((s) => s.id === expected)) {
+    throw new DatasetMismatch(
+      `This database already holds ${stored.map((s) => s.id).join(', ')}, but the app was started for ${expected} (${dataDir ?? 'data/maven-crm'}). Start with the matching DATASET_DIR, or use a fresh database for the other dataset.`,
+    );
+  }
+}
+
+export async function loadSeed(db: Db, seed?: string, options: { dataDir?: string } = {}) {
+  const s = buildSeed(seed, { dataDir: options.dataDir ?? process.env.DATASET_DIR });
   await db.transaction(async (tx) => {
     await tx.insert(schema.dataSnapshots).values(s.snapshot);
     await tx.insert(schema.regions).values(s.regions);
@@ -118,9 +147,9 @@ export async function loadSeed(db: Db, seed?: string, options: { dataDir?: strin
     await tx.insert(schema.products).values(s.products);
     await tx.insert(schema.accounts).values(s.accounts);
     for (const c of chunks(s.accountTeam)) await tx.insert(schema.accountTeam).values(c);
-    await tx.insert(schema.contacts).values(s.contacts);
+    if (s.contacts.length) await tx.insert(schema.contacts).values(s.contacts);
     for (const c of chunks(s.opportunities)) await tx.insert(schema.opportunities).values(c);
-    await tx.insert(schema.quotas).values(s.quotas);
+    if (s.quotas.length) await tx.insert(schema.quotas).values(s.quotas); // none when no rep has won deals yet
     if (s.supportCases.length) await tx.insert(schema.supportCases).values(s.supportCases);
     if (s.engagements.length) await tx.insert(schema.engagements).values(s.engagements);
   });

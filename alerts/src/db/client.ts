@@ -30,6 +30,12 @@ export const STATEMENT_TIMEOUT_MS = 10_000;
 
 /** Opens a database, applies migrations and loads the dataset if it is empty. */
 export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Database> {
+  // The alerts service only has the Maven dataset. If the copilot was switched to another dataset, refuse to start
+  // rather than alert on different accounts than the copilot shows.
+  const datasetDir = process.env.DATASET_DIR;
+  if (datasetDir && path.basename(path.resolve(datasetDir)) !== 'maven-crm') {
+    throw new Error(`The alerts service only supports the Maven dataset; DATASET_DIR=${datasetDir} is not supported yet. Unset DATASET_DIR for alerts, or run alerts only with the Maven copilot.`);
+  }
   const { ALERTS_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (ALERTS_DATABASE_URL || MIGRATION_DATABASE_URL) {
     if (!ALERTS_DATABASE_URL || !MIGRATION_DATABASE_URL) {

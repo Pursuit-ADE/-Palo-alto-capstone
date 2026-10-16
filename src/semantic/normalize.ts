@@ -23,8 +23,26 @@ const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stag
 const AMOUNT = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding) \d| \d+ ?(k|m|mm|million|thousand|bn|billion) | (deal size|deal sizes|size of deal|size of deals) /;
 const SECTOR = / (sector|sectors|industry|industries|vertical|verticals) /;
 
+// Shapes of a filter the registry can't express, whatever the words around them: a range, an exact value, a
+// bare number that isn't a year, or a product, account or customer named by its kind.
+const RANGE = / between \d| \d+ (and|to) \d+ | from \d+ to \d+ /;
+const EXACT = / (exactly|equal to|equals|worth|valued at|at least|at most|up to) /;
+const BARE_NUMBER = / (?!(?:19|20)\d\d )\d{3,} /;
+const KIND = / (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku|account|customer|client)s? /;
+// A capitalized name after "for", "at" or "from" that isn't a word the registry knows ("open pipeline for Nimbus").
+const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+)*)/g;
+const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost', 'cara', 'losch']);
+
+function unknownName(phrase: string): boolean {
+  for (const m of phrase.matchAll(NAMED)) {
+    const words = m[1]!.toLowerCase().split(/\s+/);
+    if (!words.every((w) => KNOWN_WORDS.has(w.replace(/[^a-z0-9]/g, '')))) return true;
+  }
+  return false;
+}
+
 function unsupportedSelector(phrase: string, text: string): string | undefined {
-  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase)) return 'deal size';
+  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase) || RANGE.test(text) || EXACT.test(text) || BARE_NUMBER.test(text)) return 'deal size';
   if (SECTOR.test(text)) return 'sector';
   const names = entityNames();
   const has = (n: string) => text.includes(clean(n));
@@ -32,6 +50,8 @@ function unsupportedSelector(phrase: string, text: string): string | undefined {
   if (names.accounts.some(has)) return 'account';
   if (names.sectors.some(has)) return 'sector';
   if (names.people.some(has)) return 'person';
+  if (KIND.test(text)) return 'product or account';
+  if (unknownName(phrase)) return 'a name the registry does not know';
   return undefined;
 }
 

@@ -46,8 +46,11 @@ Ask “What is our open pipeline?” as Avery Patel (analyst). Northstar’s ope
 pipeline is **$16,500** (six open deals at list price). Maven’s number is
 different, which is the proof the new snapshot is the one being queried.
 
-The demo picker still includes Maven names (Darcel, Melvin). Those people are
-not in Northstar. Use Avery, Jordan Lee (East), or Sam Rivera (West).
+The demo people (picker, invite codes) come from the loaded dataset: with Northstar, a Northstar rep and manager replace Darcel and Melvin. The app refuses to start on a database that already holds a different dataset, and the alerts app refuses any dataset other than Maven, so the two apps never show different companies.
+
+What the confirmation is: a record that a person reviewed this folder and which metrics they approved. The app checks that the folder was confirmed before loading it. It is not an access policy: scope still comes from roles in the database, and the metrics that run are the reviewed registry, whatever the file lists.
+
+Before a proposal, the profile checks every value the loader needs (required columns and values, numbers and dates, references between files, unique ids, and an East and a West team for the demo technical sellers), so a folder that can be confirmed also loads.
 
 `onboarding/active.json` is gitignored. Leave Maven as the committed default.
 

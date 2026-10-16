@@ -14,6 +14,7 @@ export function proposeMetrics(profile: DatasetProfile, registryRoot?: string): 
     for (const [file, cols] of Object.entries(profile.missingColumns)) {
       blockers.push(`${file} is missing columns: ${cols.join(', ')}.`);
     }
+    for (const p of profile.problems) blockers.push(p);
   }
   const proposedMetrics = profile.mavenShaped
     ? GOVERNED_METRIC_IDS.map((id) => {

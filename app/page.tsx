@@ -39,7 +39,9 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
     answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard'),
     answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard'),
   ]);
-  const cov = Number(coverage.rows[0]?.value ?? 0);
+  // Coverage with no quota is NULL: shown as not available, never as 0.00x.
+  const covRaw = coverage.rows[0]?.value;
+  const cov = covRaw === null || covRaw === undefined ? null : Number(covRaw);
 
   return (
     <>
@@ -95,11 +97,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <section className="card coverage" aria-labelledby="cov-title">
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
             <span className="cov-value">{format(cov, 'ratio')}</span>
-            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. 1.00x means pipeline equals quota.</p>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : '1.00x means pipeline equals quota.'}</p>
             <h2>By region</h2>
             <div className="bars">
               {byRegion.rows.map((r) => {
-                const v = Number(r.value ?? 0);
+                const v = r.value === null || r.value === undefined ? null : Number(r.value);
                 const max = Math.max(1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
                 return (
                   <div className="bar-row" key={String(r.region)}>
@@ -108,10 +110,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
                       <b>{format(v, 'ratio')}</b>
                     </div>
                     <div className="track">
-                      <div className="fill" style={{ width: `${(v / max) * 100}%` }} />
+                      <div className="fill" style={{ width: `${((v ?? 0) / max) * 100}%` }} />
                       <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
                     </div>
-                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota</span>
+                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota{v === null ? ' (no quota, so not available)' : ''}</span>
                   </div>
                 );
               })}

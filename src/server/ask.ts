@@ -10,6 +10,28 @@ import { ScopeViolation } from '../semantic/scope';
 
 export type Refusal = { kind: 'refused'; message: string };
 
+/** The AI model failed (network, quota, timeout). Only this error triggers the fallback. */
+export class ProviderError extends Error {
+  constructor(readonly cause: unknown) {
+    super('The AI model is unavailable.');
+    this.name = 'ProviderError';
+  }
+}
+
+/** Tags failures from the model itself, so a guard or database error is never mistaken for one. */
+function tagged(model: IntentModel): IntentModel {
+  return {
+    name: model.name,
+    async propose(...args) {
+      try {
+        return await model.propose(...args);
+      } catch (e) {
+        throw new ProviderError(e);
+      }
+    },
+  };
+}
+
 const KNOWN = (e: unknown): e is Error => e instanceof ScopeViolation || e instanceof IntentError || e instanceof SessionLocked;
 
 export async function askWithFallback(
@@ -21,10 +43,13 @@ export async function askWithFallback(
   model: IntentModel,
 ): Promise<Reply | Refusal> {
   try {
-    return await ask(database, registry, userId, question, { ...opts, model });
+    return await ask(database, registry, userId, question, { ...opts, model: model === deterministicModel ? model : tagged(model) });
   } catch (e) {
     if (KNOWN(e) || (e instanceof Error && e.name === 'InjectionRefused')) return { kind: 'refused', message: e.message };
-    if (model !== deterministicModel) {
+    // Fall back only when the model failed. By then this request already passed the lock check and its flags
+    // were recorded (both happen before the model runs), so the retry neither checks nor counts them again.
+    // Any other failure, such as the lock store being unreachable, is not retried around the lock.
+    if (e instanceof ProviderError) {
       const sameRequest = opts.guard ? { isLocked: () => false, record: () => {} } : undefined;
       try {
         return await ask(database, registry, userId, question, { ...opts, guard: sameRequest, model: deterministicModel });
