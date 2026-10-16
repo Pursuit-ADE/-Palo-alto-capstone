@@ -137,6 +137,17 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               </tbody>
             </table>
           </div>
+          <h3>Business rules</h3>
+          <p className="sub">How the numbers are defined. Same registry, same review.</p>
+          <div className="tablewrap">
+            <table>
+              <tbody>
+                {registry.glossary.businessRules.map((r) => (
+                  <tr key={r.id}><td><b>{r.id.replace(/_/g, ' ')}</b></td><td>{r.rule}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </>

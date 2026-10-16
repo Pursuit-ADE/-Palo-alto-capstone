@@ -60,6 +60,8 @@ export const Glossary = z.object({
   periodPhrases: z.record(z.string(), z.string()),
   dimensionPhrases: z.record(z.string(), Dimension),
   ambiguousTerms: z.record(z.string(), z.string()),
+  /** Business rules in plain language, each naming the file that applies it (tests check that they agree). */
+  businessRules: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_]*$/), rule: z.string().min(1), appliesIn: z.string().min(1) })).default([]),
 });
 export type Glossary = z.infer<typeof Glossary>;
 

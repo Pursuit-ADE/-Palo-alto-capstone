@@ -105,6 +105,11 @@ const ASSETS = ['Zero Trust whitepaper', 'SOC modernization whitepaper', 'Cloud 
 
 export type Dataset = ReturnType<typeof buildSeed>;
 
+/** Business rule "cxo" (registry/glossary.json): a CXO is a contact whose job title starts with "Chief". */
+export function isCxoTitle(title: string): boolean {
+  return /^Chief\s/.test(title);
+}
+
 export function buildSeed(seed: string = DEFAULT_SEED) {
   const rand = mulberry32(hashString(seed));
   const pick = <T,>(arr: readonly T[]): T => arr[Math.floor(rand() * arr.length)] as T;
@@ -227,7 +232,7 @@ export function buildSeed(seed: string = DEFAULT_SEED) {
   const contacts = accounts.flatMap((a, ai) =>
     [0, 1, 2].map((ci) => {
       const t = pick(TITLES);
-      return { id: `con_${ai + 1}_${ci + 1}`, snapshotId, accountId: a.id, fullName: `Contact ${ai + 1}-${ci + 1}`, title: t.title, isCxo: t.cxo };
+      return { id: `con_${ai + 1}_${ci + 1}`, snapshotId, accountId: a.id, fullName: `Contact ${ai + 1}-${ci + 1}`, title: t.title, isCxo: isCxoTitle(t.title) };
     }),
   );
 

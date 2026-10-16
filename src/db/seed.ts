@@ -146,6 +146,11 @@ export function entityNames(dataDir: string = resolveDataDir()) {
   return names;
 }
 
+/** Business rule "cxo" (registry/glossary.json): a CXO is a contact whose job title starts with "Chief". */
+export function isCxoTitle(title: string): boolean {
+  return /^Chief\s/.test(title);
+}
+
 export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
   const dataDir = resolveDataDir(options.dataDir);
   const resolvedSeed = seed ?? defaultSeedForDir(options.dataDir);
@@ -275,7 +280,7 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
   const contacts = accounts.flatMap((a, ai) =>
     [0, 1, 2].map((ci) => {
       const t = pick(TITLES);
-      return { id: `con_${ai + 1}_${ci + 1}`, snapshotId, accountId: a.id, fullName: `Contact ${ai + 1}-${ci + 1}`, title: t.title, isCxo: t.cxo };
+      return { id: `con_${ai + 1}_${ci + 1}`, snapshotId, accountId: a.id, fullName: `Contact ${ai + 1}-${ci + 1}`, title: t.title, isCxo: isCxoTitle(t.title) };
     }),
   );
 

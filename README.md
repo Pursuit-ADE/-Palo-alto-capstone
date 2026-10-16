@@ -98,7 +98,7 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
 - Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
-- More business rules in the glossary, and running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
+- Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
 - The test identity picker is not authentication.
 
 ## Project documents
