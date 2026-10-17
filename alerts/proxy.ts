@@ -1,7 +1,8 @@
 // Content Security Policy with a fresh nonce per request, so only scripts Next.js renders with that nonce run.
-// Pages are dynamic (force-dynamic), which nonces require. HSTS is set in next.config.ts (on in production, ignored
-// by browsers over plain http). upgrade-insecure-requests stays off: it would break a plain-http localhost demo.
+// Pages are dynamic (force-dynamic), which nonces require. HSTS is set here too, per request, so ENABLE_HSTS is read
+// when the server starts rather than baked in by `next build` (on in production, ignored by browsers over plain http). upgrade-insecure-requests stays off: it would break a plain-http localhost demo.
 import { NextResponse, type NextRequest } from 'next/server';
+import { HSTS_VALUE, httpsSettings } from './src/server/https';
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
@@ -26,6 +27,7 @@ export function proxy(request: NextRequest) {
   requestHeaders.set('Content-Security-Policy', csp);
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
+  if (httpsSettings().hsts) response.headers.set('Strict-Transport-Security', HSTS_VALUE);
   return response;
 }
 

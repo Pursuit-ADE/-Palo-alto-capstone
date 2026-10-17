@@ -11,3 +11,6 @@ export function httpsSettings(env: Record<string, string | undefined> = process.
   const secureCookie = env.COOKIE_SECURE === 'false' ? false : production || hsts || env.COOKIE_SECURE === 'true';
   return { hsts, secureCookie };
 }
+
+/** Sent per request from proxy.ts, so ENABLE_HSTS is read when the server runs, not frozen at `next build`. */
+export const HSTS_VALUE = 'max-age=31536000; includeSubDomains';

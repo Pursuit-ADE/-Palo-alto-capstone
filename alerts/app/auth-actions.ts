@@ -6,6 +6,8 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
+import { AttemptLimiter } from '@/server/attempt-limiter';
+import { addressLimit, clientAddress } from '@/server/client-address';
 import { getAlertsRuntime } from '@/server/runtime';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/server/session';
 
@@ -14,19 +16,14 @@ export type AuthState = { error?: string } | null;
 const Field = z.string().max(200);
 
 // Per server process (the alerts app has no shared guard table): 10 attempts a minute per username, and 30 a
-// minute per address across all usernames, so one machine can't try many accounts.
-const attempts = new Map<string, number[]>();
-function allow(key: string, max: number, now: number): boolean {
-  const recent = (attempts.get(key) ?? []).filter((t) => now - t < 60_000);
-  if (recent.length >= max) return false;
-  attempts.set(key, [...recent, now]);
-  return true;
-}
+// minute per address across all usernames, so one machine can't try many accounts. Without a trusted address
+// (see src/server/client-address.ts) all callers share one bucket of 100.
+const limiter = new AttemptLimiter();
+// The address is checked first, so a refused attempt never adds a username key.
 async function attempt(key: string, now = Date.now()): Promise<boolean> {
-  if (!allow(key, 10, now)) return false;
-  const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim();
-  return !ip || allow(`ip:${ip}`, 30, now);
+  const address = clientAddress(await headers());
+  if (!limiter.allow(`ip:${address}`, addressLimit(address), now)) return false;
+  return limiter.allow(key, 10, now);
 }
 
 async function db() {

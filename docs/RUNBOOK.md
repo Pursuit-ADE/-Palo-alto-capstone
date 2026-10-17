@@ -44,19 +44,21 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 | `DEMO_INVITE_SECRET` | both | Turns on sign-up with invite codes. Same value in both apps. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
 | `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
-| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Set it so fingerprints stay comparable across restarts. |
+| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints and the per-address sign-in limit. Required with `npm start` in Postgres mode (`openssl rand -hex 32`). |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
 | `SLACK_USER_WEBHOOKS` | alerts | JSON map of user id to that person's own `https://hooks.slack.com/services/...` webhook. |
-| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`. Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
-| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and every session lock. |
+| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`, read when the server starts (no rebuild needed). Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
+| `TRUSTED_PROXY_HOPS` | both | Proxies in front of the app that append to `X-Forwarded-For` (1 for one load balancer). Unset: the header is ignored and all sign-in attempts share one limit of 100 a minute. |
+| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and one when a session lock starts. |
 
 ## Common problems
 
 | What you see | Why | Fix |
 |---|---|---|
 | Server stops with "Production needs Postgres mode" | `npm start` refuses the in-memory database by default | Laptop demo: `ALLOW_EMBEDDED_DB=true`. Shared use: set the Postgres URLs. |
+| Server stops with "Production needs AUDIT_HASH_KEY" | `npm start` in Postgres mode needs a fixed audit key | Set `AUDIT_HASH_KEY` to the output of `openssl rand -hex 32`, the same value on every server. |
 | "Sign-up is turned off here" | No invite secret | Set `DEMO_INVITE_SECRET` and restart. |
 | "That invite code is not valid" | The codes were printed with a different secret than the server has | Run `npm run invites` with the same `DEMO_INVITE_SECRET` the server uses. |
 | "The username or password is not right" | Wrong password, or the account was made in the other app | Accounts are per app; create one in each with the same invite code. |
