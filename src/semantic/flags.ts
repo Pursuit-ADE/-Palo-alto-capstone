@@ -50,6 +50,8 @@ export function flagQuestion(question: string, canSeeEverything = false): string
   const clean = normalizeForFlags(question);
   const variants = [clean, unLeet(clean)];
   const hit = (re: RegExp) => variants.some((v) => re.test(v));
+  // Links and SQL are matched on the cleaned text only: undoing digit swaps there could turn ordinary text into
+  // false links or SQL, and neither rule is about wording.
   const flags = RULES.filter(([code, re]) => (code === 'link' || code === 'sql_or_code' ? re.test(clean) : hit(re))).map(([code]) => code);
   if (!canSeeEverything && hit(WIDENING)) flags.push('scope_widening');
   return flags;

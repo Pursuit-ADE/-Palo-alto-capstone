@@ -104,7 +104,8 @@ function baseFilters(out: z.infer<typeof ModelOutput>): Record<string, unknown> 
 
 // What the person reads is always one of these fixed sentences, chosen from the model's structured fields. The
 // model's own free text (`message`) is never shown: if it echoed its instructions or text planted by an attacker,
-// that would otherwise land on screen. Only its fingerprint goes to the audit log.
+// that would otherwise land on screen. It is dropped, not stored: the audit row's reason carries a fingerprint of
+// the fixed sentence that was shown.
 export const UNSUPPORTED_TEXT = 'I can only answer questions about the governed metrics: open pipeline, pipeline coverage and open opportunities.';
 export const CLARIFY_TEXT = {
   metric: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?',
