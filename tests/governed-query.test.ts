@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase, type Database } from '@/db/client';
 import { buildSeed, QUOTA_PERIODS } from '@/db/seed';
 import { loadRegistry } from '@/registry/load';
+import golden from '../registry/golden/phrases.json';
 import { answerIntent, ask, type Answer } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
 import { ScopeViolation } from '@/semantic/scope';
@@ -23,6 +24,21 @@ const q1 = QUOTA_PERIODS[0];
 const inQ1 = (o: { closeDate: string }) => o.closeDate >= q1.start && o.closeDate <= q1.end;
 const teamOf = (managerId: string) => new Set(data.users.filter((u) => u.managerId === managerId && u.role === 'sales_rep').map((u) => u.id));
 const ratio = (num: number, den: number) => Math.round((num / den) * 10000) / 10000;
+
+// Golden phrasings grouped by expected intent; keys are sorted so {regions, period} and {period, regions} group together.
+const canonical = (v: unknown): unknown =>
+  Array.isArray(v) ? v.map(canonical)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, x]) => [k, canonical(x)]))
+  : v;
+const equivalentPhrasings = (() => {
+  const groups = new Map<string, string[]>();
+  for (const c of golden.cases) {
+    if (!('metric' in c.expect)) continue;
+    const key = JSON.stringify(canonical(c.expect));
+    groups.set(key, [...(groups.get(key) ?? []), c.phrase]);
+  }
+  return [...groups.values()].filter((phrases) => phrases.length > 1);
+})();
 
 async function answer(userId: string, phrase: string): Promise<Answer> {
   const r = await ask(database, reg, userId, phrase);
@@ -51,11 +67,50 @@ describe('governed metrics against the loaded CRM data', () => {
     }
   });
 
-  it('every phrasing in the golden set for a metric returns the same number', async () => {
-    const values = await Promise.all(
-      ['What is our open pipeline?', 'show me total pipeline', 'how much open pipe do we have'].map(async (p) => (await answer('u_analyst', p)).rows[0]!.value),
-    );
-    expect(new Set(values).size).toBe(1);
+  it('equivalent golden phrasings return the same numbers', async () => {
+    expect(equivalentPhrasings.length).toBeGreaterThanOrEqual(8);
+    for (const phrases of equivalentPhrasings) {
+      const answers = [];
+      for (const phrase of phrases) answers.push(await answer('u_analyst', phrase));
+      for (const [i, a] of answers.entries()) {
+        expect(a.rows, phrases[i]).toEqual(answers[0]!.rows);
+      }
+    }
+  });
+
+  it('equivalent golden phrasings agree for scoped users too (same rows, or the same refusal)', async () => {
+    const outcome = async (userId: string, phrase: string) => {
+      try {
+        const r = await ask(database, reg, userId, phrase);
+        return r.kind === 'answer' ? { rows: r.rows } : { kind: r.kind };
+      } catch (e) {
+        return { error: (e as Error).constructor.name };
+      }
+    };
+    for (const userId of ['u_ts_east', 'u_darcel_schlecht']) {
+      for (const phrases of equivalentPhrasings) {
+        const first = await outcome(userId, phrases[0]!);
+        for (const phrase of phrases.slice(1)) {
+          expect(await outcome(userId, phrase), `${userId}: ${phrase}`).toEqual(first);
+        }
+      }
+    }
+  });
+
+  it('this-quarter coverage phrasings match the hand-computed ratio', async () => {
+    const phrases = [
+      'What is our pipeline coverage this quarter?',
+      'coverage ratio for FY27-Q1',
+      'what is coverage this fiscal quarter',
+    ];
+    const pipe = sum(open.filter(inQ1));
+    const quota = sum(data.quotas.filter((q) => q.period === q1.period));
+    const expected = ratio(pipe, quota);
+    for (const phrase of phrases) {
+      const r = await answer('u_analyst', phrase);
+      expect(r.rows, phrase).toHaveLength(1);
+      expect(r.rows[0]!.value, phrase).toBeCloseTo(expected, 4);
+    }
   });
 });
 
