@@ -104,7 +104,10 @@ describe('coverage with no quota is unavailable, not zero', () => {
     try {
       const a = await answerIntent(db, reg, 'u_analyst', { metric: 'pipeline_coverage', filters: { period: 'FY27-Q2' }, groupBy: ['region'] });
       expect(a.narrative).not.toMatch(/at\s+\(|is :/);
-      if (a.rows.some((r) => r.value === null)) expect(a.narrative).toContain('no quota');
+      // Northstar's Central reps have no won deals in the last year, so their quota rounds to $0 and coverage is null.
+      const central = a.rows.find((r) => r.region === 'central');
+      expect(central?.value).toBeNull();
+      expect(a.narrative).toContain('no quota');
     } finally {
       await db.close();
     }
