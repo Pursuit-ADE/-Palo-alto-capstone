@@ -47,11 +47,6 @@ export async function openDatabase(seed?: string, options: { dataDir?: string } 
     if (!DATABASE_URL || !AUDIT_DATABASE_URL || !MIGRATION_DATABASE_URL) {
       throw new Error('Postgres mode needs DATABASE_URL, AUDIT_DATABASE_URL and MIGRATION_DATABASE_URL together');
     }
-    // Without a fixed key each process fingerprints with its own random one, so audit rows from different
-    // processes or restarts can't be matched and the per-address sign-in limit isn't shared between them.
-    if (process.env.NODE_ENV === 'production' && !process.env.AUDIT_HASH_KEY) {
-      throw new Error('Production needs AUDIT_HASH_KEY (a long random value, e.g. `openssl rand -hex 32`) so audit fingerprints and sign-in limits are shared across processes and restarts.');
-    }
     return openPostgres(DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL, seed, options);
   }
   // The embedded database has no separate read-only and audit logins and forgets everything on restart, so a

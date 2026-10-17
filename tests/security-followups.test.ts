@@ -1,8 +1,8 @@
 // Follow-ups to the Oct 17 security review (#20): gaps found after it merged, checked here so they stay fixed.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NextRequest } from 'next/server';
-import { openDatabase } from '@/db/client';
 import { flagQuestion, normalizeForFlags } from '@/semantic/flags';
+import { assertAuditKeyInProduction } from '@/server/audit-key';
 import { addressLimit, ATTEMPTS_PER_ADDRESS, ATTEMPTS_SHARED, clientAddress, SHARED_ADDRESS } from '@/server/client-address';
 import { notifySecurity } from '@/server/security-notify';
 import { proxy } from '../proxy';
@@ -35,13 +35,12 @@ describe('sign-in address limit', () => {
 });
 
 describe('audit key in production', () => {
-  it('Postgres mode refuses to start without AUDIT_HASH_KEY', async () => {
-    vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('AUDIT_HASH_KEY', '');
-    vi.stubEnv('DATABASE_URL', 'postgres://x@127.0.0.1:1/x');
-    vi.stubEnv('AUDIT_DATABASE_URL', 'postgres://x@127.0.0.1:1/x');
-    vi.stubEnv('MIGRATION_DATABASE_URL', 'postgres://x@127.0.0.1:1/x');
-    await expect(openDatabase()).rejects.toThrow(/AUDIT_HASH_KEY/);
+  it('a real deployment refuses to start without a 32+ character AUDIT_HASH_KEY; the laptop demo may', () => {
+    expect(() => assertAuditKeyInProduction({ NODE_ENV: 'production' })).toThrow(/AUDIT_HASH_KEY/);
+    expect(() => assertAuditKeyInProduction({ NODE_ENV: 'production', AUDIT_HASH_KEY: 'short' })).toThrow(/AUDIT_HASH_KEY/);
+    expect(() => assertAuditKeyInProduction({ NODE_ENV: 'production', AUDIT_HASH_KEY: 'k'.repeat(32) })).not.toThrow();
+    expect(() => assertAuditKeyInProduction({ NODE_ENV: 'production', ALLOW_EMBEDDED_DB: 'true' })).not.toThrow();
+    expect(() => assertAuditKeyInProduction({ NODE_ENV: 'development' })).not.toThrow();
   });
 });
 

@@ -1,5 +1,6 @@
 import { openDatabase, type Database } from '../db/client';
 import { loadRegistry, type Registry } from '../registry/load';
+import { assertAuditKeyInProduction } from './audit-key';
 
 // One embedded database and registry per server process (in memory, re-seeded deterministically on start).
 const g = globalThis as unknown as { __db?: () => Promise<Database>; __reg?: Registry };
@@ -20,7 +21,10 @@ export function onceWithRetry<T>(init: () => Promise<T>): () => Promise<T> {
 }
 
 export function getDatabase(): Promise<Database> {
-  g.__db ??= onceWithRetry(() => openDatabase());
+  g.__db ??= onceWithRetry(async () => {
+    assertAuditKeyInProduction();
+    return openDatabase();
+  });
   return g.__db();
 }
 
