@@ -29,6 +29,7 @@ body { font: 15px/1.55 var(--font); color: var(--fg); background: var(--bg); }
 .mark::after { content: ""; width: 10px; height: 10px; border: 3px solid var(--chrome); border-radius: 2px; transform: rotate(45deg); }
 .brand strong { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
 .brand span { display: block; font-size: 12px; color: var(--chrome-muted); }
+.badge.synthetic { justify-self: start; color: var(--chrome); background: #ffd84d; border-color: #ffd84d; }
 .badge { flex-shrink: 0; white-space: nowrap; font: 700 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 5px 10px; }
 .who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 .who label { font-size: 12px; color: var(--chrome-muted); }
@@ -74,9 +75,24 @@ form.ask button:hover { background: var(--orange-dark); }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px; border-bottom: 2px solid var(--line); }
 td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
-.receipt { margin-top: 12px; display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
-.receipt b { color: var(--fg); }
-.receipt code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+/* Provenance panel: under every answer */
+.provenance { margin-top: 14px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--chrome); border-radius: 0 8px 8px 0; padding: 12px 14px; font-size: 13px; color: var(--muted); }
+.provenance h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
+.provenance dl { margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; }
+.provenance dt { font-weight: 700; color: var(--fg); }
+.provenance dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.provenance b { color: var(--fg); }
+.provenance .ver { font: 500 12px var(--mono); color: var(--fg); }
+.provenance .part-scope { display: block; margin-top: 2px; }
+.provenance .ids { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.provenance code { font-family: var(--mono); font-size: 12px; color: var(--fg); overflow-wrap: anywhere; }
+.provenance details { margin-top: 8px; }
+.provenance summary { cursor: pointer; font-weight: 600; color: var(--fg); }
+.provenance details code { display: block; margin-top: 4px; }
+@media (max-width: 520px) {
+  .provenance dl { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .provenance dd { margin-bottom: 6px; }
+}
 
 .bars { display: grid; gap: 14px; }
 .bar-row { display: grid; gap: 6px; }

@@ -45,7 +45,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Maven CRM data</span>
+          <SyntheticBadge />
           <form className="who" method="get">
             <label htmlFor="user">Viewing as</label>
             <select id="user" name="user" defaultValue={user}>
@@ -127,9 +127,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   );
 }
 
+// Shown on every view: no real customer or Palo Alto Networks data is used anywhere in the app.
+function SyntheticBadge() {
+  return (
+    <span className="badge synthetic" title="Public Maven Analytics CRM sample (a fictional company) plus synthetic quotas, contacts, cases and engagements. No real customer or Palo Alto Networks data.">
+      Synthetic data
+    </span>
+  );
+}
+
 function SignInRequired() {
   return (
     <main>
+      <SyntheticBadge />
       <div className="page-head">
         <h1>Sign-in is not set up yet</h1>
         <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
