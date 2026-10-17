@@ -2,7 +2,7 @@
 
 Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026).
 
-A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts follow in Week 4.
+A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts are in `alerts/` (since Week 2); Week 4 adds the scheduler, editable preferences and weekly or monthly digests.
 
 **No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
 
@@ -10,7 +10,7 @@ New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
 
 ## Run it
 
-Requires Node 20+. No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
+Requires Node 22.12 or newer (CI uses Node 24). No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
 
 ```bash
 npm install
@@ -42,7 +42,7 @@ phrase -> intent normalizer -> Intent (metric + filters, Zod-validated)
 | `data/maven-crm/` | The public CRM sample (accounts, opportunities, sales teams, products) |
 | `src/db/schema.ts`, `src/db/seed.ts` | Data model and loader: sample data, date shift, estimates for open deals, synthetic quotas, contacts, cases and engagements |
 | `src/semantic/` | Normalizer (golden-set mock of the AI model), validation, scope and SQL compiler |
-| `drizzle/` | Generated migrations |
+| `drizzle/` | Migrations, append-only: `0000_init` is the baseline on main, later changes are new numbered files. Never edit an applied migration; `tests/migrations.test.ts` upgrades a baseline database to the current schema |
 | `.github/workflows/` | CI: typecheck, tests, dependency audit, secret scan (gitleaks), static analysis (CodeQL) |
 
 Registry changes go through pull requests (reviewed, version-controlled); there is no runtime editing.
@@ -52,6 +52,13 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Own registry over Cube** (Oct 9): simpler for 3 metrics on one database; revisit if the catalog grows past 15 to 20 metrics.
 - **Fiscal quarters**: Palo Alto Networks' fiscal year starts Aug 1, so FY27-Q1 = Aug 1 to Oct 31, 2026 (assumption).
 - **Scope**: sales reps see their own deals; managers and the technical seller who supports a team see that team; the analyst sees everything. Coverage uses the same people's quotas.
+
+## Week 3: conversation, charts and red-team
+
+- **Follow-up questions (A5):** the copilot keeps a chat. The only conversation state is the previous answer's structured intent, which the server re-validates and re-scopes every turn. "What about West?", "by stage" and "and next quarter?" build on the previous question; a 10-turn test proves the numbers match asking each question fresh.
+- **Intent model:** `src/semantic/model.ts`. The deterministic golden-set model is the default and runs in CI. Set `INTENT_MODEL=claude` (with Anthropic credentials) to use Claude with structured output; it sees only the metric catalog, the question and the previous intent, never rows or entitlements, and its output passes the same schema, registry and scope checks. If the model is unavailable, the app falls back to the deterministic model. The client allows any AI provider (Oct 15); Claude is the one we evaluate.
+- **Charts and narrative (A6):** a plain-language summary and a bar chart (with a Vega-Lite spec) are built from the governed rows, never written by a model.
+- **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope. After 3 flagged questions in 10 minutes, a user is locked out of asking for 10 minutes. `npm run eval:golden` checks the configured intent model against the golden set.
 
 ## Security controls
 
@@ -76,9 +83,11 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
 - HSTS once the app is served over HTTPS.
 - Week 2: business rules in the context layer; run the app on Postgres mode by default.
-- Week 3: real AI model for intent, follow-up conversations, charts, red-team suite.
-- Week 4: alert rule catalog, subscriptions, private delivery with send-time permission checks.
-- Mock identity picker is for the demo only; it is not authentication.
+- Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
+- Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
+- Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
+- Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
+- The test identity picker is not authentication.
 
 ## Project documents
 

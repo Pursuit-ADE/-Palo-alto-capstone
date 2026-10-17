@@ -4,16 +4,19 @@
 // logs. Next.js checks the request's Origin against the host for Server Actions.
 import { z } from 'zod';
 import { demoUsers } from '@/db/seed';
-import { ask, MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
-import { IntentError } from '@/semantic/compile';
-import { ScopeViolation } from '@/semantic/scope';
+import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
+import { selectModel } from '@/semantic/model';
+import { askWithFallback } from '@/server/ask';
 import { testIdentitiesEnabled } from '@/server/identity';
-import { questionLimiter } from '@/server/limits';
+import { flagGuard, questionLimiter } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
 export type AskResult = Reply | { kind: 'refused'; message: string } | null;
 
 const Question = z.string().trim().min(1).max(MAX_QUESTION_LENGTH);
+// The conversation state the browser sends back: at most the previous intent (a few hundred bytes) and a turn count.
+const PreviousJson = z.string().max(2000);
+const Turn = z.coerce.number().int().min(1).max(50);
 const DEMO_IDS = new Set(demoUsers().map((u) => u.id));
 
 export async function askCopilot(_prev: AskResult, formData: FormData): Promise<AskResult> {
@@ -25,10 +28,20 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   const parsed = Question.safeParse(formData.get('example') ?? formData.get('q'));
   if (!parsed.success) return { kind: 'refused', message: `Ask a question of 1 to ${MAX_QUESTION_LENGTH} characters.` };
   if (!questionLimiter.allow(userId)) return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
-  try {
-    return await ask(await getDatabase(), getRegistry(), userId, parsed.data);
-  } catch (e) {
-    if (e instanceof ScopeViolation || e instanceof IntentError) return { kind: 'refused', message: e.message };
-    return { kind: 'refused', message: 'Something went wrong answering that question.' };
+
+  let previous: unknown;
+  const prevRaw = PreviousJson.safeParse(formData.get('previous'));
+  if (prevRaw.success && prevRaw.data) {
+    try {
+      previous = JSON.parse(prevRaw.data); // re-validated against the Intent schema inside ask()
+    } catch {
+      previous = undefined;
+    }
   }
+  const turn = Turn.safeParse(formData.get('turn'));
+  const opts = { previous, turn: turn.success ? turn.data : 1, guard: flagGuard };
+
+  const database = await getDatabase();
+  const registry = getRegistry();
+  return askWithFallback(database, registry, userId, parsed.data, opts, selectModel());
 }

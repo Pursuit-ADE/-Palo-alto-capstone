@@ -1,0 +1,21 @@
+CREATE TABLE "query_audit" (
+	"id" text PRIMARY KEY NOT NULL,
+	"at" timestamp with time zone NOT NULL,
+	"request_id" text NOT NULL,
+	"source" text NOT NULL,
+	"user_id" text NOT NULL,
+	"role" text,
+	"question_sha256" text,
+	"intent" jsonb,
+	"metric_id" text,
+	"metric_version" integer,
+	"regions" text[],
+	"owner_count" integer,
+	"snapshot_id" text,
+	"result_hash" text,
+	"outcome" text NOT NULL,
+	"reason" text,
+	"flags" text[],
+	"model" text,
+	"turn" integer
+);

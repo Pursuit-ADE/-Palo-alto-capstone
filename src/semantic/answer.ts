@@ -1,13 +1,16 @@
 // End-to-end governed answer: phrase -> intent -> validation -> scope -> compiled SQL -> result with provenance.
 // Every call writes one audit row (PRD S4), including refusals. If the audit row can't be written, no answer is returned.
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { desc } from 'drizzle-orm';
 import type { Database } from '../db/client';
 import { dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
-import { normalize } from './normalize';
-import { resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
+import { Intent as IntentSchema, type Intent } from '../registry/types';
+import { flagQuestion } from './flags';
+import { deterministicModel, type IntentModel } from './model';
+import { chartSpec, narrate } from './narrative';
+import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
 export const MAX_QUESTION_LENGTH = 300;
 
@@ -17,14 +20,28 @@ export interface Answer {
   intent: unknown;
   rows: Record<string, string | number | null>[];
   scope: string;
+  /** Plain-language summary built from the rows (never from a model). */
+  narrative: string;
+  /** Vega-Lite bar chart spec for a single breakdown, or null. */
+  chart: ReturnType<typeof chartSpec>;
   provenance: { snapshotId: string; asOfDate: string; resultHash: string };
 }
 
-export type Reply = Answer | { kind: 'clarify'; question: string } | { kind: 'unsupported'; message: string };
+export type Reply = Answer | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
 
 type AuditFields = Partial<typeof queryAudit.$inferInsert>;
 
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+// Questions are short and predictable, so a plain hash could be reversed by hashing likely questions. The
+// audit log stores a keyed hash (HMAC-SHA-256) instead. Set AUDIT_HASH_KEY to keep fingerprints comparable
+// across restarts and instances; without it, each process uses its own random key.
+const AUDIT_KEY = process.env.AUDIT_HASH_KEY || randomBytes(32).toString('hex');
+
+/** The audit fingerprint of a question (or of model text that may echo it). Never the text itself. */
+export function questionFingerprint(text: string): string {
+  return createHmac('sha256', AUDIT_KEY).update(text).digest('hex');
+}
 
 /** The snapshot answers come from: always the newest one, chosen explicitly rather than by row order. */
 export async function currentSnapshot(database: Database) {
@@ -40,7 +57,22 @@ async function audit(database: Database, entry: AuditFields & { userId: string; 
   await database.auditDb.insert(queryAudit).values({ id: randomUUID(), at: new Date(), ...entry });
 }
 
+/** Thrown when a user is locked out after repeated flagged questions (S3). */
+export class SessionLocked extends Error {
+  constructor() {
+    super('Too many questions were flagged as unsafe. Asking is paused for a few minutes.');
+    this.name = 'SessionLocked';
+  }
+}
+
+/** The lock the caller enforces; see FlagGuard in src/server/limits.ts. */
+export interface Guard {
+  isLocked(user: string, now?: number): boolean;
+  record(user: string, now?: number): void;
+}
+
 function outcomeOf(e: unknown): { outcome: string; reason: string } {
+  if (e instanceof SessionLocked) return { outcome: 'refused_locked', reason: e.message };
   if (e instanceof ScopeViolation) return { outcome: 'refused_scope', reason: e.message };
   if (e instanceof IntentError) return { outcome: 'refused_intent', reason: e.message };
   return { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' };
@@ -67,6 +99,8 @@ async function run(database: Database, registry: Registry, principal: Principal,
     intent,
     rows,
     scope: scopeStatement(principal, q.regions),
+    narrative: narrate(metric, rows, intent.groupBy, intent.filters.period),
+    chart: chartSpec(metric, rows, intent.groupBy),
     provenance: { snapshotId: snapshot.id, asOfDate: snapshot.asOfDate, resultHash },
   };
 }
@@ -79,7 +113,7 @@ async function audited<T extends Reply>(
   body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
 ): Promise<T> {
   const requestId = randomUUID();
-  const fields: AuditFields = { questionSha256: question === null ? null : sha256(question) };
+  const fields: AuditFields = { questionSha256: question === null ? null : questionFingerprint(question) };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
     fields.role = p.role;
@@ -102,17 +136,43 @@ export function answerIntent(database: Database, registry: Registry, userId: str
   return audited(database, userId, source, null, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
 }
 
-/** Answers a typed question for a user, with audit. */
-export function ask(database: Database, registry: Registry, userId: string, phrase: string): Promise<Reply> {
+export interface AskOptions {
+  /** The previous turn's intent: the whole conversation state. Re-validated here; anything invalid is ignored. */
+  previous?: unknown;
+  /** Turn number in the conversation, for the audit log. */
+  turn?: number;
+  model?: IntentModel;
+  /** Session lock after repeated flagged questions. */
+  guard?: Guard;
+}
+
+/** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
+export function parsePrevious(raw: unknown): Intent | undefined {
+  const parsed = IntentSchema.safeParse(raw);
+  return parsed.success ? parsed.data : undefined;
+}
+
+/** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
+export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
+  const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
+    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    if (opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
     const p = await principal();
+    const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
+    fields.flags = flags;
+    if (flags.length) opts.guard?.record(userId);
     const snapshot = await currentSnapshot(database);
-    const n = normalize(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10));
+    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {
-      fields.reason = n.kind === 'clarify' ? n.question : n.message;
+      // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
+      // audit log keeps only the question's hash.
+      fields.reason = `${n.kind}:${questionFingerprint(n.kind === 'clarify' ? n.question : n.message).slice(0, 16)}`;
       return n;
     }
-    return run(database, registry, p, n.intent, fields);
+    // Scope is resolved again after the model returns: a role or team change made while the model was
+    // working applies to this query, not just the next one.
+    return run(database, registry, await principal(), n.intent, fields);
   });
 }

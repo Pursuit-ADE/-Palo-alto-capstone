@@ -92,3 +92,20 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
   .grid2, .overview { grid-template-columns: minmax(0, 1fr); }
   .topbar-inner, main { padding-left: 16px; padding-right: 16px; }
 }
+
+/* Week 3: conversation */
+.chat-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+.link-button { font: 600 13px var(--font); color: var(--orange-dark); background: none; border: 0; cursor: pointer; padding: 4px 0; }
+.link-button:hover { text-decoration: underline; }
+.turns { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 16px; }
+.turn { display: grid; gap: 8px; }
+.turn .you { margin: 0; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.turn .you span { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.turn.thinking { color: var(--muted); font-size: 14px; }
+.turn .answer { margin-top: 0; }
+.narrative { margin: 0 0 10px; }
+.chart { margin: 4px 0 12px; overflow-x: auto; }
+.chart svg { width: 100%; max-width: 560px; height: auto; display: block; }
+.chart-bar { fill: var(--orange); }
+.chart-label, .chart-value { font: 12px var(--font); fill: var(--fg); }
+.chart-value { fill: var(--muted); }

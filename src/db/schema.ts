@@ -118,7 +118,7 @@ export const engagements = pgTable('engagements', {
 });
 
 // PRD S4: one row per question or dashboard query, including refusals. Append-only: the app's audit
-// role may only INSERT. The raw question is never stored, only its SHA-256 hash.
+// role may only INSERT. The raw question is never stored, only its keyed hash (HMAC-SHA-256 with AUDIT_HASH_KEY).
 export const queryAudit = pgTable('query_audit', {
   id: text('id').primaryKey(),
   at: timestamp('at', { withTimezone: true }).notNull(),
@@ -136,4 +136,8 @@ export const queryAudit = pgTable('query_audit', {
   resultHash: text('result_hash'),
   outcome: text('outcome').notNull(),
   reason: text('reason'),
+  // S3: reason codes for suspicious questions (e.g. instruction_override, role_claim). Logged, never obeyed.
+  flags: text('flags').array(),
+  model: text('model'),
+  turn: integer('turn'),
 });

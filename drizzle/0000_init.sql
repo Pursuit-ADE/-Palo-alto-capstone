@@ -77,25 +77,6 @@ CREATE TABLE "products" (
 	"list_price" numeric(12, 2) NOT NULL
 );
 --> statement-breakpoint
-CREATE TABLE "query_audit" (
-	"id" text PRIMARY KEY NOT NULL,
-	"at" timestamp with time zone NOT NULL,
-	"request_id" text NOT NULL,
-	"source" text NOT NULL,
-	"user_id" text NOT NULL,
-	"role" text,
-	"question_sha256" text,
-	"intent" jsonb,
-	"metric_id" text,
-	"metric_version" integer,
-	"regions" text[],
-	"owner_count" integer,
-	"snapshot_id" text,
-	"result_hash" text,
-	"outcome" text NOT NULL,
-	"reason" text
-);
---> statement-breakpoint
 CREATE TABLE "quotas" (
 	"id" text PRIMARY KEY NOT NULL,
 	"snapshot_id" text NOT NULL,

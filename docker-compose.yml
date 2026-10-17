@@ -10,4 +10,10 @@ services:
     ports:
       - "127.0.0.1:5432:5432"
     volumes:
+      # A named volume, so `docker compose down` then `up` keeps the data (audit log, preferences, cursor).
+      # `docker compose down -v` deletes it on purpose.
+      - pgdata:/var/lib/postgresql/data
       - ./docker/init-roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+
+volumes:
+  pgdata:

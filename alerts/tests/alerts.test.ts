@@ -395,8 +395,18 @@ describe('Slack channel (L5)', () => {
     const text = slackText([{ title: 'P1 at X', explanation: 'Subject: <https://evil.example|click here> <!channel> & more', link: 'http://localhost:3000/?user=u' } as never], false);
     expect(text).not.toContain('<https://evil.example');
     expect(text).not.toContain('<!channel>');
-    expect(text).toContain('&lt;https://evil.example|click here&gt;');
+    expect(text).toContain('&lt;https[:]//evil[.]example|click here&gt;');
     expect(text).toContain('<http://localhost:3000/?user=u|Ask the copilot>');
+  });
+
+  it('defangs bare URLs and domain names, which Slack would otherwise link automatically', () => {
+    const text = slackText([{ title: 'P1: see www.reset-portal.example', explanation: 'Subject: reset at https://example.invalid/review or evil.example now. Renewal is 1.5x, v2.0.', link: 'http://localhost:3000/?prompt=high_severity_case' } as never], false);
+    expect(text).not.toMatch(/https?:\/\/example\.invalid/);
+    expect(text).not.toContain('evil.example');
+    expect(text).not.toContain('www.reset-portal.example');
+    expect(text).toContain('https[:]//example[.]invalid/review');
+    expect(text).toContain('1.5x, v2.0.'); // numbers are left alone
+    expect(text).toContain('<http://localhost:3000/?prompt=high_severity_case|Ask the copilot>');
   });
 
   const item = { id: 'a1', title: 'P1 support case at X', explanation: 'why', link: 'http://localhost:3000/' } as never;
