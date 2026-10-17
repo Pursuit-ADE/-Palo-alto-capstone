@@ -23,6 +23,7 @@ Generated from `registry/` by `npm run docs:dictionary`. Do not edit by hand: ch
 | no_quota | Where there is no quota, coverage is not available. It is never shown as zero and is left out of rankings and charts. | `src/semantic/narrative.ts` |
 | cxo | A CXO is a contact whose job title starts with "Chief". Only engagement by a CXO fires the CXO alert. | `src/db/seed.ts` |
 | snapshot | Every answer comes from the newest data snapshot and states its as-of date. | `src/semantic/answer.ts` |
+| follow_up | A follow-up keeps the earlier filters and breakdown only when it names no metric ("what about West?") or names the same metric with a follow-up word ("and the open pipeline by stage?"). Naming a different metric starts a new question. | `src/semantic/normalize.ts` |
 
 ## Glossary
 
