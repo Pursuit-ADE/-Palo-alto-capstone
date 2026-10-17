@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { testIdentitiesEnabled } from '@/server/identity';
 import { currentUserId } from '@/server/session';
 import { logOutAction } from './auth-actions';
+import { SyntheticBadge } from './synthetic-badge';
 import { promptFor } from '@/server/prompts';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -54,7 +55,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">{activeDatasetLabel()}</span>
+          <SyntheticBadge dataset={activeDatasetLabel()} />
           {signedIn ? (
             <form className="who" action={logOutAction}>
               <span>Signed in as {me.displayName}</span>
