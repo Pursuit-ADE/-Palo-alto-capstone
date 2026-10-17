@@ -99,6 +99,22 @@ function baseFilters(out: z.infer<typeof ModelOutput>): Record<string, unknown> 
   return filters;
 }
 
+// What the person reads is always one of these fixed sentences, chosen from the model's structured fields. The
+// model's own free text (`message`) is never shown: if it echoed its instructions or text planted by an attacker,
+// that would otherwise land on screen. Only its fingerprint goes to the audit log.
+export const UNSUPPORTED_TEXT = 'I can only answer questions about the governed metrics: open pipeline, pipeline coverage and open opportunities.';
+export const CLARIFY_TEXT = {
+  metric: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?',
+  period: 'Which quarter do you mean? For example, this quarter, next quarter or FY27-Q2.',
+  other: "I need a bit more detail to answer that. I can filter by quarter, region and stage, but not by deal size, product, account, sector or person.",
+} as const;
+
+function clarifyText(out: z.infer<typeof ModelOutput>, pending: Intent | undefined): string {
+  if (!pending) return CLARIFY_TEXT.metric;
+  if (pending.metric === 'pipeline_coverage' && !out.period) return CLARIFY_TEXT.period;
+  return CLARIFY_TEXT.other;
+}
+
 /** Converts the model's flat output to a NormalizeResult. Anything malformed becomes a clarifying question. */
 export function toResult(out: z.infer<typeof ModelOutput>): NormalizeResult {
   if (out.kind === 'clarify') {
@@ -108,11 +124,11 @@ export function toResult(out: z.infer<typeof ModelOutput>): NormalizeResult {
     const pending = out.metric ? Intent.safeParse({ metric: out.metric, filters: baseFilters(out), groupBy: out.groupBy ?? [] }) : undefined;
     return {
       kind: 'clarify',
-      question: out.message ?? 'Can you say a bit more about what you want?',
+      question: clarifyText(out, pending?.success ? pending.data : undefined),
       ...(pending?.success ? { resume: pending.data } : {}),
     };
   }
-  if (out.kind === 'unsupported') return { kind: 'unsupported', message: out.message ?? 'I can only answer questions about the governed metrics.' };
+  if (out.kind === 'unsupported') return { kind: 'unsupported', message: UNSUPPORTED_TEXT };
   const filters: Record<string, unknown> = baseFilters(out);
   if (out.period) filters.period = out.period;
   const parsed = Intent.safeParse({ metric: out.metric, filters, groupBy: out.groupBy ?? [] });

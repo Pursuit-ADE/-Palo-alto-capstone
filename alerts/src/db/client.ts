@@ -16,6 +16,7 @@ import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
 import { buildSeed, DEFAULT_SEED } from './seed';
+import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -30,6 +31,8 @@ export const STATEMENT_TIMEOUT_MS = 10_000;
 
 /** Opens a database, applies migrations and loads the dataset if it is empty. */
 export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Database> {
+  // Test identities in production would let anyone view the app as any demo person: refuse to start.
+  assertNoTestIdentitiesInProduction();
   // The alerts service only has the Maven dataset. If the copilot was switched to another dataset, refuse to start
   // rather than alert on different accounts than the copilot shows.
   const datasetDir = process.env.DATASET_DIR;
@@ -45,7 +48,7 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   }
   // The embedded database forgets everything on restart and has no separate login, so a production server
   // refuses it unless it is explicitly the laptop demo.
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITIES !== 'true' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
     throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL and MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
   }
   const client = new PGlite();

@@ -10,6 +10,7 @@ import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'no
 import { promisify } from 'node:util';
 import { and, eq, gt } from 'drizzle-orm';
 import type { Db } from '../db/client';
+import { weakPasswordReason } from './passwords';
 import { appAccounts, appSessions } from '../db/schema';
 import { demoUsers } from '../db/seed';
 
@@ -26,9 +27,12 @@ export const SESSION_HOURS = 8;
 export const MIN_PASSWORD = 12;
 
 export class AuthError extends Error {
-  constructor(message: string) {
+  /** A short reason code for the audit log; the message is what the person sees. */
+  readonly code: string;
+  constructor(message: string, code = 'invalid') {
     super(message);
     this.name = 'AuthError';
+    this.code = code;
   }
 }
 
@@ -69,18 +73,20 @@ const tokenHash = (token: string) => createHash('sha256').update(token).digest('
 const DUMMY_HASH = 'scrypt$16384$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
 
 export async function signUp(db: Db, input: { username: string; password: string; invite: string }, secret = process.env.DEMO_INVITE_SECRET, now = new Date()) {
-  if (!secret) throw new AuthError('Sign-up is turned off here.');
+  if (!secret) throw new AuthError('Sign-up is turned off here.', 'signup_off');
   const username = input.username.trim().toLowerCase();
-  if (!USERNAME.test(username)) throw new AuthError('Use 3 to 32 lowercase letters, numbers, dots, dashes or underscores for the username.');
-  if (input.password.length < MIN_PASSWORD || input.password.length > 128) throw new AuthError(`Use a password of at least ${MIN_PASSWORD} characters.`);
+  if (!USERNAME.test(username)) throw new AuthError('Use 3 to 32 lowercase letters, numbers, dots, dashes or underscores for the username.', 'bad_username');
+  if (input.password.length < MIN_PASSWORD || input.password.length > 128) throw new AuthError(`Use a password of at least ${MIN_PASSWORD} characters.`, 'bad_password_length');
+  const weak = weakPasswordReason(input.password, username);
+  if (weak) throw new AuthError(weak, 'weak_password');
   const userId = userForInvite(input.invite, secret);
-  if (!userId) throw new AuthError('That invite code is not valid.');
+  if (!userId) throw new AuthError('That invite code is not valid.', 'bad_invite');
   const inserted = await db
     .insert(appAccounts)
     .values({ username, userId, passwordHash: await hashPassword(input.password), createdAt: now })
     .onConflictDoNothing()
     .returning({ username: appAccounts.username });
-  if (inserted.length === 0) throw new AuthError('That username is taken.');
+  if (inserted.length === 0) throw new AuthError('That username is taken.', 'username_taken');
   return { username, userId };
 }
 
@@ -89,7 +95,7 @@ export async function logIn(db: Db, usernameRaw: string, password: string, now =
   const username = usernameRaw.trim().toLowerCase();
   const [account] = USERNAME.test(username) ? await db.select().from(appAccounts).where(eq(appAccounts.username, username)) : [];
   const ok = await verifyPassword(password, account?.passwordHash ?? DUMMY_HASH);
-  if (!account || !ok) throw new AuthError('The username or password is not right.');
+  if (!account || !ok) throw new AuthError('The username or password is not right.', 'bad_credentials');
   const token = randomBytes(32).toString('base64url');
   await db.insert(appSessions).values({
     tokenHash: tokenHash(token),

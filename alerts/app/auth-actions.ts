@@ -2,6 +2,7 @@
 
 // Sign-up, log-in and log-out (Server Actions, POST only). Errors are returned as a short message; a wrong
 // username and a wrong password get the same message.
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
@@ -12,13 +13,20 @@ export type AuthState = { error?: string } | null;
 
 const Field = z.string().max(200);
 
-// 10 attempts a minute per username, per server process (the alerts app has no shared guard table).
+// Per server process (the alerts app has no shared guard table): 10 attempts a minute per username, and 30 a
+// minute per address across all usernames, so one machine can't try many accounts.
 const attempts = new Map<string, number[]>();
-async function attempt(key: string, now = Date.now()): Promise<boolean> {
+function allow(key: string, max: number, now: number): boolean {
   const recent = (attempts.get(key) ?? []).filter((t) => now - t < 60_000);
-  if (recent.length >= 10) return false;
+  if (recent.length >= max) return false;
   attempts.set(key, [...recent, now]);
   return true;
+}
+async function attempt(key: string, now = Date.now()): Promise<boolean> {
+  if (!allow(key, 10, now)) return false;
+  const h = await headers();
+  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim();
+  return !ip || allow(`ip:${ip}`, 30, now);
 }
 
 async function db() {

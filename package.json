@@ -11,6 +11,7 @@
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
     "eval:golden": "tsx scripts/eval-golden.ts",
+    "eval:redteam": "tsx scripts/eval-redteam.ts",
     "invites": "tsx scripts/invites.ts",
     "docs:dictionary": "tsx scripts/data-dictionary.ts",
     "onboard:profile": "tsx scripts/onboard-dataset.ts profile",

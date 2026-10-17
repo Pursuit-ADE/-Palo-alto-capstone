@@ -1,5 +1,6 @@
 // The signed-in user for this request, read only from the session cookie. Server-only.
 import { cookies } from 'next/headers';
+import { httpsSettings } from './https';
 import { sessionUser, SESSION_HOURS } from './auth';
 import { getDatabase } from './runtime';
 
@@ -18,8 +19,8 @@ export async function setSessionCookie(token: string) {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    // Secure cookies need HTTPS; plain-http localhost would drop them.
-    secure: process.env.ENABLE_HSTS === 'true' || process.env.COOKIE_SECURE === 'true',
+    // On by default in production; see src/server/https.ts.
+    secure: httpsSettings().secureCookie,
     maxAge: SESSION_HOURS * 3600,
   });
 }

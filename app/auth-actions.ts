@@ -2,8 +2,12 @@
 
 // Sign-up, log-in and log-out (Server Actions, POST only). Errors are returned as a short message; a wrong
 // username and a wrong password get the same message.
+import { randomUUID } from 'node:crypto';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
+import { queryAudit } from '@/db/schema';
+import { questionFingerprint } from '@/semantic/answer';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
 import { dbSessionGuard } from '@/server/limits';
 import { getDatabase } from '@/server/runtime';
@@ -13,10 +17,40 @@ export type AuthState = { error?: string } | null;
 
 const Field = z.string().max(200);
 
-async function attempt(key: string): Promise<boolean> {
+/** The caller's address as the server sees it. Behind a proxy, set it to overwrite X-Forwarded-For. */
+async function clientIp(): Promise<string | undefined> {
+  const h = await headers();
+  return h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || undefined;
+}
+
+/**
+ * Brute-force limits, shared by every process on the same database: 10 attempts a minute per username, and
+ * 30 a minute per address across all usernames, so one machine can't try many accounts. Returns the limit hit.
+ */
+async function limited(action: 'login' | 'signup', username: string): Promise<string | undefined> {
   const database = await getDatabase();
-  // 10 attempts a minute per username, shared by every process on the same database.
-  return dbSessionGuard(database.auditDb, 10).allow(`auth:${key}`);
+  if (!(await dbSessionGuard(database.auditDb, 10).allow(`auth:${action}:${username}`))) return 'rate_limited_user';
+  const ip = await clientIp();
+  if (ip && !(await dbSessionGuard(database.auditDb, 30).allow(`auth-ip:${questionFingerprint(ip).slice(0, 32)}`))) return 'rate_limited_ip';
+  return undefined;
+}
+
+/**
+ * One audit row per sign-in or sign-up attempt, in the same log as questions. Like questions, the username is
+ * stored only as a keyed fingerprint, and the password never.
+ */
+async function auditAuth(action: 'login' | 'signup', username: string, outcome: 'ok' | 'failed', reason?: string, userId?: string) {
+  const database = await getDatabase();
+  await database.auditDb.insert(queryAudit).values({
+    id: randomUUID(),
+    at: new Date(),
+    requestId: randomUUID(),
+    source: 'auth',
+    userId: userId ?? 'unknown',
+    questionSha256: questionFingerprint(`username:${username}`),
+    outcome: `${action}_${outcome}`,
+    reason: reason ?? null,
+  });
 }
 
 export async function signUpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -24,14 +58,23 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   const password = Field.safeParse(formData.get('password'));
   const invite = Field.safeParse(formData.get('invite'));
   if (!username.success || !password.success || !invite.success) return { error: 'Fill in every field.' };
-  if (!(await attempt(`signup:${username.data.trim().toLowerCase()}`))) return { error: 'Too many attempts. Wait a minute and try again.' };
+  const name = username.data.trim().toLowerCase();
+  const limit = await limited('signup', name);
+  if (limit) {
+    await auditAuth('signup', name, 'failed', limit);
+    return { error: 'Too many attempts. Wait a minute and try again.' };
+  }
   const database = await getDatabase();
   try {
-    await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
+    const { userId } = await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
     const { token } = await logIn(database.auditDb, username.data, password.data);
     await setSessionCookie(token);
+    await auditAuth('signup', name, 'ok', undefined, userId);
   } catch (e) {
-    if (e instanceof AuthError) return { error: e.message };
+    if (e instanceof AuthError) {
+      await auditAuth('signup', name, 'failed', e.code);
+      return { error: e.message };
+    }
     return { error: 'Something went wrong. Please try again.' };
   }
   redirect('/');
@@ -41,13 +84,22 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   const username = Field.safeParse(formData.get('username'));
   const password = Field.safeParse(formData.get('password'));
   if (!username.success || !password.success) return { error: 'Fill in your username and password.' };
-  if (!(await attempt(`login:${username.data.trim().toLowerCase()}`))) return { error: 'Too many attempts. Wait a minute and try again.' };
+  const name = username.data.trim().toLowerCase();
+  const limit = await limited('login', name);
+  if (limit) {
+    await auditAuth('login', name, 'failed', limit);
+    return { error: 'Too many attempts. Wait a minute and try again.' };
+  }
   const database = await getDatabase();
   try {
-    const { token } = await logIn(database.auditDb, username.data, password.data);
+    const { token, userId } = await logIn(database.auditDb, username.data, password.data);
     await setSessionCookie(token);
+    await auditAuth('login', name, 'ok', undefined, userId);
   } catch (e) {
-    if (e instanceof AuthError) return { error: e.message };
+    if (e instanceof AuthError) {
+      await auditAuth('login', name, 'failed', e.code);
+      return { error: e.message };
+    }
     return { error: 'Something went wrong. Please try again.' };
   }
   redirect('/');

@@ -21,7 +21,7 @@ npm start         # http://localhost:3000
 
 **Demo sign-in (Week 5).** People create an account with an invite code, and the code decides which demo person, and so which role and data, the account gets. The user id then comes only from the session cookie, never from a form, URL or alert link. To turn it on, put a long random `DEMO_INVITE_SECRET` in `.env.local`, run `npm run invites` to print one code per demo person, and share each code only with the person who should use it. On a laptop with the embedded database, also set `ALLOW_EMBEDDED_DB=true` (production refuses it otherwise). The client asked for Active Directory and SSO in a real rollout; this sign-up is for the demo.
 
-For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` still shows the "Viewing as" switch when nobody is signed in. Leave it unset anywhere other people can reach the app.
+For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm run dev` still shows the "Viewing as" switch when nobody is signed in. A production server (`npm start`) refuses to start with it on.
 
 **Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
@@ -93,7 +93,6 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 - Company sign-in (Active Directory and SSO through OIDC) instead of demo accounts; the session code is the place it plugs in.
 - A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
-- HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.

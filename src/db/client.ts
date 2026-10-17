@@ -16,6 +16,7 @@ import path from 'node:path';
 import * as schema from './schema';
 import { buildSeed, defaultSeedForDir, resolveDataDir } from './seed';
 import { assertDatasetConfirmed } from '../onboard/confirm';
+import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -39,6 +40,8 @@ export const STATEMENT_TIMEOUT_MS = 5000;
 
 /** Opens a database, applies migrations and loads the dataset if it is empty. */
 export async function openDatabase(seed?: string, options: { dataDir?: string } = {}): Promise<Database> {
+  // Test identities in production would let anyone view the app as any demo person: refuse to start.
+  assertNoTestIdentitiesInProduction();
   const { DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (DATABASE_URL || AUDIT_DATABASE_URL || MIGRATION_DATABASE_URL) {
     if (!DATABASE_URL || !AUDIT_DATABASE_URL || !MIGRATION_DATABASE_URL) {
@@ -48,7 +51,7 @@ export async function openDatabase(seed?: string, options: { dataDir?: string } 
   }
   // The embedded database has no separate read-only and audit logins and forgets everything on restart, so a
   // production server refuses it unless it is explicitly the laptop demo.
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITIES !== 'true' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
     throw new Error('Production needs Postgres mode (DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
   }
   const client = new PGlite();

@@ -8,6 +8,7 @@ import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Intent } from '../registry/types';
 import { flagQuestion } from './flags';
+import { notifySecurity } from '../server/security-notify';
 import { deterministicModel, type IntentModel } from './model';
 import { chartSpec, narrate } from './narrative';
 import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
@@ -54,7 +55,13 @@ export async function currentSnapshot(database: Database) {
 }
 
 async function audit(database: Database, entry: AuditFields & { userId: string; source: string; outcome: string; requestId: string }) {
-  await database.auditDb.insert(queryAudit).values({ id: randomUUID(), at: new Date(), ...entry });
+  const row = { id: randomUUID(), at: new Date(), ...entry };
+  await database.auditDb.insert(queryAudit).values(row);
+  // Flagged questions and locks also go to the security channel, if one is configured. Sent after the audit row
+  // exists, without waiting, and never blocking or changing the answer.
+  if (row.flags?.length || row.outcome === 'refused_locked') {
+    void notifySecurity({ auditId: row.id, at: row.at, userId: row.userId, role: row.role, outcome: row.outcome, flags: row.flags ?? [] });
+  }
 }
 
 /** Thrown when a user is locked out after repeated flagged questions (S3). */

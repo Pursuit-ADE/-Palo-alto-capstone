@@ -43,13 +43,14 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 |---|---|---|
 | `DEMO_INVITE_SECRET` | both | Turns on sign-up with invite codes. Same value in both apps. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
-| `ALLOW_TEST_IDENTITIES` | both | Local testing only: shows the "Viewing as" switch when nobody is signed in. Never where others can reach the app. |
+| `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
 | `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Set it so fingerprints stay comparable across restarts. |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
 | `SLACK_USER_WEBHOOKS` | alerts | JSON map of user id to that person's own `https://hooks.slack.com/services/...` webhook. |
-| `ENABLE_HSTS`, `COOKIE_SECURE` | both | Only behind HTTPS. |
+| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`. Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
+| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and every session lock. |
 
 ## Common problems
 

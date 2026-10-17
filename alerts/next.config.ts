@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import { httpsSettings } from './src/server/https';
 
 // Static security headers for every response. The Content Security Policy is set per request in proxy.ts.
 const securityHeaders = [
@@ -7,6 +8,8 @@ const securityHeaders = [
   { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()' },
   { key: 'X-Frame-Options', value: 'DENY' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  // On by default in production (src/server/https.ts). Browsers ignore it on plain-http responses.
+  ...(httpsSettings().hsts ? [{ key: 'Strict-Transport-Security', value: 'max-age=31536000; includeSubDomains' }] : []),
 ];
 
 const nextConfig: NextConfig = {

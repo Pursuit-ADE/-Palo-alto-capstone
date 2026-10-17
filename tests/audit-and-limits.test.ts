@@ -101,10 +101,9 @@ describe('test identities (F-01)', () => {
 });
 
 describe('HSTS', () => {
-  it('is sent only when the deployment turns it on', () => {
-    expect(securityHeadersFor(undefined).some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
-    expect(securityHeadersFor('1').some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
-    expect(securityHeadersFor('true').find((h) => h.key === 'Strict-Transport-Security')?.value).toContain('max-age=');
+  it('is in the headers exactly when the HTTPS settings turn it on', () => {
+    expect(securityHeadersFor(false).some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
+    expect(securityHeadersFor(true).find((h) => h.key === 'Strict-Transport-Security')?.value).toContain('max-age=');
   });
 });
 

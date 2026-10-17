@@ -9,7 +9,7 @@ import { ask, InjectionRefused, SessionLocked, type Answer, type Reply } from '@
 import { dbSessionGuard, FlagGuard } from '@/server/limits';
 import { IntentError } from '@/semantic/compile';
 import { flagQuestion } from '@/semantic/flags';
-import { toResult, type IntentModel } from '@/semantic/model';
+import { CLARIFY_TEXT, toResult, type IntentModel } from '@/semantic/model';
 import { ScopeViolation } from '@/semantic/scope';
 
 const reg = loadRegistry();
@@ -171,7 +171,8 @@ describe('red-team prompts (S1, S2, S6)', () => {
 describe('Claude adapter output handling', () => {
   const base = { metric: null, regions: null, stages: null, period: null, groupBy: null, message: null };
   it('turns clarify and unsupported outputs into replies', () => {
-    expect(toResult({ ...base, kind: 'clarify', message: 'Which quarter?' })).toEqual({ kind: 'clarify', question: 'Which quarter?' });
+    // The model's own wording is never shown; a fixed question is (security review, Oct 17).
+    expect(toResult({ ...base, kind: 'clarify', message: 'Which quarter?' })).toEqual({ kind: 'clarify', question: CLARIFY_TEXT.metric });
     expect(toResult({ ...base, kind: 'unsupported' }).kind).toBe('unsupported');
   });
   it('asks for clarification when an intent output is malformed', () => {

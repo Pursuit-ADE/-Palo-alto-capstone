@@ -8,12 +8,11 @@ Needs Node 22.12 or newer (CI uses Node 24).
 
 ```bash
 npm install
-npm run build
 echo ALLOW_TEST_IDENTITIES=true > .env.local
-npm start
+npm run dev
 ```
 
-Sign in with a demo account (see the README: `DEMO_INVITE_SECRET` and `npm run invites`), or, for quick local testing, turn on test identities in `.env.local`. Leave test identities off anywhere other people can reach the app. Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
+Sign in with a demo account (see the README: `DEMO_INVITE_SECRET` and `npm run invites`), or, for quick local testing with `npm run dev`, turn on test identities in `.env.local`. A production server (`npm start`) refuses to start with test identities on. Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
 
 ## What a good answer looks like
 
