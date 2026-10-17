@@ -3,7 +3,8 @@
 // the outcome, who asked and the audit row's id, never the question text: the audit log keeps only a keyed
 // fingerprint of it, and a Slack channel should not hold more than the audit log does.
 const SLACK_WEBHOOK = /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+$/;
-// One message per person per minute, so a burst of attempts doesn't flood the channel; the lock always posts.
+// One message per person per minute, counted from the last post Slack accepted, so a burst of attempts doesn't
+// flood the channel and a failed post doesn't silence the next one. A lock always posts. The memory is per process.
 const lastSent = new Map<string, number>();
 
 export interface SecurityEvent {
@@ -39,7 +40,6 @@ export async function notifySecurity(
   if (!url || !SLACK_WEBHOOK.test(url)) return false;
   const locked = e.outcome === 'refused_locked';
   if (!locked && now - (lastSent.get(e.userId) ?? -Infinity) < 60_000) return false;
-  lastSent.set(e.userId, now);
   try {
     const res = await post(url, {
       method: 'POST',
@@ -47,6 +47,7 @@ export async function notifySecurity(
       body: JSON.stringify({ text: securityMessage(e) }),
       signal: AbortSignal.timeout(5_000),
     });
+    if (res.ok) lastSent.set(e.userId, now);
     return res.ok;
   } catch {
     return false;

@@ -68,8 +68,9 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   try {
     const { userId } = await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
     const { token } = await logIn(database.auditDb, username.data, password.data);
-    await setSessionCookie(token);
+    // Audit first: if the row can't be written, no cookie is set and nobody is left signed in.
     await auditAuth('signup', name, 'ok', undefined, userId);
+    await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) {
       await auditAuth('signup', name, 'failed', e.code);
@@ -93,8 +94,8 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   const database = await getDatabase();
   try {
     const { token, userId } = await logIn(database.auditDb, username.data, password.data);
-    await setSessionCookie(token);
     await auditAuth('login', name, 'ok', undefined, userId);
+    await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) {
       await auditAuth('login', name, 'failed', e.code);
