@@ -119,7 +119,8 @@ export const engagements = pgTable('engagements', {
 
 // ---- Alerts (PRD Part 2) ----
 
-// L3: each user subscribes to the rules they want and picks frequency, quiet hours and channel.
+// L3: each user subscribes to the rules they want and picks frequency (realtime, daily, weekly, monthly),
+// quiet hours and channel.
 // Quiet hours are whole hours in UTC; start > end means the window crosses midnight.
 export const alertSubscriptions = pgTable(
   'alert_subscriptions',
@@ -131,6 +132,9 @@ export const alertSubscriptions = pgTable(
     quietStartHour: integer('quiet_start_hour'),
     quietEndHour: integer('quiet_end_hour'),
     criticalBypass: boolean('critical_bypass').notNull(),
+    // When this subscription last received a digest; the next one is due in the following daily, weekly or
+    // monthly slot (see digestDue in src/alerts/schedule.ts).
+    lastDigestAt: timestamp('last_digest_at', { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.ruleId] })],
 );
@@ -162,3 +166,9 @@ export const alertDeliveries = pgTable(
   },
   (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId)],
 );
+
+// How far the scheduler has evaluated events, so each run only looks at new events and a restart resumes.
+export const alertCursor = pgTable('alert_cursor', {
+  id: text('id').primaryKey(),
+  evaluatedUntil: timestamp('evaluated_until', { withTimezone: true }).notNull(),
+});

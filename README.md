@@ -60,6 +60,11 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Charts and narrative (A6):** a plain-language summary and a bar chart (with a Vega-Lite spec) are built from the governed rows, never written by a model.
 - **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope. After 3 flagged questions in 10 minutes, a user is locked out of asking for 10 minutes. `npm run eval:golden` checks the configured intent model against the golden set.
 
+## Week 4: alerts finished and red-team completed
+
+- **Alerts (`alerts/`):** weekly and monthly digests on a real schedule (Mondays and the 1st, 13:00 UTC) alongside right-away and daily; a preferences screen where each person subscribes and sets frequency, channel, quiet hours and the P1 bypass; a scheduler (`ALERTS_SCHEDULER=true`) that only checks new events and resumes from a stored cursor; and a persistent Postgres mode with a least-privilege `alerts_app` login, tested in CI. See `alerts/README.md`.
+- **Red-team suite completed (S1, S2, S6):** `tests/redteam-matrix.test.ts` runs one row per PRD scenario and checks both the answer and the audit row. Questions containing a link are now blocked and logged (`refused_injection`), not just flagged. The matrix in plain language is in `docs/RED-TEAM.md`.
+
 ## Security controls
 
 | Control | Where | Proof |
@@ -80,13 +85,13 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 ## Not done yet (by roadmap week)
 
 - Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
-- Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
-- HSTS once the app is served over HTTPS.
-- Week 2: business rules in the context layer; run the app on Postgres mode by default.
+- A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
+- HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
-- Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
-- Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
+- Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
+- Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
+- More business rules in the glossary, and running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
 - The test identity picker is not authentication.
 
 ## Project documents

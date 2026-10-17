@@ -43,6 +43,8 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(app, 'CREATE TABLE stolen (x int)');
     await denied(app, 'DROP TABLE quotas');
     await denied(app, 'SELECT * FROM query_audit');
+    await denied(app, 'SELECT * FROM session_guard');
+    await denied(app, "UPDATE session_guard SET hits = '[]'");
     // Tables outside the governed query path are not readable either.
     await denied(app, 'SELECT * FROM contacts');
     await denied(app, 'SELECT * FROM support_cases');
@@ -59,5 +61,13 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(audit, 'SELECT * FROM query_audit');
     await denied(audit, "UPDATE query_audit SET outcome = 'answered'");
     await denied(audit, 'DELETE FROM query_audit');
+  });
+
+  it('the audit role can update the session guard and nothing else', async () => {
+    await audit.query(`INSERT INTO session_guard (user_id, hits, flagged) VALUES ('u_guard', '[]', '[]')`);
+    await audit.query(`UPDATE session_guard SET hits = '[1]' WHERE user_id = 'u_guard'`);
+    await audit.query(`DELETE FROM session_guard WHERE user_id = 'u_guard'`);
+    await denied(audit, 'SELECT * FROM opportunities');
+    await denied(audit, "UPDATE accounts SET name = 'x'");
   });
 });

@@ -10,6 +10,7 @@ import { ScopeViolation } from '@/semantic/scope';
 import { RateLimiter } from '@/server/limits';
 import { testIdentitiesEnabled } from '@/server/identity';
 import { promptFor } from '@/server/prompts';
+import { securityHeadersFor } from '../next.config';
 
 const reg = loadRegistry();
 let database: Database;
@@ -96,6 +97,14 @@ describe('test identities (F-01)', () => {
     expect(testIdentitiesEnabled({})).toBe(false);
     expect(testIdentitiesEnabled({ ALLOW_TEST_IDENTITIES: '1' })).toBe(false);
     expect(testIdentitiesEnabled({ ALLOW_TEST_IDENTITIES: 'true' })).toBe(true);
+  });
+});
+
+describe('HSTS', () => {
+  it('is sent only when the deployment turns it on', () => {
+    expect(securityHeadersFor(undefined).some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
+    expect(securityHeadersFor('1').some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
+    expect(securityHeadersFor('true').find((h) => h.key === 'Strict-Transport-Security')?.value).toContain('max-age=');
   });
 });
 

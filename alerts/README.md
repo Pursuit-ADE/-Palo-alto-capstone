@@ -54,9 +54,15 @@ Migrations in `alerts/drizzle/` start at this release's baseline (the alerts ser
 | `COPILOT_URL` | Base URL for "Ask the copilot" links (default `http://localhost:3000`). Links open the copilot with a fixed prompt id (`?prompt=high_severity_case`) that the copilot maps to a known question. |
 | `SLACK_USER_WEBHOOKS` | JSON map of user id to that user's own `https://hooks.slack.com/...` webhook. Never commit real values. |
 
+## Schedule, preferences and persistence (Week 4)
+
+- **Frequencies:** right away, daily, weekly (Mondays) or monthly (the 1st), at 13:00 UTC. A digest goes out once per slot; retries of failed alerts follow their own backoff, not the slot.
+- **Preferences:** each person subscribes on the page to the rules meant for their role and sets frequency, channel, quiet hours and the P1 bypass. Changes apply to new alerts; alerts already waiting keep their channel.
+- **Scheduler:** with `ALERTS_SCHEDULER=true`, it starts when the server starts (`instrumentation.ts`), with no page visit needed. A tick every `ALERTS_TICK_SECONDS` (default 60) evaluates events since the stored cursor, looking `ALERTS_LATE_WINDOW_HOURS` (default 72) further back for events imported late, then flushes due digests and retries. Deduplication means nothing is alerted twice. After a person's first digest, a digest carries only alerts queued before its slot, so an alert created after an empty Monday slot waits for the next Monday. Demo subscriptions are seeded once per database, so an unsubscribe survives a restart. Without the scheduler, the demo runs one tick as of Oct 8, 2026 15:00 UTC.
+- **Persistent Postgres:** set `MIGRATION_DATABASE_URL` and `ALERTS_DATABASE_URL` (see `.env.example` and `../docker/init-roles.sql`). The `alerts_app` login reads the CRM and event tables, inserts and updates its own state, and may delete only a subscription; the CI job `alerts-postgres` proves it cannot delete alerts, change CRM data or the schema.
+
 ## Not done yet
 
-- Real scheduler (pg-boss) for continuous evaluation and timed digests, on a persistent Postgres so delivery state survives restarts. Today the service runs once at start on an in-memory database and does not read `DATABASE_URL`.
-- User-editable preferences UI; demo subscriptions live in `src/alerts/demo.ts`.
-- Per-user time zones for quiet hours (UTC for now), email channel, CSM triggers.
+- Per-user time zones for quiet hours and digests (UTC for now), the email channel, and the CSM stretch triggers (low usage, large deal closed).
+- Multiple scheduler instances: ticks are safe to overlap (alerts are claimed before sending), but the cursor assumes one scheduler.
 - Shared package for the data loader instead of a copy of the copilot's.

@@ -117,6 +117,15 @@ export const engagements = pgTable('engagements', {
   occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
 });
 
+// Rate-limit hits and session-lock expiry. The audit role may read and update only this table.
+// The read-only app role may not. PGlite uses the same connection, so the laptop demo still works.
+export const sessionGuard = pgTable('session_guard', {
+  userId: text('user_id').primaryKey(),
+  hits: text('hits').notNull().default('[]'),
+  flagged: text('flagged').notNull().default('[]'),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+});
+
 // PRD S4: one row per question or dashboard query, including refusals. Append-only: the app's audit
 // role may only INSERT. The raw question is never stored, only its keyed hash (HMAC-SHA-256 with AUDIT_HASH_KEY).
 export const queryAudit = pgTable('query_audit', {

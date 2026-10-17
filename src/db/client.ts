@@ -81,7 +81,7 @@ async function openPostgres(appUrl: string, auditUrl: string, ownerUrl: string, 
   };
 }
 
-/** Least privilege: the app role can only read the governed tables; the audit role can only append to the audit log. */
+/** Least privilege: the app role can only read the governed tables; the audit role can append to the audit log and update the session guard. */
 async function applyGrants(owner: pg.Pool) {
   await owner.query(`
     REVOKE ALL ON ALL TABLES IN SCHEMA public FROM app_readonly, app_audit;
@@ -91,6 +91,8 @@ async function applyGrants(owner: pg.Pool) {
     -- are not readable, so a bug above the database can't reach them through this login.
     GRANT SELECT ON data_snapshots, regions, app_users, products, accounts, account_team, opportunities, quotas TO app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
+    REVOKE SELECT ON session_guard FROM app_readonly;
+    GRANT SELECT, INSERT, UPDATE, DELETE ON session_guard TO app_audit;
   `);
 }
 

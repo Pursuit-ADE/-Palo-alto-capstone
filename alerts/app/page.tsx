@@ -4,16 +4,12 @@ import { alertSubscriptions } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
 import { testIdentitiesEnabled } from '@/server/identity';
+import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
 
 export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
-
-function hours(s: number | null, e: number | null): string {
-  if (s === null || e === null) return 'None';
-  return `${String(s).padStart(2, '0')}:00 to ${String(e).padStart(2, '0')}:00 UTC`;
-}
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   if (!testIdentitiesEnabled()) return <SignInRequired />;
@@ -25,6 +21,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const mine = await inbox(database.db, user);
   const counts = await statusCounts(database.db, user);
   const count = (s: string) => counts[s] ?? 0;
+  const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
   return (
@@ -86,25 +83,24 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         <div className="grid2">
           <section className="card" aria-labelledby="subs-title">
             <h2 id="subs-title">Your subscriptions</h2>
-            <p className="sub">You choose the rules, how often, quiet hours and channel.</p>
-            {subs.length === 0 ? (
-              <p className="empty">Not subscribed to any rule.</p>
+            <p className="sub">Choose the alerts you want, how often, where, and your quiet hours. Only alerts meant for your role are listed. Changes apply to new alerts; ones already waiting keep their channel.</p>
+            {myRules.length === 0 ? (
+              <p className="empty">No alerts are available for your role yet.</p>
             ) : (
-              <div className="tablewrap">
-                <table>
-                  <thead><tr><th>Rule</th><th>Frequency</th><th>Quiet hours</th><th>P1 bypass</th><th>Channel</th></tr></thead>
-                  <tbody>
-                    {subs.map((s) => (
-                      <tr key={s.ruleId}>
-                        <td>{rules.get(s.ruleId)?.name ?? s.ruleId}{rules.get(s.ruleId) && !(rules.get(s.ruleId)!.audience as string[]).includes(me.role) && <span className="muted"> (not for your role, so it never fires)</span>}</td>
-                        <td>{s.frequency === 'realtime' ? 'Right away' : 'Daily digest'}</td>
-                        <td>{hours(s.quietStartHour, s.quietEndHour)}</td>
-                        <td>{s.criticalBypass ? 'Yes' : 'No'}</td>
-                        <td>{s.channel === 'inbox' ? 'In-app inbox' : 'Slack'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="prefs">
+                {myRules.map((r) => {
+                  const s = subs.find((x) => x.ruleId === r.id) ?? null;
+                  return (
+                    <PreferencesForm
+                      key={`${user}-${r.id}`}
+                      user={user}
+                      ruleId={r.id}
+                      ruleName={r.name}
+                      critical={r.criticalSeverities.length > 0}
+                      sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
+                    />
+                  );
+                })}
               </div>
             )}
           </section>

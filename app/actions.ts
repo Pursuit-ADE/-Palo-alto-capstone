@@ -8,7 +8,7 @@ import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
 import { selectModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
 import { testIdentitiesEnabled } from '@/server/identity';
-import { flagGuard, questionLimiter } from '@/server/limits';
+import { dbSessionGuard } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
 export type AskResult = Reply | { kind: 'refused'; message: string } | null;
@@ -27,7 +27,10 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   }
   const parsed = Question.safeParse(formData.get('example') ?? formData.get('q'));
   if (!parsed.success) return { kind: 'refused', message: `Ask a question of 1 to ${MAX_QUESTION_LENGTH} characters.` };
-  if (!questionLimiter.allow(userId)) return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
+
+  const database = await getDatabase();
+  const guard = dbSessionGuard(database.auditDb);
+  if (!(await guard.allow(userId))) return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
 
   let previous: unknown;
   const prevRaw = PreviousJson.safeParse(formData.get('previous'));
@@ -39,9 +42,8 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
     }
   }
   const turn = Turn.safeParse(formData.get('turn'));
-  const opts = { previous, turn: turn.success ? turn.data : 1, guard: flagGuard };
+  const opts = { previous, turn: turn.success ? turn.data : 1, guard };
 
-  const database = await getDatabase();
   const registry = getRegistry();
   return askWithFallback(database, registry, userId, parsed.data, opts, selectModel());
 }

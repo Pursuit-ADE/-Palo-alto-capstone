@@ -65,14 +65,29 @@ export class SessionLocked extends Error {
   }
 }
 
+/** Thrown when a question must not be answered: a link, or an attempt to override the rules. Logged, never fetched or obeyed. */
+export class InjectionRefused extends Error {
+  readonly code: 'link' | 'instruction_override';
+  constructor(code: 'link' | 'instruction_override' = 'link') {
+    super(
+      code === 'link'
+        ? "Questions can't include links. The copilot never opens them; ask about the governed metrics directly."
+        : "Questions can't include instructions to ignore the rules. Ask about the governed metrics directly.",
+    );
+    this.name = 'InjectionRefused';
+    this.code = code;
+  }
+}
+
 /** The lock the caller enforces; see FlagGuard in src/server/limits.ts. */
 export interface Guard {
-  isLocked(user: string, now?: number): boolean;
-  record(user: string, now?: number): void;
+  isLocked(user: string, now?: number): boolean | Promise<boolean>;
+  record(user: string, now?: number): void | Promise<void>;
 }
 
 function outcomeOf(e: unknown): { outcome: string; reason: string } {
   if (e instanceof SessionLocked) return { outcome: 'refused_locked', reason: e.message };
+  if (e instanceof InjectionRefused) return { outcome: 'refused_injection', reason: e.code };
   if (e instanceof ScopeViolation) return { outcome: 'refused_scope', reason: e.message };
   if (e instanceof IntentError) return { outcome: 'refused_intent', reason: e.message };
   return { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' };
@@ -157,12 +172,16 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
-    if (opts.guard?.isLocked(userId)) throw new SessionLocked();
+    if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
     const p = await principal();
     const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
     fields.flags = flags;
-    if (flags.length) opts.guard?.record(userId);
+    if (flags.length) await opts.guard?.record(userId);
+    // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
+    // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
+    if (flags.includes('link')) throw new InjectionRefused('link');
+    if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
     const snapshot = await currentSnapshot(database);
     const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
     if (n.kind !== 'intent') {

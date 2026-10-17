@@ -1,5 +1,11 @@
-// Per-user rate limit for typed questions (T-07). In memory, per server process; a shared store
-// (Postgres or Redis) replaces it when the app runs on more than one instance.
+// Per-user rate limit for typed questions (T-07). The in-memory classes are for tests.
+// The server uses dbSessionGuard, which stores the same counters in session_guard so every
+// process that shares the database sees them. PGlite is still one process's memory, so a
+// laptop restart clears them with the database. A gateway limit is still separate.
+import { eq } from 'drizzle-orm';
+import type { Db } from '../db/client';
+import { sessionGuard } from '../db/schema';
+
 export class RateLimiter {
   private hits = new Map<string, number[]>();
   constructor(private readonly max: number, private readonly windowMs: number) {}
@@ -16,11 +22,9 @@ export class RateLimiter {
   }
 }
 
-export const questionLimiter = new RateLimiter(20, 60_000);
-
 /**
  * Session lock (PRD S3, Should): after `maxFlagged` flagged questions within `windowMs`, the user is locked out
- * of asking for `lockMs`. In memory, per process, like the rate limiter.
+ * of asking for `lockMs`. This in-memory class is what the unit tests use. The server uses dbSessionGuard.
  */
 export class FlagGuard {
   private flagged = new Map<string, number[]>();
@@ -41,4 +45,53 @@ export class FlagGuard {
   }
 }
 
-export const flagGuard = new FlagGuard();
+const parseTimes = (raw: string): number[] => {
+  try {
+    const v = JSON.parse(raw) as unknown;
+    return Array.isArray(v) ? v.filter((n): n is number => typeof n === 'number') : [];
+  } catch {
+    return [];
+  }
+};
+
+/**
+ * Rate limit and session lock stored in session_guard, so every process that shares the database
+ * sees the same counters. Each update locks that user's row (SELECT ... FOR UPDATE), so two requests at the
+ * same instant are counted one after the other instead of both reading the old count. A gateway limit is
+ * still the place to stop floods before they reach the app.
+ */
+export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = 10 * 60_000) {
+  return {
+    async allow(user: string, now: number = Date.now()): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
+        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
+        const recent = parseTimes(current?.hits ?? '[]').filter((t) => now - t < windowMs);
+        if (recent.length >= max) {
+          await tx.update(sessionGuard).set({ hits: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+          return false;
+        }
+        recent.push(now);
+        await tx.update(sessionGuard).set({ hits: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+        return true;
+      });
+    },
+    async isLocked(user: string, now: number = Date.now()): Promise<boolean> {
+      const [found] = await db.select({ lockedUntil: sessionGuard.lockedUntil }).from(sessionGuard).where(eq(sessionGuard.userId, user));
+      return (found?.lockedUntil?.getTime() ?? 0) > now;
+    },
+    async record(user: string, now: number = Date.now()): Promise<void> {
+      await db.transaction(async (tx) => {
+        await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
+        const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
+        if ((current?.lockedUntil?.getTime() ?? 0) > now) return;
+        const recent = [...parseTimes(current?.flagged ?? '[]').filter((t) => now - t < flagWindowMs), now];
+        if (recent.length >= maxFlagged) {
+          await tx.update(sessionGuard).set({ flagged: '[]', lockedUntil: new Date(now + lockMs) }).where(eq(sessionGuard.userId, user));
+        } else {
+          await tx.update(sessionGuard).set({ flagged: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+        }
+      });
+    },
+  };
+}
