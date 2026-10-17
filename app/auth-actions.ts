@@ -44,7 +44,7 @@ async function limited(action: 'login' | 'signup', username: string): Promise<st
  * One audit row per sign-in or sign-up attempt, in the same log as questions. Like questions, the username is
  * stored only as a keyed fingerprint, and the password never.
  */
-async function auditAuth(action: 'login' | 'signup', username: string, outcome: 'ok' | 'failed', reason?: string, userId?: string) {
+async function auditAuth(action: 'login' | 'signup', username: string, outcome: 'ok' | 'failed', reason?: string, userId?: string, sessionId?: string) {
   const database = await getDatabase();
   await database.auditDb.insert(queryAudit).values({
     id: randomUUID(),
@@ -53,6 +53,8 @@ async function auditAuth(action: 'login' | 'signup', username: string, outcome: 
     source: 'auth',
     userId: userId ?? 'unknown',
     questionSha256: questionFingerprint(`username:${username}`),
+    username: outcome === 'ok' ? username : null,
+    sessionId: sessionId ?? null,
     outcome: `${action}_${outcome}`,
     reason: reason ?? null,
   });
@@ -72,10 +74,12 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   const database = await getDatabase();
   try {
     const { userId } = await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
-    await logOut(database.auditDb, await readSessionCookie()); // this browser's previous session, if any
-    const { token } = await logIn(database.auditDb, username.data, password.data);
+    const previous = await readSessionCookie();
+    const { token, sessionId } = await logIn(database.auditDb, username.data, password.data);
+    // Only after a successful log-in: end this browser's previous session, if any.
+    await logOut(database.auditDb, previous);
     // Audit first: if the row can't be written, no cookie is set and nobody is left signed in.
-    await auditAuth('signup', name, 'ok', undefined, userId);
+    await auditAuth('signup', name, 'ok', undefined, userId, sessionId);
     await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) {
@@ -99,9 +103,11 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   }
   const database = await getDatabase();
   try {
-    await logOut(database.auditDb, await readSessionCookie()); // this browser's previous session, if any
-    const { token, userId } = await logIn(database.auditDb, username.data, password.data);
-    await auditAuth('login', name, 'ok', undefined, userId);
+    const previous = await readSessionCookie();
+    const { token, userId, sessionId } = await logIn(database.auditDb, username.data, password.data);
+    // Only after a successful log-in, so a wrong password doesn't sign this browser out.
+    await logOut(database.auditDb, previous);
+    await auditAuth('login', name, 'ok', undefined, userId, sessionId);
     await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) {

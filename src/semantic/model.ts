@@ -65,7 +65,8 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
 }
 
 /** Claude as the intent model. Used only when INTENT_MODEL=claude; needs Anthropic credentials. */
-// A question should fail fast to the deterministic fallback rather than hang: 20 s per attempt, one retry.
+// A question should fail fast to the deterministic fallback rather than hang: 5 s, no retry (see also the
+// circuit breaker in src/server/ask.ts).
 export function claudeModel(client: Anthropic = new Anthropic({ timeout: 5_000, maxRetries: 0 })): IntentModel {
   return {
     name: CLAUDE_MODEL,

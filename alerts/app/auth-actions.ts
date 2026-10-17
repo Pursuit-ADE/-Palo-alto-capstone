@@ -40,8 +40,9 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   if (!(await attempt(`signup:${limitKey(username.data.trim().toLowerCase())}`))) return { error: 'Too many attempts. Wait a minute and try again.' };
   try {
     await signUp(await db(), { username: username.data, password: password.data, invite: invite.data });
-    await logOut(await db(), await readSessionCookie()); // this browser's previous session, if any
+    const previous = await readSessionCookie();
     const { token } = await logIn(await db(), username.data, password.data);
+    await logOut(await db(), previous); // only after a successful log-in
     await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) return { error: e.message };
@@ -56,8 +57,9 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   if (!username.success || !password.success) return { error: 'Fill in your username and password.' };
   if (!(await attempt(`login:${limitKey(username.data.trim().toLowerCase())}`))) return { error: 'Too many attempts. Wait a minute and try again.' };
   try {
-    await logOut(await db(), await readSessionCookie()); // this browser's previous session, if any
+    const previous = await readSessionCookie();
     const { token } = await logIn(await db(), username.data, password.data);
+    await logOut(await db(), previous); // only after a successful log-in
     await setSessionCookie(token);
   } catch (e) {
     if (e instanceof AuthError) return { error: e.message };
