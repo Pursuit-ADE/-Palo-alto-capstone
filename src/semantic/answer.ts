@@ -6,25 +6,53 @@ import type { Database } from '../db/client';
 import { dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
-import { Intent as IntentSchema, type Intent } from '../registry/types';
+import { Intent as IntentSchema, type Dimension, type Intent, type MetricDefinition } from '../registry/types';
 import { flagQuestion } from './flags';
 import { deterministicModel, type IntentModel } from './model';
 import { chartSpec, narrate } from './narrative';
+import { findPeriod } from './periods';
 import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
 export const MAX_QUESTION_LENGTH = 300;
 
+/** One side of a ratio metric (coverage): what it counts and the slice it was counted over. */
+export interface RatioPart {
+  label: string;
+  definition: string;
+  scope: string;
+}
+
 export interface Answer {
   kind: 'answer';
-  metric: { id: string; name: string; version: number; unit: string };
+  /** Registry definition, so the panel shows exactly what was counted. */
+  metric: { id: string; name: string; version: number; unit: string; definition: string; notes: string | null; owner: string };
   intent: unknown;
   rows: Record<string, string | number | null>[];
   scope: string;
+  /** The filters the query actually applied, after scoping (not what the question asked for). */
+  filters: {
+    period: { label: string; start: string; end: string } | null;
+    regions: string[];
+    stages: string[] | null;
+    groupBy: Dimension[];
+  };
+  /** For ratio metrics, the numerator and denominator with their scopes; null otherwise. */
+  parts: { numerator: RatioPart; denominator: RatioPart } | null;
   /** Plain-language summary built from the rows (never from a model). */
   narrative: string;
   /** Vega-Lite bar chart spec for a single breakdown, or null. */
   chart: ReturnType<typeof chartSpec>;
-  provenance: { snapshotId: string; asOfDate: string; resultHash: string };
+  provenance: {
+    snapshotId: string;
+    asOfDate: string;
+    /** When the snapshot was loaded (ISO 8601). */
+    loadedAt: string;
+    /** What the snapshot contains (from the snapshot row: sample data and which tables are synthetic). */
+    dataNote: string | null;
+    resultHash: string;
+    /** The query_audit row for this answer. Empty until the row is written; an answer is never returned without it. */
+    auditId: string;
+  };
 }
 
 export type Reply = Answer | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
@@ -53,8 +81,8 @@ export async function currentSnapshot(database: Database) {
   return snapshot;
 }
 
-async function audit(database: Database, entry: AuditFields & { userId: string; source: string; outcome: string; requestId: string }) {
-  await database.auditDb.insert(queryAudit).values({ id: randomUUID(), at: new Date(), ...entry });
+async function audit(database: Database, entry: AuditFields & { id: string; userId: string; source: string; outcome: string; requestId: string }) {
+  await database.auditDb.insert(queryAudit).values({ at: new Date(), ...entry });
 }
 
 /** Thrown when a user is locked out after repeated flagged questions (S3). */
@@ -93,6 +121,26 @@ function outcomeOf(e: unknown): { outcome: string; reason: string } {
   return { outcome: 'error', reason: e instanceof Error ? e.name : 'unknown' };
 }
 
+/** Ratio metrics (coverage): the numerator and denominator both use the asker's scope and the same period. */
+function ratioParts(metric: MetricDefinition, registry: Registry, scope: string, period: string | undefined): Answer['parts'] {
+  if (metric.kind !== 'ratio') return null;
+  const num = registry.metrics.get(metric.numerator);
+  const slice = scope.replace(/^Scope: /, '').replace(/\.$/, '');
+  const when = period ? ` for ${period}` : '';
+  return {
+    numerator: {
+      label: `${num?.name ?? metric.numerator} v${num?.version ?? '?'}`,
+      definition: `${num?.description ?? ''} Only deals with an expected close date in ${period ?? 'the period'}.`.trim(),
+      scope: `${slice}${when}.`,
+    },
+    denominator: {
+      label: 'Quota',
+      definition: `Sum of quota${when} for the same sales reps.`,
+      scope: `${slice}${when}.`,
+    },
+  };
+}
+
 async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
@@ -108,15 +156,39 @@ async function run(database: Database, registry: Registry, principal: Principal,
   );
   const resultHash = sha256(JSON.stringify({ intent, rows, snapshot: snapshot.id })).slice(0, 16);
   fields.resultHash = resultHash;
+  const scope = scopeStatement(principal, q.regions);
+  const period = intent.filters.period ? findPeriod(intent.filters.period) : undefined;
   return {
     kind: 'answer',
-    metric: { id: metric.id, name: metric.name, version: metric.version, unit: metric.unit },
+    metric: {
+      id: metric.id,
+      name: metric.name,
+      version: metric.version,
+      unit: metric.unit,
+      definition: metric.description,
+      notes: metric.notes ?? null,
+      owner: metric.owner,
+    },
     intent,
     rows,
-    scope: scopeStatement(principal, q.regions),
+    scope,
+    filters: {
+      period: period ? { label: period.period, start: period.start, end: period.end } : null,
+      regions: q.regions,
+      stages: intent.filters.stages ?? null,
+      groupBy: intent.groupBy,
+    },
+    parts: ratioParts(metric, registry, scope, intent.filters.period),
     narrative: narrate(metric, rows, intent.groupBy, intent.filters.period),
     chart: chartSpec(metric, rows, intent.groupBy),
-    provenance: { snapshotId: snapshot.id, asOfDate: snapshot.asOfDate, resultHash },
+    provenance: {
+      snapshotId: snapshot.id,
+      asOfDate: snapshot.asOfDate,
+      loadedAt: new Date(snapshot.loadedAt).toISOString(),
+      dataNote: snapshot.notes ?? null,
+      resultHash,
+      auditId: '',
+    },
   };
 }
 
@@ -128,6 +200,7 @@ async function audited<T extends Reply>(
   body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
 ): Promise<T> {
   const requestId = randomUUID();
+  const auditId = randomUUID();
   const fields: AuditFields = { questionSha256: question === null ? null : questionFingerprint(question) };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
@@ -138,12 +211,13 @@ async function audited<T extends Reply>(
   try {
     result = await body(fields, principal);
   } catch (e) {
-    await audit(database, { ...fields, userId, source, requestId, ...outcomeOf(e) });
+    await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e) });
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
-  await audit(database, { ...fields, userId, source, requestId, outcome });
-  return result;
+  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome });
+  // The audit ID is filled in only once its row is written.
+  return result.kind === 'answer' ? { ...result, provenance: { ...result.provenance, auditId } } : result;
 }
 
 /** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
