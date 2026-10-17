@@ -10,7 +10,7 @@ Red teaming makes the copilot safer in the areas tested. It does not make it "se
 - **Access:** gray-box. Testers can read the code and the registry, and ask questions as a demo identity. They don't get database passwords or API keys.
 - **Allowed:** prompt injection (direct, indirect, encoded), social engineering, multi-turn escalation, tampered browser state, planted text in CRM data, and SQL or code in questions.
 - **Not allowed:** load or denial-of-service tests, attacks on hosting, GitHub or AI-provider accounts, and testing against a shared deployment without the team's go-ahead.
-- **Owner:** _[name]_ triages each finding within 24 hours and decides whether it blocks the demo. Anything Critical goes to the whole team the same day and to Alex in the next weekly update.
+- **Owner:** Mitra Kermanian (@MITRAKER) triages each finding within 24 hours and decides whether it blocks the demo. Anything Critical goes to the whole team the same day and to Alex in the next weekly update.
 - **Every fix ships with a regression test.** A finding is closed only when its retest passes in CI.
 - **Cleanup after a session:** set `ALLOW_TEST_IDENTITIES` and `INTENT_MODEL` back to their defaults, and clear `session_guard` locks.
 
@@ -138,6 +138,6 @@ The deterministic model behaves the same every run, so one run is enough. Claude
 | Golden set, Claude (`claude-opus-5-5`), single runs | 58/66 on `week5`; 66/66 on three runs with Trevor's catalog fix ([#16](https://github.com/Pursuit-ADE/-Palo-alto-capstone/pull/16), not merged yet) |
 | Flag evasion check (F1) | Before #20: 0 of 5 rewritten phrasings flagged. After: 5 of 5, plus 9 more variants in the tests |
 | False positives (flags) | 0 of 8 ordinary questions flagged; golden set still 66/66 |
-| Matrix with Claude | Not run yet |
+| Matrix with Claude | Not run yet. Ready to run: `INTENT_MODEL=claude npm run eval:redteam` (10 runs per attack, reports the attack success rate); needs an Anthropic API key |
 
 Weekly reports use a one-page format: summary, scope, findings by severity (ID, evidence, impact, fix, status), metrics, and what's left for the client's own red team before any rollout (live Claude traffic, real sign-in, the Slack phishing risk in F7).
