@@ -45,6 +45,9 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
     synonyms: m.synonyms,
     breakdowns: m.dimensions,
     needsPeriod: m.kind === 'ratio' && m.requiresPeriod,
+    // Without this the model assumed period filters were coverage-only and asked a needless clarifying question
+    // for "open deal value this quarter" (golden set against Claude, Oct 17).
+    periodFilter: m.kind === 'aggregate' ? 'optional: limits to deals with an expected close date in the quarter' : 'required',
     stageFilter: m.kind === 'aggregate',
   }));
   return [
