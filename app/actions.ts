@@ -3,12 +3,10 @@
 // Questions are sent by POST (a Server Action), so their text never lands in URLs, browser history or access
 // logs. Next.js checks the request's Origin against the host for Server Actions.
 import { z } from 'zod';
-import { demoUsers } from '@/db/seed';
 import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
 import { selectModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
-import { testIdentitiesEnabled } from '@/server/identity';
-import { currentUserId } from '@/server/session';
+import { requireUser } from '@/server/require-user';
 import { dbSessionGuard } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
@@ -18,20 +16,18 @@ const Question = z.string().trim().min(1).max(MAX_QUESTION_LENGTH);
 // The conversation state the browser sends back: at most the previous intent (a few hundred bytes) and a turn count.
 const PreviousJson = z.string().max(2000);
 const Turn = z.coerce.number().int().min(1).max(50);
-const DEMO_IDS = new Set(demoUsers().map((u) => u.id));
 
 export async function askCopilot(_prev: AskResult, formData: FormData): Promise<AskResult> {
-  // The user id comes from the session. A signed-in person can't ask as anyone else: the form's user field is
-  // ignored. Only with no session and ALLOW_TEST_IDENTITIES=true (local testing) is the form's test identity used.
-  const signedIn = await currentUserId();
-  const formUser = formData.get('user');
-  const userId = signedIn ?? (testIdentitiesEnabled() && typeof formUser === 'string' && DEMO_IDS.has(formUser) ? formUser : undefined);
-  if (!userId) return { kind: 'refused', message: 'Please log in to ask a question.' };
+  // The user comes from the session (src/server/require-user.ts). A signed-in person can't ask as anyone else: the
+  // form's user field is ignored. Only with no session and test identities on (local testing) is it used.
+  const actor = await requireUser(formData.get('user'));
+  if (!actor) return { kind: 'refused', message: 'Please log in to ask a question.' };
   const parsed = Question.safeParse(formData.get('example') ?? formData.get('q'));
   if (!parsed.success) return { kind: 'refused', message: `Ask a question of 1 to ${MAX_QUESTION_LENGTH} characters.` };
 
   const database = await getDatabase();
   const guard = dbSessionGuard(database.auditDb);
+  const userId = actor.userId;
   if (!(await guard.allow(userId))) return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
 
   let previous: unknown;
@@ -44,7 +40,7 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
     }
   }
   const turn = Turn.safeParse(formData.get('turn'));
-  const opts = { previous, turn: turn.success ? turn.data : 1, guard };
+  const opts = { previous, turn: turn.success ? turn.data : 1, guard, actor };
 
   const registry = getRegistry();
   return askWithFallback(database, registry, userId, parsed.data, opts, selectModel());

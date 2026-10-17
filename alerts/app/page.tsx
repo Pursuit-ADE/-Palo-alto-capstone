@@ -4,8 +4,7 @@ import { alertSubscriptions } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
 import { redirect } from 'next/navigation';
-import { testIdentitiesEnabled } from '@/server/identity';
-import { currentUserId } from '@/server/session';
+import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
@@ -17,10 +16,11 @@ const USERS = demoUsers();
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when nobody is signed in and ALLOW_TEST_IDENTITIES=true.
-  const signedIn = await currentUserId();
-  if (!signedIn && !testIdentitiesEnabled()) redirect('/login');
   const params = await searchParams;
-  const user = signedIn ?? (USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east');
+  const actor = await requireUser(params.user, 'u_ts_east');
+  if (!actor) redirect('/login');
+  const user = actor.userId;
+  const signedIn = actor.username ? user : undefined;
   const me = USERS.find((u) => u.id === user)!;
   const { database, rules } = await getAlertsRuntime();
   // Only delivered alerts are readable. Held, blocked or failed alerts are counted, never shown.

@@ -1,7 +1,7 @@
 // The signed-in user for this request, read only from the session cookie. Server-only.
 import { cookies } from 'next/headers';
 import { httpsSettings } from './https';
-import { sessionUser, SESSION_HOURS } from './auth';
+import { sessionInfo, SESSION_HOURS, type SessionInfo } from './auth';
 import { getAlertsRuntime } from './runtime';
 
 // A different cookie from the copilot's: on localhost both apps share cookies, and each keeps its own sessions.
@@ -9,10 +9,14 @@ export const SESSION_COOKIE = 'alto_alerts_session';
 
 /** The signed-in user's id, or undefined. Never taken from a form, URL or link. */
 export async function currentUserId(): Promise<string | undefined> {
+  return (await currentSession())?.userId;
+}
+
+/** The signed-in account and session, or undefined. Never taken from a form, URL or link. */
+export async function currentSession(): Promise<SessionInfo | undefined> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return undefined;
-  const { database } = await getAlertsRuntime();
-  return sessionUser(database.db, token);
+  return sessionInfo((await getAlertsRuntime()).database.db, token);
 }
 
 export async function setSessionCookie(token: string) {

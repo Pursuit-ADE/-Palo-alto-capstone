@@ -1,21 +1,15 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { demoUsers } from '@/db/seed';
 import { PreferenceError, savePreference } from '@/alerts/preferences';
-import { testIdentitiesEnabled } from '@/server/identity';
-import { currentUserId } from '@/server/session';
+import { requireUser } from '@/server/require-user';
 import { getAlertsRuntime } from '@/server/runtime';
 
 export type SaveResult = { ok: boolean; message: string } | null;
 
-const DEMO_IDS = new Set(demoUsers().map((u) => u.id));
-
 /** Saves one subscription for the signed-in person. The form's user field is used only for local testing. */
 export async function saveSubscription(_prev: SaveResult, formData: FormData): Promise<SaveResult> {
-  const signedIn = await currentUserId();
-  const formUser = formData.get('user');
-  const userId = signedIn ?? (testIdentitiesEnabled() && typeof formUser === 'string' && DEMO_IDS.has(formUser) ? formUser : undefined);
+  const userId = (await requireUser(formData.get('user')))?.userId;
   if (!userId) return { ok: false, message: 'Please log in to change your alerts.' };
   const { database, rules } = await getAlertsRuntime();
   try {

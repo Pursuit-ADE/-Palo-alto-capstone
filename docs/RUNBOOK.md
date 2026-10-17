@@ -15,6 +15,7 @@ Create `.env.local` in the repository root:
 
 ```
 DEMO_INVITE_SECRET=<a long random value>
+AUDIT_HASH_KEY=<a different long random value, 32+ characters>
 ALLOW_EMBEDDED_DB=true
 ```
 
@@ -41,10 +42,11 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 
 | Setting | App | What it does |
 |---|---|---|
-| `DEMO_INVITE_SECRET` | both | Turns on sign-up with invite codes. Same value in both apps. |
+| `DEMO_INVITE_SECRET` | both | Turns on sign-up with invite codes. Same value in both apps. Each code creates one account per app. |
+| `DEMO_INVITE_EXPIRES` | both | Optional date after which invite codes stop working. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
 | `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
-| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Set it so fingerprints stay comparable across restarts. |
+| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Required (32+ characters) for `npm start`. |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
@@ -57,7 +59,10 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 | What you see | Why | Fix |
 |---|---|---|
 | Server stops with "Production needs Postgres mode" | `npm start` refuses the in-memory database by default | Laptop demo: `ALLOW_EMBEDDED_DB=true`. Shared use: set the Postgres URLs. |
-| "Sign-up is turned off here" | No invite secret | Set `DEMO_INVITE_SECRET` and restart. |
+| "Sign-up is turned off here" | No invite secret, or an unreadable `DEMO_INVITE_EXPIRES` | Set `DEMO_INVITE_SECRET` (and a date such as 2026-11-10) and restart. |
+| "That invite code has already been used" | Each code makes one account per app | Log in with that account. To start over, disable it (`npm run accounts -- disable <username>`) or, on the laptop demo, restart the server. |
+| "Refusing to start in production" | A required setting is missing or too short | Set what the message lists, usually `AUDIT_HASH_KEY`. |
+| Someone should lose access now | Left the team, or a password leaked | `npm run accounts -- disable <username>` (add `--app alerts` for the alerts app). It also signs them out everywhere. |
 | "That invite code is not valid" | The codes were printed with a different secret than the server has | Run `npm run invites` with the same `DEMO_INVITE_SECRET` the server uses. |
 | "The username or password is not right" | Wrong password, or the account was made in the other app | Accounts are per app; create one in each with the same invite code. |
 | "Too many attempts" | 10 sign-in tries a minute per username | Wait a minute. |

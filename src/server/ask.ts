@@ -32,6 +32,28 @@ function tagged(model: IntentModel): IntentModel {
   };
 }
 
+/**
+ * A circuit breaker for the AI model (audit AI2). After 3 provider failures within a minute, questions skip the
+ * model for 5 minutes and go straight to the deterministic model, so a hung provider costs one 5-second timeout
+ * at most, not one per question. Per process.
+ */
+export class ModelBreaker {
+  private failures: number[] = [];
+  private openUntil = 0;
+  constructor(private readonly threshold = 3, private readonly windowMs = 60_000, private readonly coolMs = 5 * 60_000) {}
+  isOpen(now = Date.now()) {
+    return now < this.openUntil;
+  }
+  failed(now = Date.now()) {
+    this.failures = [...this.failures.filter((t) => now - t < this.windowMs), now];
+    if (this.failures.length >= this.threshold) {
+      this.openUntil = now + this.coolMs;
+      this.failures = [];
+    }
+  }
+}
+export const modelBreaker = new ModelBreaker();
+
 const KNOWN = (e: unknown): e is Error => e instanceof ScopeViolation || e instanceof IntentError || e instanceof SessionLocked;
 
 export async function askWithFallback(
@@ -41,7 +63,9 @@ export async function askWithFallback(
   question: string,
   opts: AskOptions,
   model: IntentModel,
+  breaker: ModelBreaker = modelBreaker,
 ): Promise<Reply | Refusal> {
+  if (model !== deterministicModel && breaker.isOpen()) model = deterministicModel;
   try {
     return await ask(database, registry, userId, question, { ...opts, model: model === deterministicModel ? model : tagged(model) });
   } catch (e) {
@@ -50,6 +74,7 @@ export async function askWithFallback(
     // were recorded (both happen before the model runs), so the retry neither checks nor counts them again.
     // Any other failure, such as the lock store being unreachable, is not retried around the lock.
     if (e instanceof ProviderError) {
+      breaker.failed();
       const sameRequest = opts.guard ? { isLocked: () => false, record: () => {} } : undefined;
       try {
         return await ask(database, registry, userId, question, { ...opts, guard: sameRequest, model: deterministicModel });

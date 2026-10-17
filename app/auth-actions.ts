@@ -15,6 +15,9 @@ import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/serve
 
 export type AuthState = { error?: string } | null;
 
+// Usernames that can't exist share one counter, so made-up names don't each get their own 10 tries or their own row.
+const limitKey = (name: string) => (/^[a-z0-9._-]{3,32}$/.test(name) ? name : 'invalid');
+
 const Field = z.string().max(200);
 
 /** The caller's address as the server sees it. Behind a proxy, set it to overwrite X-Forwarded-For. */
@@ -29,9 +32,11 @@ async function clientIp(): Promise<string | undefined> {
  */
 async function limited(action: 'login' | 'signup', username: string): Promise<string | undefined> {
   const database = await getDatabase();
-  if (!(await dbSessionGuard(database.auditDb, 10).allow(`auth:${action}:${username}`))) return 'rate_limited_user';
+  if (!(await dbSessionGuard(database.auditDb, 10).allow(`auth:${action}:${limitKey(username)}`))) return 'rate_limited_user';
   const ip = await clientIp();
   if (ip && !(await dbSessionGuard(database.auditDb, 30).allow(`auth-ip:${questionFingerprint(ip).slice(0, 32)}`))) return 'rate_limited_ip';
+  // A ceiling for the whole app, so many machines together still can't try more than 300 a minute.
+  if (!(await dbSessionGuard(database.auditDb, 300).allow('auth-all'))) return 'rate_limited_all';
   return undefined;
 }
 
@@ -67,6 +72,7 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   const database = await getDatabase();
   try {
     const { userId } = await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
+    await logOut(database.auditDb, await readSessionCookie()); // this browser's previous session, if any
     const { token } = await logIn(database.auditDb, username.data, password.data);
     // Audit first: if the row can't be written, no cookie is set and nobody is left signed in.
     await auditAuth('signup', name, 'ok', undefined, userId);
@@ -93,6 +99,7 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   }
   const database = await getDatabase();
   try {
+    await logOut(database.auditDb, await readSessionCookie()); // this browser's previous session, if any
     const { token, userId } = await logIn(database.auditDb, username.data, password.data);
     await auditAuth('login', name, 'ok', undefined, userId);
     await setSessionCookie(token);

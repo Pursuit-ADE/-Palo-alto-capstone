@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -125,7 +125,12 @@ export const appAccounts = pgTable('app_accounts', {
   userId: text('user_id').notNull().references(() => appUsers.id),
   passwordHash: text('password_hash').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
-});
+  // Set by `npm run accounts -- disable <username>`. A disabled account can't log in and its sessions stop working.
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+}, (t) => [
+  // One account per demo person in each app: an invite code can be used once, so a leaked code can't mint more accounts.
+  uniqueIndex('app_accounts_user_id_unique').on(t.userId),
+]);
 
 export const appSessions = pgTable('app_sessions', {
   tokenHash: text('token_hash').primaryKey(),
@@ -167,4 +172,8 @@ export const queryAudit = pgTable('query_audit', {
   flags: text('flags').array(),
   model: text('model'),
   turn: integer('turn'),
+  // Which account and session asked, so two accounts of the same demo person can be told apart. The session is
+  // the first 16 characters of the stored token hash, never the token.
+  username: text('username'),
+  sessionId: text('session_id'),
 });

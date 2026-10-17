@@ -2,8 +2,7 @@ import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
-import { testIdentitiesEnabled } from '@/server/identity';
-import { currentUserId } from '@/server/session';
+import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { SyntheticBadge } from './synthetic-badge';
 import { promptFor } from '@/server/prompts';
@@ -24,10 +23,11 @@ function compactUsd(value: number): string {
 export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
-  const signedIn = await currentUserId();
-  if (!signedIn && !testIdentitiesEnabled()) redirect('/login');
   const params = await searchParams;
-  const user = signedIn ?? (USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east');
+  const actor = await requireUser(params.user, 'u_ts_east');
+  if (!actor) redirect('/login');
+  const user = actor.userId;
+  const signedIn = actor.username ? user : undefined;
   const registry = getRegistry();
   const database = await getDatabase();
   const me = USERS.find((u) => u.id === user)!;
@@ -35,10 +35,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
   // Dashboard tiles: the same governed path as any typed question, so they obey the same scope.
   const [pipeline, coverage, count, byRegion] = await Promise.all([
-    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard'),
+    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard', actor),
   ]);
   // Coverage with no quota is NULL: shown as not available, never as 0.00x.
   const covRaw = coverage.rows[0]?.value;
