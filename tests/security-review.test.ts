@@ -110,7 +110,7 @@ describe('4. sign-up rejects easy passwords', () => {
     expect(weakPasswordReason('violet-harbor-lantern')).toBeUndefined();
   });
   it('refuses a weak password at sign-up with an audit code', async () => {
-    const err = await signUp(database.auditDb, { username: 'weak.pw', password: 'password1234', invite: 'X' }, 'test-secret').catch((e: unknown) => e);
+    const err = await signUp(database.authDb, { username: 'weak.pw', password: 'password1234', invite: 'X' }, 'test-secret').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(AuthError);
     expect((err as AuthError).code).toBe('weak_password');
   });

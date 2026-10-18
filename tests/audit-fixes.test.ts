@@ -24,25 +24,25 @@ const failCode = (p: Promise<unknown>) => p.then(() => 'ok', (e: unknown) => (e 
 
 describe('A1: an invite code works once and can expire', () => {
   it('refuses a second account for the same demo person', async () => {
-    await signUp(database.auditDb, { username: 'avery.one', password: PASSWORD, invite: code('u_analyst') }, SECRET);
-    expect(await failCode(signUp(database.auditDb, { username: 'avery.two', password: PASSWORD, invite: code('u_analyst') }, SECRET))).toBe('invite_used');
+    await signUp(database.authDb, { username: 'avery.one', password: PASSWORD, invite: code('u_analyst') }, SECRET);
+    expect(await failCode(signUp(database.authDb, { username: 'avery.two', password: PASSWORD, invite: code('u_analyst') }, SECRET))).toBe('invite_used');
   });
   it('still says a taken username is taken', async () => {
-    expect(await failCode(signUp(database.auditDb, { username: 'avery.one', password: PASSWORD, invite: code('u_ts_west') }, SECRET))).toBe('username_taken');
+    expect(await failCode(signUp(database.authDb, { username: 'avery.one', password: PASSWORD, invite: code('u_ts_west') }, SECRET))).toBe('username_taken');
   });
   it('refuses codes after DEMO_INVITE_EXPIRES, and turns sign-up off if the date is unreadable', async () => {
     const now = new Date('2026-11-11T00:00:00Z');
-    expect(await failCode(signUp(database.auditDb, { username: 'late.one', password: PASSWORD, invite: code('u_ts_west') }, SECRET, now, inviteExpiry('2026-11-10')))).toBe('invite_expired');
+    expect(await failCode(signUp(database.authDb, { username: 'late.one', password: PASSWORD, invite: code('u_ts_west') }, SECRET, now, inviteExpiry('2026-11-10')))).toBe('invite_expired');
     expect(inviteExpiry('not a date')).toBe('invalid');
-    expect(await failCode(signUp(database.auditDb, { username: 'late.two', password: PASSWORD, invite: code('u_ts_west') }, SECRET, now, 'invalid'))).toBe('signup_off');
+    expect(await failCode(signUp(database.authDb, { username: 'late.two', password: PASSWORD, invite: code('u_ts_west') }, SECRET, now, 'invalid'))).toBe('signup_off');
     expect(inviteExpiry(undefined)).toBeNull();
   });
 });
 
 describe('A1: audit rows name the account and session', () => {
   it('writes username and session id for a question and a dashboard tile', async () => {
-    const { token } = await logIn(database.auditDb, 'avery.one', PASSWORD);
-    const s = (await sessionInfo(database.auditDb, token))!;
+    const { token } = await logIn(database.authDb, 'avery.one', PASSWORD);
+    const s = (await sessionInfo(database.authDb, token))!;
     expect(s).toMatchObject({ userId: 'u_analyst', username: 'avery.one' });
     expect(s.sessionId).toHaveLength(16);
     await ask(database, reg, s.userId, 'What is our open pipeline?', { actor: s });
@@ -56,25 +56,25 @@ describe('A1: audit rows name the account and session', () => {
 
 describe('A2: disabling an account', () => {
   it('ends its sessions, refuses log-in with the usual message, and can be undone', async () => {
-    await signUp(database.auditDb, { username: 'sam.disable', password: PASSWORD, invite: code('u_ts_west') }, SECRET);
-    const { token } = await logIn(database.auditDb, 'sam.disable', PASSWORD);
+    await signUp(database.authDb, { username: 'sam.disable', password: PASSWORD, invite: code('u_ts_west') }, SECRET);
+    const { token } = await logIn(database.authDb, 'sam.disable', PASSWORD);
     expect(await setAccountDisabled(database.db, 'sam.disable', true)).toBe(true);
-    expect(await sessionInfo(database.auditDb, token)).toBeUndefined();
-    const err = await logIn(database.auditDb, 'sam.disable', PASSWORD).catch((e: AuthError) => e);
+    expect(await sessionInfo(database.authDb, token)).toBeUndefined();
+    const err = await logIn(database.authDb, 'sam.disable', PASSWORD).catch((e: AuthError) => e);
     expect((err as AuthError).code).toBe('account_disabled');
     expect((err as AuthError).message).toBe('The username or password is not right.');
     await setAccountDisabled(database.db, 'sam.disable', false);
-    const again = await logIn(database.auditDb, 'sam.disable', PASSWORD);
-    expect(await sessionInfo(database.auditDb, again.token)).toBeDefined();
-    expect(await revokeSessions(database.auditDb, 'sam.disable')).toBeGreaterThan(0);
-    expect(await sessionInfo(database.auditDb, again.token)).toBeUndefined();
+    const again = await logIn(database.authDb, 'sam.disable', PASSWORD);
+    expect(await sessionInfo(database.authDb, again.token)).toBeDefined();
+    expect(await revokeSessions(database.authDb, 'sam.disable')).toBeGreaterThan(0);
+    expect(await sessionInfo(database.authDb, again.token)).toBeUndefined();
   });
 });
 
 describe('S1: session clean-up on log-in', () => {
   it('keeps at most MAX_SESSIONS per account and deletes expired sessions', async () => {
-    await database.auditDb.insert(appSessions).values({ tokenHash: 'expired-row', username: 'avery.one', userId: 'u_analyst', createdAt: new Date('2026-01-01'), expiresAt: new Date('2026-01-01T08:00:00Z') });
-    for (let i = 0; i < MAX_SESSIONS + 2; i++) await logIn(database.auditDb, 'avery.one', PASSWORD, new Date(Date.now() + i * 1000));
+    await database.authDb.insert(appSessions).values({ tokenHash: 'expired-row', username: 'avery.one', userId: 'u_analyst', createdAt: new Date('2026-01-01'), expiresAt: new Date('2026-01-01T08:00:00Z') });
+    for (let i = 0; i < MAX_SESSIONS + 2; i++) await logIn(database.authDb, 'avery.one', PASSWORD, new Date(Date.now() + i * 1000));
     const rows = await database.db.select().from(appSessions).where(eq(appSessions.username, 'avery.one'));
     expect(rows).toHaveLength(MAX_SESSIONS);
     expect(rows.some((r) => r.tokenHash === 'expired-row')).toBe(false);

@@ -6,23 +6,27 @@ import { openDatabase, type Database } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
 import { ask } from '@/semantic/answer';
 
-const enabled = Boolean(process.env.DATABASE_URL && process.env.AUDIT_DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
+const enabled = Boolean(process.env.DATABASE_URL && process.env.AUDIT_DATABASE_URL && process.env.AUTH_DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
 
 describe.skipIf(!enabled)('Postgres least privilege', () => {
   let database: Database;
   let app: pg.Client;
   let audit: pg.Client;
+  let auth: pg.Client;
 
   beforeAll(async () => {
     database = await openDatabase();
     app = new pg.Client({ connectionString: process.env.DATABASE_URL });
     audit = new pg.Client({ connectionString: process.env.AUDIT_DATABASE_URL });
+    auth = new pg.Client({ connectionString: process.env.AUTH_DATABASE_URL });
     await app.connect();
     await audit.connect();
+    await auth.connect();
   });
   afterAll(async () => {
     await app?.end();
     await audit?.end();
+    await auth?.end();
     await database?.close();
   });
 
@@ -64,8 +68,26 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(audit, 'SELECT * FROM query_audit');
     await denied(audit, "UPDATE query_audit SET outcome = 'answered'");
     await denied(audit, 'DELETE FROM query_audit');
-    // The audit login manages sessions but can't rewrite a password hash or change an account's person.
+    // Accounts and sessions belong to the auth login: the audit login can't read password hashes or tokens.
+    await denied(audit, 'SELECT * FROM app_accounts');
+    await denied(audit, 'SELECT * FROM app_sessions');
     await denied(audit, "UPDATE app_accounts SET user_id = 'u_analyst'");
+  });
+
+  it('the auth role can only manage accounts, sessions and the sign-in limit', async () => {
+    await auth.query('SELECT username FROM app_accounts');
+    await auth.query('SELECT token_hash FROM app_sessions');
+    await denied(auth, 'SELECT * FROM opportunities');
+    await denied(auth, 'SELECT * FROM query_audit');
+    await denied(auth, "INSERT INTO query_audit (id, at, request_id, source, user_id, outcome) VALUES ('x', now(), 'x', 'x', 'x', 'x')");
+    await denied(auth, 'SELECT * FROM contacts');
+    // It can't change which person an account belongs to, or rewrite a password hash.
+    await denied(auth, "UPDATE app_accounts SET user_id = 'u_analyst'");
+    await denied(auth, "UPDATE app_accounts SET password_hash = 'x'");
+  });
+
+  it('the audit and auth roles have statement timeouts', async () => {
+    for (const c of [audit, auth]) expect((await c.query('SHOW statement_timeout')).rows[0].statement_timeout).toBe('5s');
   });
 
   it('the audit role can update the session guard and nothing else', async () => {

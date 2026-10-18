@@ -199,6 +199,21 @@ async function run(database: Database, registry: Registry, principal: Principal,
   };
 }
 
+/** Audits a question refused before the pipeline runs (the per-user rate limit), so floods show up in the log. */
+export async function recordRefusal(database: Database, userId: string, question: string, outcome: string, reason: string, actor?: AskOptions['actor']) {
+  await audit(database, {
+    id: randomUUID(),
+    userId,
+    source: 'question',
+    requestId: randomUUID(),
+    outcome,
+    reason,
+    questionSha256: questionFingerprint(question),
+    username: actor?.username ?? null,
+    sessionId: actor?.sessionId ?? null,
+  });
+}
+
 async function audited<T extends Reply>(
   database: Database,
   userId: string,
@@ -260,9 +275,10 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    // The person is looked up first, so a locked or over-long question's audit row still records their role.
+    const p = await principal();
     if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
-    const p = await principal();
     const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
     fields.flags = flags;
     if (flags.length) await opts.guard?.record(userId);

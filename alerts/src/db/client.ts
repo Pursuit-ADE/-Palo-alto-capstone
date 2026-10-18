@@ -1,8 +1,9 @@
 // Database access for the alerts service.
 //
 // Default: PGlite (embedded Postgres) in memory, so the demo and tests run anywhere; state resets on restart.
-// Postgres mode (persistent; set both URLs, see .env.example and ../docker/init-roles.sql):
-//   MIGRATION_DATABASE_URL  owner role: runs migrations, loads data, applies grants. Never used at runtime.
+// Postgres mode (persistent; see .env.example and ../docker/init-roles.sql):
+//   MIGRATION_DATABASE_URL  owner role: migrations, data load and grants. Set it only for `npm run db:setup` (or on a
+//                           laptop); a deployed server should not hold it.
 //   ALERTS_DATABASE_URL     alerts_app: reads the CRM and event tables; may only insert and update alert
 //                           deliveries, subscriptions and the scheduler cursor, and delete only a subscription
 //                           (unsubscribing). No other deletes, no schema changes.
@@ -15,9 +16,9 @@ import type { PgDatabase, PgQueryResultHKT } from 'drizzle-orm/pg-core';
 import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
+import { assertNoTestIdentitiesInProduction } from '../server/identity';
 import { buildSeed, DEFAULT_SEED } from './seed';
 import { assertProductionConfig } from '../server/config';
-import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -43,15 +44,13 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   }
   const { ALERTS_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (ALERTS_DATABASE_URL || MIGRATION_DATABASE_URL) {
-    if (!ALERTS_DATABASE_URL || !MIGRATION_DATABASE_URL) {
-      throw new Error('Postgres mode needs ALERTS_DATABASE_URL and MIGRATION_DATABASE_URL together');
-    }
+    if (!ALERTS_DATABASE_URL) throw new Error('Postgres mode needs ALERTS_DATABASE_URL (and MIGRATION_DATABASE_URL for setup)');
     return openPostgres(ALERTS_DATABASE_URL, MIGRATION_DATABASE_URL, seed);
   }
   // The embedded database forgets everything on restart and has no separate login, so a production server
   // refuses it unless it is explicitly the laptop demo.
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
-    throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL and MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
+    throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
   }
   const client = new PGlite();
   const db = drizzlePglite(client, { schema }) as unknown as Db;
@@ -60,8 +59,12 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   return { db, mode: 'pglite', close: () => client.close() };
 }
 
-async function openPostgres(appUrl: string, ownerUrl: string, seed: string): Promise<Database> {
-  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1 });
+// Fail fast instead of hanging when the database is unreachable, and keep the number of connections bounded.
+const POOL = { connectionTimeoutMillis: 5000, idleTimeoutMillis: 30_000 };
+
+/** Migrations, data load and grants, as the owner login. Run by `npm run db:setup`, or at start when the owner URL is set. */
+export async function setupDatabase(ownerUrl: string, seed: string = DEFAULT_SEED) {
+  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1, ...POOL });
   try {
     const ownerDb = drizzlePg(owner, { schema });
     await migratePg(ownerDb, { migrationsFolder: MIGRATIONS });
@@ -70,7 +73,11 @@ async function openPostgres(appUrl: string, ownerUrl: string, seed: string): Pro
   } finally {
     await owner.end();
   }
-  const app = new pg.Pool({ connectionString: appUrl, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
+}
+
+async function openPostgres(appUrl: string, ownerUrl: string | undefined, seed: string): Promise<Database> {
+  if (ownerUrl) await setupDatabase(ownerUrl, seed);
+  const app = new pg.Pool({ connectionString: appUrl, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
   return { db: drizzlePg(app, { schema }) as unknown as Db, mode: 'postgres', close: () => app.end() };
 }
 

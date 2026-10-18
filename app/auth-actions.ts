@@ -78,11 +78,11 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   }
   const database = await getDatabase();
   try {
-    const { userId } = await signUp(database.auditDb, { username: username.data, password: password.data, invite: invite.data });
+    const { userId } = await signUp(database.authDb, { username: username.data, password: password.data, invite: invite.data });
     const previous = await readSessionCookie();
-    const { token, sessionId } = await logIn(database.auditDb, username.data, password.data);
+    const { token, sessionId } = await logIn(database.authDb, username.data, password.data);
     // Only after a successful log-in: end this browser's previous session, if any.
-    await logOut(database.auditDb, previous);
+    await logOut(database.authDb, previous);
     // Audit first: if the row can't be written, no cookie is set and nobody is left signed in.
     await auditAuth('signup', name, 'ok', undefined, userId, sessionId);
     await setSessionCookie(token);
@@ -109,9 +109,9 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   const database = await getDatabase();
   try {
     const previous = await readSessionCookie();
-    const { token, userId, sessionId } = await logIn(database.auditDb, username.data, password.data);
+    const { token, userId, sessionId } = await logIn(database.authDb, username.data, password.data);
     // Only after a successful log-in, so a wrong password doesn't sign this browser out.
-    await logOut(database.auditDb, previous);
+    await logOut(database.authDb, previous);
     await auditAuth('login', name, 'ok', undefined, userId, sessionId);
     await setSessionCookie(token);
   } catch (e) {
@@ -126,7 +126,7 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
 
 export async function logOutAction() {
   const database = await getDatabase();
-  await logOut(database.auditDb, await readSessionCookie());
+  await logOut(database.authDb, await readSessionCookie());
   await clearSessionCookie();
   redirect('/login');
 }

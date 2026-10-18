@@ -15,8 +15,8 @@
   --ok: #1f9d55;
   --warn: #c98a00;
   --bad: #d64545;
-  --font: "Manrope", "Segoe UI", system-ui, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  --font: var(--font-manrope), "Manrope", "Segoe UI", system-ui, sans-serif;
+  --mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
