@@ -46,13 +46,14 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 | `DEMO_INVITE_EXPIRES` | both | Optional date after which invite codes stop working. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
 | `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
-| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Required (32+ characters) for `npm start`. |
+| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints and the per-address sign-in limit. Required (32+ characters) for `npm start` (`openssl rand -hex 32`). |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
 | `SLACK_USER_WEBHOOKS` | alerts | JSON map of user id to that person's own `https://hooks.slack.com/services/...` webhook. |
-| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`. Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
-| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and every session lock. |
+| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`, read when the server starts (no rebuild needed). Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
+| `TRUSTED_PROXY_HOPS` | both | Proxies in front of the app that append to `X-Forwarded-For` (1 for one load balancer). Unset: the header is ignored and all sign-in attempts share one limit of 100 a minute. |
+| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and one when a session lock starts. |
 
 ## Common problems
 

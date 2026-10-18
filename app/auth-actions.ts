@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { queryAudit } from '@/db/schema';
 import { questionFingerprint } from '@/semantic/answer';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
+import { addressLimit, clientAddress } from '@/server/client-address';
 import { dbSessionGuard } from '@/server/limits';
 import { getDatabase } from '@/server/runtime';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/server/session';
@@ -20,21 +21,17 @@ const limitKey = (name: string) => (/^[a-z0-9._-]{3,32}$/.test(name) ? name : 'i
 
 const Field = z.string().max(200);
 
-/** The caller's address as the server sees it. Behind a proxy, set it to overwrite X-Forwarded-For. */
-async function clientIp(): Promise<string | undefined> {
-  const h = await headers();
-  return h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim() || undefined;
-}
-
 /**
  * Brute-force limits, shared by every process on the same database: 10 attempts a minute per username, and
- * 30 a minute per address across all usernames, so one machine can't try many accounts. Returns the limit hit.
+ * 30 a minute per address across all usernames, so one machine can't try many accounts. Without a trusted
+ * address (see src/server/client-address.ts) all callers share one bucket of 100. Returns the limit hit.
  */
 async function limited(action: 'login' | 'signup', username: string): Promise<string | undefined> {
   const database = await getDatabase();
+  // The address is checked first, so attempts refused for it don't add a guard row per made-up username.
+  const address = clientAddress(await headers());
+  if (!(await dbSessionGuard(database.auditDb, addressLimit(address)).allow(`auth-ip:${questionFingerprint(address).slice(0, 32)}`))) return 'rate_limited_ip';
   if (!(await dbSessionGuard(database.auditDb, 10).allow(`auth:${action}:${limitKey(username)}`))) return 'rate_limited_user';
-  const ip = await clientIp();
-  if (ip && !(await dbSessionGuard(database.auditDb, 30).allow(`auth-ip:${questionFingerprint(ip).slice(0, 32)}`))) return 'rate_limited_ip';
   // A ceiling for the whole app, so many machines together still can't try more than 300 a minute.
   if (!(await dbSessionGuard(database.auditDb, 300).allow('auth-all'))) return 'rate_limited_all';
   return undefined;
@@ -42,22 +39,30 @@ async function limited(action: 'login' | 'signup', username: string): Promise<st
 
 /**
  * One audit row per sign-in or sign-up attempt, in the same log as questions. Like questions, the username is
- * stored only as a keyed fingerprint, and the password never.
+ * stored only as a keyed fingerprint, and the password never. A failed write is logged on the server and never
+ * changes the outcome: the session cookie may already be set, so throwing would show an error to a signed-in user.
  */
 async function auditAuth(action: 'login' | 'signup', username: string, outcome: 'ok' | 'failed', reason?: string, userId?: string, sessionId?: string) {
-  const database = await getDatabase();
-  await database.auditDb.insert(queryAudit).values({
-    id: randomUUID(),
-    at: new Date(),
-    requestId: randomUUID(),
-    source: 'auth',
-    userId: userId ?? 'unknown',
-    questionSha256: questionFingerprint(`username:${username}`),
-    username: outcome === 'ok' ? username : null,
-    sessionId: sessionId ?? null,
-    outcome: `${action}_${outcome}`,
-    reason: reason ?? null,
-  });
+  try {
+    const database = await getDatabase();
+    await database.auditDb.insert(queryAudit).values({
+      id: randomUUID(),
+      at: new Date(),
+      requestId: randomUUID(),
+      source: 'auth',
+      userId: userId ?? 'unknown',
+      questionSha256: questionFingerprint(`username:${username}`),
+      username: outcome === 'ok' ? username : null,
+      sessionId: sessionId ?? null,
+      outcome: `${action}_${outcome}`,
+      reason: reason ?? null,
+    });
+  } catch (e) {
+    console.error(`auth audit write failed (${action}_${outcome}):`, e instanceof Error ? e.name : 'unknown');
+    // A successful sign-in must be audited before its cookie is set (#24), so that failure still stops it.
+    // A failed attempt is refused either way; the person sees the usual message, not an internal error.
+    if (outcome === 'ok') throw e;
+  }
 }
 
 export async function signUpAction(_prev: AuthState, formData: FormData): Promise<AuthState> {

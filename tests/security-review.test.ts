@@ -139,7 +139,7 @@ describe("5. the model's own text is never shown", () => {
 describe('7. flagged questions reach the security channel', () => {
   const hook = 'https://hooks.slack.com/services/T000/B000/XXXX';
   const event = { auditId: 'a1', at: new Date('2026-10-17T16:00:00Z'), userId: 'u_test_notify', role: 'technical_seller', outcome: 'refused_injection', flags: ['instruction_override'] };
-  it('posts reason codes and the audit row, at most once a minute per person, and always on a lock', async () => {
+  it('posts reason codes and the audit row, at most once a minute per person, and once when a lock starts', async () => {
     const sent: string[] = [];
     const post = (async (_url: string, init: { body: string }) => {
       sent.push(init.body);
