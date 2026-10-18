@@ -109,6 +109,63 @@ export type NormalizeResult =
   | { kind: 'clarify'; question: string; resume?: Intent }
   | { kind: 'unsupported'; message: string };
 
+/** The metrics a question names. Longest matching synonym wins, so "pipeline coverage" beats "pipeline". */
+function namedMetrics(text: string, registry: Registry): string[] {
+  let best = 0;
+  let matches: string[] = [];
+  for (const m of registry.metrics.values()) {
+    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
+    if (len === 0) continue;
+    if (len > best) {
+      best = len;
+      matches = [m.id];
+    } else if (len === best) matches.push(m.id);
+  }
+  return matches;
+}
+
+/** The follow-up rule for a question that names a metric: it keeps the previous filters only for the same metric with a follow-up word. */
+function keepsPrevious(text: string, registry: Registry, previous: Intent, metricId: string): boolean {
+  return previous.metric === metricId && namedMetrics(text, registry).includes(metricId) && FOLLOW_UP.test(text);
+}
+
+/**
+ * The follow-up rule (glossary "follow_up"), the same for every intent model: a question keeps the previous
+ * question's filters and breakdown only when it names no metric ("what about West?"), or names the same metric
+ * with a follow-up word ("and the open pipeline by stage?"). Naming a different metric, or restating the
+ * question, starts fresh.
+ */
+export function continuesPrevious(phrase: string, registry: Registry, previous: Intent | undefined, metricId: string): boolean {
+  if (!previous) return false;
+  const text = clean(phrase);
+  return namedMetrics(text, registry).length === 0 || keepsPrevious(text, registry, previous, metricId);
+}
+
+/**
+ * For a question that starts fresh: removes the filters and breakdowns that only came from the previous question,
+ * keeping anything this question names itself. Used on a model's proposal, which may have carried them over.
+ */
+export function withoutCarryOver(intent: Intent, phrase: string, registry: Registry, previous: Intent): Intent {
+  const text = clean(phrase);
+  const allRegions = ALL_REGIONS_PHRASE.test(text);
+  const regions = intent.filters.regions?.filter((r) => allRegions || text.includes(` ${r} `) || !previous.filters.regions?.includes(r));
+  const named = findStages(text);
+  const stages = intent.filters.stages?.filter((s) => named.includes(s) || !previous.filters.stages?.includes(s));
+  const dims = Object.entries(registry.glossary.dimensionPhrases).filter(([p]) => text.includes(` ${p} `)).map(([, d]) => d);
+  const groupBy = intent.groupBy.filter((d) => dims.includes(d) || !previous.groupBy.includes(d));
+  const mentionsPeriod = / (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous|fiscal) quarter /.test(text) || Object.keys(registry.glossary.periodPhrases).some((p) => text.includes(` ${p} `));
+  const period = intent.filters.period && (mentionsPeriod || intent.filters.period !== previous.filters.period) ? intent.filters.period : undefined;
+  return {
+    metric: intent.metric,
+    filters: {
+      ...(regions?.length ? { regions } : {}),
+      ...(stages?.length ? { stages } : {}),
+      ...(period ? { period } : {}),
+    },
+    groupBy,
+  };
+}
+
 function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
@@ -126,17 +183,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     if (text.includes(` ${term} `)) return { kind: 'clarify', question };
   }
 
-  // Longest matching synonym wins, so "pipeline coverage" beats "pipeline".
-  let best = 0;
-  let matches: string[] = [];
-  for (const m of registry.metrics.values()) {
-    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
-    if (len === 0) continue;
-    if (len > best) {
-      best = len;
-      matches = [m.id];
-    } else if (len === best) matches.push(m.id);
-  }
+  let matches = namedMetrics(text, registry);
   const prior = previous && registry.metrics.has(previous.metric) ? previous : undefined;
   const followUpCue = FOLLOW_UP.test(text);
   let continued = false; // this turn names no metric and only changes a modifier
@@ -176,7 +223,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // Carry forward what this turn doesn't change, but only when it clearly continues the previous question:
   // it names no metric ("what about West?"), or it names the same metric with a follow-up cue ("and the
   // open pipeline by stage?"). A newly named metric, or a full question restated, starts fresh.
-  const inherit = prior && (continued || (prior.metric === metric.id && followUpCue)) ? prior : undefined;
+  const inherit = prior && (continued || keepsPrevious(text, registry, prior, metric.id)) ? prior : undefined;
 
   const mentionedStages = findStages(text);
   // "all stages" clears an inherited stage filter; saying nothing about stages keeps it.

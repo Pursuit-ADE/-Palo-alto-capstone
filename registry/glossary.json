@@ -97,6 +97,11 @@
       "id": "snapshot",
       "rule": "Every answer comes from the newest data snapshot and states its as-of date.",
       "appliesIn": "src/semantic/answer.ts"
+    },
+    {
+      "id": "follow_up",
+      "rule": "A follow-up keeps the earlier filters and breakdown only when it names no metric (\"what about West?\") or names the same metric with a follow-up word (\"and the open pipeline by stage?\"). Naming a different metric starts a new question.",
+      "appliesIn": "src/semantic/normalize.ts"
     }
   ]
 }
