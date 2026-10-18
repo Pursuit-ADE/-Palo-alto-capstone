@@ -16,6 +16,7 @@ import path from 'node:path';
 import * as schema from './schema';
 import { buildSeed, defaultSeedForDir, resolveDataDir } from './seed';
 import { assertDatasetConfirmed } from '../onboard/confirm';
+import { assertProductionConfig } from '../server/config';
 import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -42,6 +43,7 @@ export const STATEMENT_TIMEOUT_MS = 5000;
 export async function openDatabase(seed?: string, options: { dataDir?: string } = {}): Promise<Database> {
   // Test identities in production would let anyone view the app as any demo person: refuse to start.
   assertNoTestIdentitiesInProduction();
+  assertProductionConfig(process.env, 'copilot');
   const { DATABASE_URL, AUDIT_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (DATABASE_URL || AUDIT_DATABASE_URL || MIGRATION_DATABASE_URL) {
     if (!DATABASE_URL || !AUDIT_DATABASE_URL || !MIGRATION_DATABASE_URL) {

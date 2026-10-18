@@ -16,6 +16,7 @@ import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
 import { buildSeed, DEFAULT_SEED } from './seed';
+import { assertProductionConfig } from '../server/config';
 import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
@@ -33,6 +34,7 @@ export const STATEMENT_TIMEOUT_MS = 10_000;
 export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Database> {
   // Test identities in production would let anyone view the app as any demo person: refuse to start.
   assertNoTestIdentitiesInProduction();
+  assertProductionConfig(process.env, 'alerts');
   // The alerts service only has the Maven dataset. If the copilot was switched to another dataset, refuse to start
   // rather than alert on different accounts than the copilot shows.
   const datasetDir = process.env.DATASET_DIR;
@@ -84,6 +86,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
     -- Demo sign-in (Week 5): accounts and sessions; no UPDATE, so an account's person can't be changed.
     GRANT SELECT, INSERT, DELETE ON app_accounts, app_sessions TO alerts_app;
+    -- Brute-force counters: one row per attempt, deleted after a minute.
+    GRANT SELECT, INSERT, DELETE ON login_attempts TO alerts_app;
   `);
 }
 

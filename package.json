@@ -13,6 +13,7 @@
     "eval:golden": "tsx scripts/eval-golden.ts",
     "eval:redteam": "tsx scripts/eval-redteam.ts",
     "invites": "tsx scripts/invites.ts",
+    "accounts": "tsx scripts/accounts.ts",
     "docs:dictionary": "tsx scripts/data-dictionary.ts",
     "onboard:profile": "tsx scripts/onboard-dataset.ts profile",
     "onboard:propose": "tsx scripts/onboard-dataset.ts propose",

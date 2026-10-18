@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -181,7 +181,20 @@ export const appAccounts = pgTable('app_accounts', {
   userId: text('user_id').notNull().references(() => appUsers.id),
   passwordHash: text('password_hash').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
-});
+  // Set by `npm run accounts -- disable <username>`. A disabled account can't log in and its sessions stop working.
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+}, (t) => [
+  // One account per demo person in each app: an invite code can be used once, so a leaked code can't mint more accounts.
+  uniqueIndex('app_accounts_user_id_unique').on(t.userId),
+]);
+
+// Sign-in attempts in the last minute, for the brute-force limits (per username and per address). Shared by every
+// process on the same database; rows older than a minute are deleted as new attempts arrive.
+export const loginAttempts = pgTable('login_attempts', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  at: timestamp('at', { withTimezone: true }).notNull(),
+}, (t) => [index('login_attempts_key_at').on(t.key, t.at)]);
 
 export const appSessions = pgTable('app_sessions', {
   tokenHash: text('token_hash').primaryKey(),

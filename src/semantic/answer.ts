@@ -204,11 +204,16 @@ async function audited<T extends Reply>(
   userId: string,
   source: string,
   question: string | null,
+  actor: AskOptions['actor'],
   body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
 ): Promise<T> {
   const requestId = randomUUID();
   const auditId = randomUUID();
-  const fields: AuditFields = { questionSha256: question === null ? null : questionFingerprint(question) };
+  const fields: AuditFields = {
+    questionSha256: question === null ? null : questionFingerprint(question),
+    username: actor?.username ?? null,
+    sessionId: actor?.sessionId ?? null,
+  };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
     fields.role = p.role;
@@ -228,8 +233,8 @@ async function audited<T extends Reply>(
 }
 
 /** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
-export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent'): Promise<Answer> {
-  return audited(database, userId, source, null, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
+export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent', actor?: AskOptions['actor']): Promise<Answer> {
+  return audited(database, userId, source, null, actor, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
 }
 
 export interface AskOptions {
@@ -240,6 +245,8 @@ export interface AskOptions {
   model?: IntentModel;
   /** Session lock after repeated flagged questions. */
   guard?: Guard;
+  /** Which account and session asked, for the audit row. */
+  actor?: { username?: string; sessionId?: string };
 }
 
 /** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
@@ -251,7 +258,7 @@ export function parsePrevious(raw: unknown): Intent | undefined {
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
-  return audited<Reply>(database, userId, 'question', phrase, async (fields, principal) => {
+  return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
     if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
