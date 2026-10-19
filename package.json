@@ -10,7 +10,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "eval:golden": "tsx scripts/eval-golden.ts"
+    "eval:golden": "tsx scripts/eval-golden.ts",
+    "eval:redteam": "tsx scripts/eval-redteam.ts",
+    "invites": "tsx scripts/invites.ts",
+    "accounts": "tsx scripts/accounts.ts",
+    "docs:dictionary": "tsx scripts/data-dictionary.ts",
+    "onboard:profile": "tsx scripts/onboard-dataset.ts profile",
+    "onboard:propose": "tsx scripts/onboard-dataset.ts propose",
+    "onboard:confirm": "tsx scripts/onboard-dataset.ts confirm"
   },
   "engines": {
     "node": ">=22.12.0"

@@ -23,8 +23,27 @@ const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stag
 const AMOUNT = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding) \d| \d+ ?(k|m|mm|million|thousand|bn|billion) | (deal size|deal sizes|size of deal|size of deals) /;
 const SECTOR = / (sector|sectors|industry|industries|vertical|verticals) /;
 
+// Shapes of a filter the registry can't express, whatever the words around them: a range, an exact value, a
+// bare number that isn't a year, or a product, account or customer named by its kind.
+const RANGE = / between \d| \d+ (and|to) \d+ | from \d+ to \d+ /;
+const EXACT = / (exactly|equal to|equals|worth|valued at|at least|at most|up to) /;
+const BARE_NUMBER = / (?!(?:19|20)\d\d )\d{3,} /;
+const KIND = / (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku|account|customer|client)s? /;
+// A capitalized name after "for", "at" or "from" that isn't a word the registry knows ("open pipeline for Nimbus").
+const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+)*)/g;
+const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost', 'cara', 'losch']);
+
+function unknownName(phrase: string): boolean {
+  for (const m of phrase.matchAll(NAMED)) {
+    const words = m[1]!.toLowerCase().split(/\s+/);
+    const known = (w: string) => KNOWN_WORDS.has(w) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(w);
+    if (!words.every((w) => known(w.replace(/[^a-z0-9]/g, '')))) return true;
+  }
+  return false;
+}
+
 function unsupportedSelector(phrase: string, text: string): string | undefined {
-  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase)) return 'deal size';
+  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase) || RANGE.test(text) || EXACT.test(text) || BARE_NUMBER.test(text)) return 'deal size';
   if (SECTOR.test(text)) return 'sector';
   const names = entityNames();
   const has = (n: string) => text.includes(clean(n));
@@ -32,6 +51,8 @@ function unsupportedSelector(phrase: string, text: string): string | undefined {
   if (names.accounts.some(has)) return 'account';
   if (names.sectors.some(has)) return 'sector';
   if (names.people.some(has)) return 'person';
+  if (KIND.test(text)) return 'product or account';
+  if (unknownName(phrase)) return 'a name the registry does not know';
   return undefined;
 }
 
@@ -88,6 +109,63 @@ export type NormalizeResult =
   | { kind: 'clarify'; question: string; resume?: Intent }
   | { kind: 'unsupported'; message: string };
 
+/** The metrics a question names. Longest matching synonym wins, so "pipeline coverage" beats "pipeline". */
+function namedMetrics(text: string, registry: Registry): string[] {
+  let best = 0;
+  let matches: string[] = [];
+  for (const m of registry.metrics.values()) {
+    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
+    if (len === 0) continue;
+    if (len > best) {
+      best = len;
+      matches = [m.id];
+    } else if (len === best) matches.push(m.id);
+  }
+  return matches;
+}
+
+/** The follow-up rule for a question that names a metric: it keeps the previous filters only for the same metric with a follow-up word. */
+function keepsPrevious(text: string, registry: Registry, previous: Intent, metricId: string): boolean {
+  return previous.metric === metricId && namedMetrics(text, registry).includes(metricId) && FOLLOW_UP.test(text);
+}
+
+/**
+ * The follow-up rule (glossary "follow_up"), the same for every intent model: a question keeps the previous
+ * question's filters and breakdown only when it names no metric ("what about West?"), or names the same metric
+ * with a follow-up word ("and the open pipeline by stage?"). Naming a different metric, or restating the
+ * question, starts fresh.
+ */
+export function continuesPrevious(phrase: string, registry: Registry, previous: Intent | undefined, metricId: string): boolean {
+  if (!previous) return false;
+  const text = clean(phrase);
+  return namedMetrics(text, registry).length === 0 || keepsPrevious(text, registry, previous, metricId);
+}
+
+/**
+ * For a question that starts fresh: removes the filters and breakdowns that only came from the previous question,
+ * keeping anything this question names itself. Used on a model's proposal, which may have carried them over.
+ */
+export function withoutCarryOver(intent: Intent, phrase: string, registry: Registry, previous: Intent): Intent {
+  const text = clean(phrase);
+  const allRegions = ALL_REGIONS_PHRASE.test(text);
+  const regions = intent.filters.regions?.filter((r) => allRegions || text.includes(` ${r} `) || !previous.filters.regions?.includes(r));
+  const named = findStages(text);
+  const stages = intent.filters.stages?.filter((s) => named.includes(s) || !previous.filters.stages?.includes(s));
+  const dims = Object.entries(registry.glossary.dimensionPhrases).filter(([p]) => text.includes(` ${p} `)).map(([, d]) => d);
+  const groupBy = intent.groupBy.filter((d) => dims.includes(d) || !previous.groupBy.includes(d));
+  const mentionsPeriod = / (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous|fiscal) quarter /.test(text) || Object.keys(registry.glossary.periodPhrases).some((p) => text.includes(` ${p} `));
+  const period = intent.filters.period && (mentionsPeriod || intent.filters.period !== previous.filters.period) ? intent.filters.period : undefined;
+  return {
+    metric: intent.metric,
+    filters: {
+      ...(regions?.length ? { regions } : {}),
+      ...(stages?.length ? { stages } : {}),
+      ...(period ? { period } : {}),
+    },
+    groupBy,
+  };
+}
+
 function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
@@ -105,17 +183,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     if (text.includes(` ${term} `)) return { kind: 'clarify', question };
   }
 
-  // Longest matching synonym wins, so "pipeline coverage" beats "pipeline".
-  let best = 0;
-  let matches: string[] = [];
-  for (const m of registry.metrics.values()) {
-    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
-    if (len === 0) continue;
-    if (len > best) {
-      best = len;
-      matches = [m.id];
-    } else if (len === best) matches.push(m.id);
-  }
+  let matches = namedMetrics(text, registry);
   const prior = previous && registry.metrics.has(previous.metric) ? previous : undefined;
   const followUpCue = FOLLOW_UP.test(text);
   let continued = false; // this turn names no metric and only changes a modifier
@@ -155,7 +223,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // Carry forward what this turn doesn't change, but only when it clearly continues the previous question:
   // it names no metric ("what about West?"), or it names the same metric with a follow-up cue ("and the
   // open pipeline by stage?"). A newly named metric, or a full question restated, starts fresh.
-  const inherit = prior && (continued || (prior.metric === metric.id && followUpCue)) ? prior : undefined;
+  const inherit = prior && (continued || keepsPrevious(text, registry, prior, metric.id)) ? prior : undefined;
 
   const mentionedStages = findStages(text);
   // "all stages" clears an inherited stage filter; saying nothing about stages keeps it.
@@ -171,6 +239,11 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     .filter((h) => h.at >= 0)
     .sort((a, b) => a.at - b.at);
   for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  // A breakdown this metric doesn't have is asked about, not silently dropped.
+  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
+  if (unsupportedDim) {
+    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
+  }
   if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
     for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
   }

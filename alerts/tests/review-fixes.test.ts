@@ -9,7 +9,7 @@ import type { Channels } from '@/alerts/channels';
 import { flushDigests, runAlerts } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 import { tick } from '@/alerts/scheduler';
-import { onceWithRetry, seedDemoSubscriptionsOnce } from '@/server/runtime';
+import { onceWithRetry, seedDemoSubscriptionsOnce, startWithRetry } from '@/server/runtime';
 
 const rules = loadRules();
 const data = buildSeed();
@@ -118,4 +118,34 @@ describe('start-up', () => {
       if (saved.r === undefined) delete process.env.NEXT_RUNTIME;
     }
   }, 60_000);
+});
+
+// Week 5 review (Oct 16).
+describe('start-up when the database is down at boot', () => {
+  it('keeps retrying in the background until it works, with no page visit', async () => {
+    let calls = 0;
+    const started = new Promise<void>((resolve) => {
+      const stop = startWithRetry(async () => {
+        calls++;
+        if (calls < 3) throw new Error('database not reachable yet');
+        stop();
+        resolve();
+      }, 10, 40);
+    });
+    await started;
+    expect(calls).toBe(3);
+  });
+});
+
+describe('dataset', () => {
+  it('refuses to start on a dataset the alerts service does not have', async () => {
+    const saved = process.env.DATASET_DIR;
+    process.env.DATASET_DIR = 'data/northstar-crm';
+    try {
+      await expect(openDatabase()).rejects.toThrow(/only supports the Maven dataset/);
+    } finally {
+      if (saved === undefined) delete process.env.DATASET_DIR;
+      else process.env.DATASET_DIR = saved;
+    }
+  });
 });

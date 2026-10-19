@@ -6,7 +6,7 @@ A governed AI analytics copilot that sits next to certified dashboards. The AI o
 
 **No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
 
-New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
+New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md).
 
 ## Run it
 
@@ -19,7 +19,9 @@ npm run build
 npm start         # http://localhost:3000
 ```
 
-There is no sign-in yet, so the pages only run with test identities. Create `.env.local` with `ALLOW_TEST_IDENTITIES=true` before `npm start`. Leave it unset anywhere real users can reach the app.
+**Demo sign-in (Week 5).** People create an account with an invite code, and the code decides which demo person, and so which role and data, the account gets. The user id then comes only from the session cookie, never from a form, URL or alert link. To turn it on, put a long random `DEMO_INVITE_SECRET` in `.env.local`, run `npm run invites` to print one code per demo person, and share each code only with the person who should use it. On a laptop with the embedded database, also set `ALLOW_EMBEDDED_DB=true` (production refuses it otherwise). The client asked for Active Directory and SSO in a real rollout; this sign-up is for the demo.
+
+For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm run dev` still shows the "Viewing as" switch when nobody is signed in. A production server (`npm start`) refuses to start with it on.
 
 **Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
@@ -65,6 +67,11 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Alerts (`alerts/`):** weekly and monthly digests on a real schedule (Mondays and the 1st, 13:00 UTC) alongside right-away and daily; a preferences screen where each person subscribes and sets frequency, channel, quiet hours and the P1 bypass; a scheduler (`ALERTS_SCHEDULER=true`) that only checks new events and resumes from a stored cursor; and a persistent Postgres mode with a least-privilege `alerts_app` login, tested in CI. See `alerts/README.md`.
 - **Red-team suite completed (S1, S2, S6):** `tests/redteam-matrix.test.ts` runs one row per PRD scenario and checks both the answer and the audit row. Questions containing a link are now blocked and logged (`refused_injection`), not just flagged. The matrix in plain language is in `docs/RED-TEAM.md`.
 
+## Week 5: dataset onboarding (A7) and demo sign-in
+
+- **Dataset onboarding (A7):** `src/onboard/*` and `scripts/onboard-dataset.ts` profile a second CRM folder (`data/northstar-crm/`), propose only the three existing governed metrics from `registry/metrics/*.json`, require human confirmation (`npm run onboard:confirm -- --by "<name>"`), and make the dataset queryable (`DATASET_DIR=data/northstar-crm`) without inventing metrics or SQL. See [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+- **Demo sign-in:** Invite-code account creation (`npm run invites`), scrypt password hashing, and server-side session cookies (`src/server/auth.ts`, `src/server/session.ts`), with Active Directory / SSO documented for production rollout.
+
 ## Security controls
 
 | Control | Where | Proof |
@@ -84,14 +91,13 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Not done yet (by roadmap week)
 
-- Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
+- Company sign-in (Active Directory and SSO through OIDC) instead of demo accounts; the session code is the place it plugs in.
 - A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
-- HSTS is sent only when `ENABLE_HSTS=true`, which belongs on an HTTPS deployment.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
 - Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
-- More business rules in the glossary, and running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
+- Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
 - The test identity picker is not authentication.
 
 ## Project documents

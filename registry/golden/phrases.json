@@ -264,6 +264,381 @@
       "expect": {
         "unsupported": true
       }
+    },
+    {
+      "phrase": "open pipeline by owner",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {},
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "total pipeline in the east",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "regions": [
+            "east"
+          ]
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "pipeline value for central this quarter",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "regions": [
+            "central"
+          ],
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "open pipe per stage",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {},
+        "groupBy": [
+          "stage"
+        ]
+      }
+    },
+    {
+      "phrase": "pipeline dollars next quarter",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "open pipeline in prospecting by region",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "stages": [
+            "Prospecting"
+          ]
+        },
+        "groupBy": [
+          "region"
+        ]
+      }
+    },
+    {
+      "phrase": "what's the open deal value in the west by owner",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "regions": [
+            "west"
+          ]
+        },
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "open pipeline for FY27-Q2",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "show open pipeline per owner in engaging",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "stages": [
+            "Engaging"
+          ]
+        },
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "open pipeline in all regions",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "regions": [
+            "central",
+            "east",
+            "west"
+          ]
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "pipeline coverage for next quarter",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "coverage in the west for Q1",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "regions": [
+            "west"
+          ],
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "pipeline vs quota this quarter by region",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "period": "FY27-Q1"
+        },
+        "groupBy": [
+          "region"
+        ]
+      }
+    },
+    {
+      "phrase": "coverage ratio for FY27-Q1",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "pipe coverage central next quarter",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "regions": [
+            "central"
+          ],
+          "period": "FY27-Q2"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "what is coverage this fiscal quarter",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "pipeline to quota by region for q2",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": [
+          "region"
+        ]
+      }
+    },
+    {
+      "phrase": "coverage for east and west this quarter",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "regions": [
+            "east",
+            "west"
+          ],
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "current quarter coverage in the east",
+      "expect": {
+        "metric": "pipeline_coverage",
+        "filters": {
+          "regions": [
+            "east"
+          ],
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "how many open deals by owner",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {},
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "open opportunities in the east",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "regions": [
+            "east"
+          ]
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "deal count next quarter",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "count of opportunities per region",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {},
+        "groupBy": [
+          "region"
+        ]
+      }
+    },
+    {
+      "phrase": "open opportunity count in engaging",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "stages": [
+            "Engaging"
+          ]
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "how many opportunities in central this quarter",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "regions": [
+            "central"
+          ],
+          "period": "FY27-Q1"
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "open deal count by stage in the west",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "regions": [
+            "west"
+          ]
+        },
+        "groupBy": [
+          "stage"
+        ]
+      }
+    },
+    {
+      "phrase": "number of open deals for Q2 by region",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {
+          "period": "FY27-Q2"
+        },
+        "groupBy": [
+          "region"
+        ]
+      }
+    },
+    {
+      "phrase": "open pipeline for deals between 4000 and 5000",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "open pipeline for product Nimbus",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "open pipeline for Nimbus",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "open pipeline over $1M",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "open pipeline in the retail sector",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "open pipeline excluding prospecting",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "coverage by stage this quarter",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "win rate this quarter",
+      "expect": {
+        "unsupported": true
+      }
+    },
+    {
+      "phrase": "average deal size",
+      "expect": {
+        "unsupported": true
+      }
     }
   ]
 }

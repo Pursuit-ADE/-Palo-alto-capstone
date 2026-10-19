@@ -3,7 +3,9 @@ import { demoUsers } from '@/db/seed';
 import { alertSubscriptions } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
-import { testIdentitiesEnabled } from '@/server/identity';
+import { redirect } from 'next/navigation';
+import { requireUser } from '@/server/require-user';
+import { logOutAction } from './auth-actions';
 import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
 
@@ -12,9 +14,13 @@ export const dynamic = 'force-dynamic';
 const USERS = demoUsers();
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
-  if (!testIdentitiesEnabled()) return <SignInRequired />;
+  // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
+  // shown only when nobody is signed in and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
-  const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
+  const actor = await requireUser(params.user, 'u_ts_east');
+  if (!actor) redirect('/login');
+  const user = actor.userId;
+  const signedIn = actor.username ? user : undefined;
   const me = USERS.find((u) => u.id === user)!;
   const { database, rules } = await getAlertsRuntime();
   // Only delivered alerts are readable. Held, blocked or failed alerts are counted, never shown.
@@ -35,22 +41,29 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
             </div>
           </div>
           <span className="badge">Maven CRM data</span>
-          <form className="who" method="get">
-            <label htmlFor="user">Viewing as</label>
-            <select id="user" name="user" defaultValue={user}>
-              {USERS.map((u) => (
-                <option key={u.id} value={u.id}>{u.displayName}</option>
-              ))}
-            </select>
-            <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
-          </form>
+          {signedIn ? (
+            <form className="who" action={logOutAction}>
+              <span>Signed in as {me.displayName}</span>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Log out</button>
+            </form>
+          ) : (
+            <form className="who" method="get">
+              <label htmlFor="user">Viewing as</label>
+              <select id="user" name="user" defaultValue={user}>
+                {USERS.map((u) => (
+                  <option key={u.id} value={u.id}>{u.displayName}</option>
+                ))}
+              </select>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
+            </form>
+          )}
         </div>
       </header>
 
       <main>
         <div className="page-head">
           <h1>Your alerts</h1>
-          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. Identity switch for testing, not a login yet.</p>
+          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
         </div>
 
         <section className="kpis" aria-label="Alert summary">
@@ -123,13 +136,3 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   );
 }
 
-function SignInRequired() {
-  return (
-    <main>
-      <div className="page-head">
-        <h1>Sign-in is not set up yet</h1>
-        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
-      </div>
-    </main>
-  );
-}

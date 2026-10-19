@@ -116,9 +116,10 @@ describe('start-up retry', () => {
 describe('embedded database in production', () => {
   it('is refused unless this is explicitly the laptop demo', async () => {
     const env = process.env as Record<string, string | undefined>;
-    const saved = { n: env.NODE_ENV, t: env.ALLOW_TEST_IDENTITIES, e: env.ALLOW_EMBEDDED_DB };
+    const saved = { n: env.NODE_ENV, t: env.ALLOW_TEST_IDENTITIES, e: env.ALLOW_EMBEDDED_DB, k: env.AUDIT_HASH_KEY };
     try {
       env.NODE_ENV = 'production';
+      env.AUDIT_HASH_KEY = 'k'.repeat(32); // required in production (src/server/config.ts)
       delete env.ALLOW_TEST_IDENTITIES;
       delete env.ALLOW_EMBEDDED_DB;
       await expect(openDatabase()).rejects.toThrow(/Production needs Postgres mode/);
@@ -127,7 +128,7 @@ describe('embedded database in production', () => {
       expect(db.mode).toBe('pglite');
       await db.close();
     } finally {
-      for (const [k, v] of [['NODE_ENV', saved.n], ['ALLOW_TEST_IDENTITIES', saved.t], ['ALLOW_EMBEDDED_DB', saved.e]] as const) {
+      for (const [k, v] of [['NODE_ENV', saved.n], ['ALLOW_TEST_IDENTITIES', saved.t], ['ALLOW_EMBEDDED_DB', saved.e], ['AUDIT_HASH_KEY', saved.k]] as const) {
         if (v === undefined) delete env[k];
         else env[k] = v;
       }

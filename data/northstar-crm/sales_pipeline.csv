@@ -1,0 +1,13 @@
+opportunity_id,sales_agent,product,account,deal_stage,engage_date,close_date,close_value
+NS001,Priya Nair,NS Pro,Amberline,Won,2016-11-01,2017-02-15,4000
+NS002,Priya Nair,NS Basic,Cedarpeak,Prospecting,2017-10-01,,
+NS003,Luis Ortega,NS Pro,Dovetail,Engaging,2017-09-15,,
+NS004,Luis Ortega,NS Edge,Amberline,Lost,2016-12-01,2017-03-20,0
+NS005,Mina Cho,NS Pro,Ironharbor,Won,2016-10-20,2017-01-30,4000
+NS006,Mina Cho,NS Basic,Mapleford,Prospecting,2017-11-02,,
+NS007,Theo Berg,NS Pro,Pinecroft,Engaging,2017-08-20,,
+NS008,Theo Berg,NS Edge,Ironharbor,Won,2017-01-10,2017-04-12,2500
+NS009,Nora Klein,NS Basic,Cedarpeak,Won,2016-11-15,2017-03-01,1000
+NS010,Nora Klein,NS Pro,Mapleford,Prospecting,2017-09-01,,
+NS011,Samir Adeyemi,NS Edge,Dovetail,Engaging,2017-10-10,,
+NS012,Samir Adeyemi,NS Basic,Pinecroft,Lost,2017-02-01,2017-05-18,0

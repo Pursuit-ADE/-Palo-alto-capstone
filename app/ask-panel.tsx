@@ -3,6 +3,7 @@
 import { useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
 import { cell } from './format';
+import { ProvenancePanel } from './provenance-panel';
 import type { Answer } from '@/semantic/answer';
 
 interface Turn {
@@ -107,11 +108,7 @@ function AnswerView({ a }: { a: Answer }) {
           </tbody>
         </table>
       </div>
-      <div className="receipt">
-        <span><b>Scope</b> · {a.scope.replace(/^Scope: /, '')}</span>
-        <span><b>Source</b> · {a.metric.id} v{a.metric.version} · snapshot {a.provenance.snapshotId} (as of {a.provenance.asOfDate}) · result {a.provenance.resultHash}</span>
-        <span><b>Intent</b> · <code>{JSON.stringify(a.intent)}</code></span>
-      </div>
+      <ProvenancePanel a={a} />
     </div>
   );
 }

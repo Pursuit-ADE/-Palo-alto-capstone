@@ -55,6 +55,35 @@ jobs:
         run: psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f docker/init-roles.sql
       - run: npx vitest run tests/postgres-roles.test.ts
 
+  fresh-install:
+    # Handover check: a clean checkout installs, builds and starts both apps, and their sign-in pages load.
+    runs-on: ubuntu-latest
+    env:
+      DEMO_INVITE_SECRET: ci-only-invite-secret
+      AUDIT_HASH_KEY: ci-only-audit-hash-key-not-a-real-secret
+      ALLOW_EMBEDDED_DB: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci && npm run build
+      - run: npm ci && npm run build
+        working-directory: alerts
+      - name: Start both apps and load their pages
+        run: |
+          (npx next start -p 3000 > copilot.log 2>&1 &)
+          (cd alerts && npx next start -p 3001 > ../alerts.log 2>&1 &)
+          for port in 3000 3001; do
+            for i in $(seq 1 60); do curl -sf -o /dev/null "http://localhost:$port/login" && break; sleep 2; done
+            test "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/login")" = 200
+            test "$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/")" = 307   # signed out: sent to log-in
+            curl -sf "http://localhost:$port/signup" | grep -q 'Invite code'
+          done
+          echo "Both apps start on a clean install and show their sign-in pages."
+      - if: failure()
+        run: tail -50 copilot.log alerts.log
+
   secret-scan:
     runs-on: ubuntu-latest
     steps:

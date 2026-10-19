@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "terms": [
     {
       "term": "Open",
@@ -24,6 +24,10 @@
     {
       "term": "Estimated amount",
       "definition": "Open deals have no value in the source data, so the list price of the product is used."
+    },
+    {
+      "term": "CXO",
+      "definition": "A contact whose job title starts with \"Chief\", for example Chief Information Security Officer or Chief Technology Officer. Only engagement by a CXO fires the CXO alert."
     }
   ],
   "periodPhrases": {
@@ -47,5 +51,57 @@
   },
   "ambiguousTerms": {
     "weighted": "Do you mean total coverage (open pipeline / quota)? Weighted coverage is not defined in the metric registry yet."
-  }
+  },
+  "businessRules": [
+    {
+      "id": "fiscal_year",
+      "rule": "The fiscal year starts August 1. FY27-Q1 is August 1 to October 31, 2026, and FY27-Q2 is November 1, 2026 to January 31, 2027. \"This quarter\" is the quarter containing the snapshot's as-of date.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "open_deal",
+      "rule": "A deal is open when its stage is Prospecting or Engaging. Won and Lost deals are closed and never count toward pipeline or open deals.",
+      "appliesIn": "registry/metrics/open_pipeline.json"
+    },
+    {
+      "id": "region",
+      "rule": "A deal belongs to the region of the sales rep who owns it: Central, East or West. There are no other regions.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "estimated_amount",
+      "rule": "Open deals have no value in the source data, so the product's list price is used and the amount is marked as an estimate.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "estimated_close_date",
+      "rule": "An open deal with no close date is expected to close one median sales cycle after it was engaged. If that date has already passed, it rolls forward 0 to 59 days from the snapshot date.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "quota",
+      "rule": "Quota is synthetic: 1.2 times each rep's average quarterly won revenue over the last four quarters, rounded to $1,000. A team's quota is the sum of its reps' quotas.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "no_quota",
+      "rule": "Where there is no quota, coverage is not available. It is never shown as zero and is left out of rankings and charts.",
+      "appliesIn": "src/semantic/narrative.ts"
+    },
+    {
+      "id": "cxo",
+      "rule": "A CXO is a contact whose job title starts with \"Chief\". Only engagement by a CXO fires the CXO alert.",
+      "appliesIn": "src/db/seed.ts"
+    },
+    {
+      "id": "snapshot",
+      "rule": "Every answer comes from the newest data snapshot and states its as-of date.",
+      "appliesIn": "src/semantic/answer.ts"
+    },
+    {
+      "id": "follow_up",
+      "rule": "A follow-up keeps the earlier filters and breakdown only when it names no metric (\"what about West?\") or names the same metric with a follow-up word (\"and the open pipeline by stage?\"). Naming a different metric starts a new question.",
+      "appliesIn": "src/semantic/normalize.ts"
+    }
+  ]
 }

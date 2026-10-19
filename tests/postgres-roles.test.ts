@@ -49,6 +49,9 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(app, 'SELECT * FROM contacts');
     await denied(app, 'SELECT * FROM support_cases');
     await denied(app, 'SELECT * FROM engagements');
+    // Demo sign-in tables: never readable by the answering login.
+    await denied(app, 'SELECT * FROM app_accounts');
+    await denied(app, 'SELECT * FROM app_sessions');
   });
 
   it('the app role has a statement timeout', async () => {
@@ -61,6 +64,8 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await denied(audit, 'SELECT * FROM query_audit');
     await denied(audit, "UPDATE query_audit SET outcome = 'answered'");
     await denied(audit, 'DELETE FROM query_audit');
+    // The audit login manages sessions but can't rewrite a password hash or change an account's person.
+    await denied(audit, "UPDATE app_accounts SET user_id = 'u_analyst'");
   });
 
   it('the audit role can update the session guard and nothing else', async () => {

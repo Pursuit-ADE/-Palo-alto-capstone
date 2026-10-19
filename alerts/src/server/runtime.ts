@@ -62,6 +62,32 @@ export function getAlertsRuntime(): Promise<Runtime> {
   return g.__alerts();
 }
 
+/**
+ * Starts the runtime from the server start-up hook and keeps retrying with growing waits (5 s doubling to at
+ * most 5 minutes) until it works, so a database that is down at boot doesn't leave alerting stopped until
+ * someone opens a page. Returns a function that stops retrying.
+ */
+export function startWithRetry(init: () => Promise<unknown> = getAlertsRuntime, firstDelayMs = 5_000, maxDelayMs = 300_000): () => void {
+  let stopped = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let delay = firstDelayMs;
+  const attempt = async () => {
+    if (stopped) return;
+    try {
+      await init();
+    } catch (e) {
+      console.error(`alerts start-up failed; retrying in ${Math.round(delay / 1000)} s`, e instanceof Error ? e.name : 'unknown');
+      if (!stopped) timer = setTimeout(attempt, delay);
+      delay = Math.min(delay * 2, maxDelayMs);
+    }
+  };
+  void attempt();
+  return () => {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+  };
+}
+
 /** Stops the background scheduler, if one is running (tests and shutdown). */
 export function stopScheduler(): void {
   g.__stopScheduler?.();

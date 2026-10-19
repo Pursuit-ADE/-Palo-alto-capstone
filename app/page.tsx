@@ -1,7 +1,10 @@
-import { AS_OF_DATE, demoUsers } from '@/db/seed';
+import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
-import { testIdentitiesEnabled } from '@/server/identity';
+import { redirect } from 'next/navigation';
+import { requireUser } from '@/server/require-user';
+import { logOutAction } from './auth-actions';
+import { SyntheticBadge } from './synthetic-badge';
 import { promptFor } from '@/server/prompts';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -18,9 +21,13 @@ function compactUsd(value: number): string {
 }
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
-  if (!testIdentitiesEnabled()) return <SignInRequired />;
+  // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
+  // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
-  const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
+  const actor = await requireUser(params.user, 'u_ts_east');
+  if (!actor) redirect('/login');
+  const user = actor.userId;
+  const signedIn = actor.username ? user : undefined;
   const registry = getRegistry();
   const database = await getDatabase();
   const me = USERS.find((u) => u.id === user)!;
@@ -28,40 +35,50 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
   // Dashboard tiles: the same governed path as any typed question, so they obey the same scope.
   const [pipeline, coverage, count, byRegion] = await Promise.all([
-    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard'),
-    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard'),
+    answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard', actor),
+    answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard', actor),
   ]);
-  const cov = Number(coverage.rows[0]?.value ?? 0);
+  // Coverage with no quota is NULL: shown as not available, never as 0.00x.
+  const covRaw = coverage.rows[0]?.value;
+  const cov = covRaw === null || covRaw === undefined ? null : Number(covRaw);
 
   return (
     <>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
+            <span className="mark" aria-hidden="true" />
             <div>
               <strong>Governed Analytics Copilot</strong>
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Maven CRM data</span>
-          <form className="who" method="get">
-            <label htmlFor="user">Viewing as</label>
-            <select id="user" name="user" defaultValue={user}>
-              {USERS.map((u) => (
-                <option key={u.id} value={u.id}>{u.displayName}</option>
-              ))}
-            </select>
-            <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
-          </form>
+          <SyntheticBadge dataset={activeDatasetLabel()} />
+          {signedIn ? (
+            <form className="who" action={logOutAction}>
+              <span>Signed in as {me.displayName}</span>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Log out</button>
+            </form>
+          ) : (
+            <form className="who" method="get">
+              <label htmlFor="user">Viewing as</label>
+              <select id="user" name="user" defaultValue={user}>
+                {USERS.map((u) => (
+                  <option key={u.id} value={u.id}>{u.displayName}</option>
+                ))}
+              </select>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
+            </form>
+          )}
         </div>
       </header>
 
       <main>
         <div className="page-head">
           <h1>Pipeline overview</h1>
-          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). Identity switch for testing, not a login yet.</p>
+          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
         </div>
 
         <div className="overview">
@@ -81,11 +98,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <section className="card coverage" aria-labelledby="cov-title">
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
             <span className="cov-value">{format(cov, 'ratio')}</span>
-            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. 1.00x means pipeline equals quota.</p>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : '1.00x means pipeline equals quota.'}</p>
             <h2>By region</h2>
             <div className="bars">
               {byRegion.rows.map((r) => {
-                const v = Number(r.value ?? 0);
+                const v = r.value === null || r.value === undefined ? null : Number(r.value);
                 const max = Math.max(1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
                 return (
                   <div className="bar-row" key={String(r.region)}>
@@ -94,10 +111,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
                       <b>{format(v, 'ratio')}</b>
                     </div>
                     <div className="track">
-                      <div className="fill" style={{ width: `${(v / max) * 100}%` }} />
+                      <div className="fill" style={{ width: `${((v ?? 0) / max) * 100}%` }} />
                       <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
                     </div>
-                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota</span>
+                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota{v === null ? ' (no quota, so not available)' : ''}</span>
                   </div>
                 );
               })}
@@ -121,19 +138,20 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               </tbody>
             </table>
           </div>
+          <h3>Business rules</h3>
+          <p className="sub">How the numbers are defined. Same registry, same review.</p>
+          <div className="tablewrap">
+            <table>
+              <tbody>
+                {registry.glossary.businessRules.map((r) => (
+                  <tr key={r.id}><td><b>{r.id.replace(/_/g, ' ')}</b></td><td>{r.rule}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </section>
       </main>
     </>
   );
 }
 
-function SignInRequired() {
-  return (
-    <main>
-      <div className="page-head">
-        <h1>Sign-in is not set up yet</h1>
-        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
-      </div>
-    </main>
-  );
-}

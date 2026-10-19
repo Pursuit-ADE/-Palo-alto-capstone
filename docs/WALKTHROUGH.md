@@ -8,12 +8,11 @@ Needs Node 22.12 or newer (CI uses Node 24).
 
 ```bash
 npm install
-npm run build
 echo ALLOW_TEST_IDENTITIES=true > .env.local
-npm start
+npm run dev
 ```
 
-There is no sign-in yet, so the page only runs with test identities, and `.env.local` turns them on for your own laptop. Leave it off anywhere other people can reach the app. Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
+Sign in with a demo account (see the README: `DEMO_INVITE_SECRET` and `npm run invites`), or, for quick local testing with `npm run dev`, turn on test identities in `.env.local`. A production server (`npm start`) refuses to start with test identities on. Then open http://localhost:3000. Pick a person, type a question or click an example, and press **Ask**. `npm test` runs the test suite.
 
 ## What a good answer looks like
 
@@ -84,7 +83,9 @@ Every business row is stamped with snapshot `snap_alto-pals-v2`.
 
 **Week 4 (on the week4 branch):** alert settings each person edits, weekly and monthly digests, a background scheduler, Postgres mode for alerts, and the full red-team matrix (`docs/RED-TEAM.md`).
 
-Not built yet: real sign-in, email alerts, per-user time zones, onboarding a second dataset, more business rules in the glossary, and running on Postgres by default (`npm start` still uses the embedded database; Postgres mode needs the database URLs).
+**Week 5 (on the week5 branch):** demo accounts with invite codes in both apps, onboarding a second dataset (`docs/ONBOARDING.md`), a golden set of 66 phrasings (14 to 17 per metric), and nine business rules in `registry/glossary.json` (fiscal quarters, what counts as open, regions, estimates, quota, CXO), each checked against the code that applies it.
+
+Not built yet: company sign-in (Active Directory and SSO), alerts on a second dataset, email alerts, per-user time zones, and running on Postgres by default (`npm start` still uses the embedded database; Postgres mode needs the database URLs).
 
 ## Where to look in the repo
 

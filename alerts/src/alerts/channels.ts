@@ -17,7 +17,8 @@ export interface Channels {
 /**
  * Makes event text safe to show in Slack. Escaping stops angle-bracket links and mentions. Slack also turns
  * bare URLs and domain names into links, so those are defanged ("https[:]//evil[.]example"): readable, but not
- * clickable. Only the copilot link we build ourselves is a real link.
+ * clickable. Only the copilot link we build ourselves is a real link. Slack has no escape for its formatting
+ * characters, so *, _, ~ and ` in event text become look-alikes (∗ ＿ ∼ ˋ) and can't bold, strike or hide text.
  */
 export function slackEscape(text: string): string {
   return text
@@ -25,8 +26,11 @@ export function slackEscape(text: string): string {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/\b([a-z][a-z0-9+.-]*):\/\//gi, '$1[:]//')
-    .replace(/\b([a-z0-9-]+)\.(?=[a-z])/gi, '$1[.]');
+    .replace(/\b([a-z0-9-]+)\.(?=[a-z])/gi, '$1[.]')
+    .replace(/[*_~`]/g, (c) => SLACK_LOOKALIKE[c] ?? c);
 }
+
+const SLACK_LOOKALIKE: Record<string, string> = { '*': '∗', _: '＿', '~': '∼', '`': 'ˋ' };
 
 export function slackText(items: Delivery[], isDigest: boolean): string {
   const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}\n<${i.link}|Ask the copilot>`);

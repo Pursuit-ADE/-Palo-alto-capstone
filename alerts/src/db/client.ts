@@ -16,6 +16,8 @@ import pg from 'pg';
 import path from 'node:path';
 import * as schema from './schema';
 import { buildSeed, DEFAULT_SEED } from './seed';
+import { assertProductionConfig } from '../server/config';
+import { assertNoTestIdentitiesInProduction } from '../server/identity';
 
 export type Db = PgDatabase<PgQueryResultHKT, typeof schema>;
 
@@ -30,6 +32,15 @@ export const STATEMENT_TIMEOUT_MS = 10_000;
 
 /** Opens a database, applies migrations and loads the dataset if it is empty. */
 export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Database> {
+  // Test identities in production would let anyone view the app as any demo person: refuse to start.
+  assertNoTestIdentitiesInProduction();
+  assertProductionConfig(process.env, 'alerts');
+  // The alerts service only has the Maven dataset. If the copilot was switched to another dataset, refuse to start
+  // rather than alert on different accounts than the copilot shows.
+  const datasetDir = process.env.DATASET_DIR;
+  if (datasetDir && path.basename(path.resolve(datasetDir)) !== 'maven-crm') {
+    throw new Error(`The alerts service only supports the Maven dataset; DATASET_DIR=${datasetDir} is not supported yet. Unset DATASET_DIR for alerts, or run alerts only with the Maven copilot.`);
+  }
   const { ALERTS_DATABASE_URL, MIGRATION_DATABASE_URL } = process.env;
   if (ALERTS_DATABASE_URL || MIGRATION_DATABASE_URL) {
     if (!ALERTS_DATABASE_URL || !MIGRATION_DATABASE_URL) {
@@ -39,7 +50,7 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   }
   // The embedded database forgets everything on restart and has no separate login, so a production server
   // refuses it unless it is explicitly the laptop demo.
-  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_TEST_IDENTITIES !== 'true' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
+  if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
     throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL and MIGRATION_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
   }
   const client = new PGlite();
@@ -73,6 +84,10 @@ async function applyGrants(owner: pg.Pool) {
     GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT INSERT, UPDATE ON alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
+    -- Demo sign-in (Week 5): accounts and sessions; no UPDATE, so an account's person can't be changed.
+    GRANT SELECT, INSERT, DELETE ON app_accounts, app_sessions TO alerts_app;
+    -- Brute-force counters: one row per attempt, deleted after a minute.
+    GRANT SELECT, INSERT, DELETE ON login_attempts TO alerts_app;
   `);
 }
 

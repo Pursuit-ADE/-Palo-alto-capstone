@@ -424,6 +424,15 @@ describe('Slack channel (L5)', () => {
     expect(text).toContain('<http://localhost:3000/?user=u|Ask the copilot>');
   });
 
+  it('keeps *, _, ~ and backticks in event text from changing Slack formatting (F8)', () => {
+    const text = slackText([{ title: 'P1 at *Acme*', explanation: 'Subject: *URGENT* _reset_ ~old~ `code` now', link: 'http://localhost:3000/?prompt=high_severity_case' } as never], false);
+    const body = text.split('\n')[1];
+    expect(body).not.toMatch(/[*_~`]/);
+    expect(body).toContain('∗URGENT∗');
+    // Our own bold title markers stay; only the event's characters are replaced.
+    expect(text.startsWith('• *P1 at ∗Acme∗*')).toBe(true);
+  });
+
   it('defangs bare URLs and domain names, which Slack would otherwise link automatically', () => {
     const text = slackText([{ title: 'P1: see www.reset-portal.example', explanation: 'Subject: reset at https://example.invalid/review or evil.example now. Renewal is 1.5x, v2.0.', link: 'http://localhost:3000/?prompt=high_severity_case' } as never], false);
     expect(text).not.toMatch(/https?:\/\/example\.invalid/);
