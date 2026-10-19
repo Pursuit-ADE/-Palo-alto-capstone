@@ -105,7 +105,7 @@ function AnswerView({ a }: { a: Answer }) {
       {big && <p className="answer-value">{big}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
       <p className="narrative">{a.narrative}</p>
-      {a.chart && <BarChart values={a.chart.data.values as { [k: string]: string | number }[]} dim={a.chart.encoding.y.field} unit={a.metric.unit} names={a.ownerNames} />}
+      {a.chart && <BarChart values={a.chart.data.values as { [k: string]: string | number }[]} dim={a.chart.encoding.y.field} unit={a.metric.unit} />}
       {/* A one-cell table would only repeat the big number; coverage keeps its numerator and denominator columns. */}
       {!(big && cols.length === 1) && (
         <div className="tablewrap">
@@ -125,7 +125,11 @@ function AnswerView({ a }: { a: Answer }) {
 }
 
 /** Deterministic horizontal bars drawn from the same rows as the table (the Vega-Lite spec travels with the answer). */
-function BarChart({ values: rows, dim, unit, names }: { values: { [k: string]: string | number }[]; dim: string; unit: string; names: Answer['ownerNames'] }) {
+/** Longest label that fits the label column; longer names are shortened, with the full name on hover. */
+const MAX_LABEL = 18;
+const shortLabel = (s: string) => (s.length > MAX_LABEL ? `${s.slice(0, MAX_LABEL - 1).trimEnd()}…` : s);
+
+function BarChart({ values: rows, dim, unit }: { values: { [k: string]: string | number }[]; dim: string; unit: string }) {
   // Largest first, as the spec's sort '-x' says.
   const values = [...rows].sort((a, b) => Number(b.value) - Number(a.value));
   const max = Math.max(...values.map((v) => Number(v.value)), 0) || 1;
@@ -140,8 +144,12 @@ function BarChart({ values: rows, dim, unit, names }: { values: { [k: string]: s
           const w = (Number(v.value) / max) * barW;
           const y = i * rowH + 4;
           return (
-            <g key={String(v[dim])}>
-              <text x={labelW - 8} y={y + 15} textAnchor="end" className="chart-label">{names?.[String(v[dim])] ?? String(v[dim])}</text>
+            <g key={i}>
+              {/* The spec already holds the display label (src/semantic/narrative.ts chartSpec). */}
+              <text x={labelW - 8} y={y + 15} textAnchor="end" className="chart-label">
+                <title>{String(v[dim])}</title>
+                {shortLabel(String(v[dim]))}
+              </text>
               <rect x={labelW} y={y} width={Math.max(w, 1)} height={rowH - 10} rx={3} className="chart-bar" />
               <text x={labelW + w + 6} y={y + 15} className="chart-value">{cell('value', Number(v.value), unit)}</text>
             </g>

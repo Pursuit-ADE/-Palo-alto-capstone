@@ -45,14 +45,15 @@ export function narrate(metric: { name: string; unit: string }, rows: Row[], gro
 }
 
 /** A Vega-Lite bar chart spec for one breakdown, or null when a single number needs no chart. */
-export function chartSpec(metric: { name: string; unit: string }, rows: Row[], groupBy: string[]) {
+/** The chart carries display labels (names, capitalized regions), resolved here once, so the bars and the sentence match. */
+export function chartSpec(metric: { name: string; unit: string }, rows: Row[], groupBy: string[], names?: OwnerNames) {
   const drawn = rows.filter(hasValue);
   if (groupBy.length !== 1 || drawn.length < 2) return null;
   const dim = groupBy[0]!;
   return {
     $schema: 'https://vega.github.io/schema/vega-lite/v5.json',
     description: `${metric.name} by ${dim}`,
-    data: { values: drawn.map((r) => ({ [dim]: label(dim, r[dim]), value: Number(r.value) })) },
+    data: { values: drawn.map((r) => ({ [dim]: label(dim, r[dim], names), value: Number(r.value) })) },
     mark: 'bar',
     encoding: {
       y: { field: dim, type: 'nominal', sort: '-x', title: dim },

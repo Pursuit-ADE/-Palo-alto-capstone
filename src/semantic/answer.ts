@@ -190,7 +190,7 @@ async function run(database: Database, registry: Registry, principal: Principal,
     },
     parts: ratioParts(metric, registry, scope, intent.filters.period),
     narrative: narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined),
-    chart: chartSpec(metric, rows, intent.groupBy),
+    chart: chartSpec(metric, rows, intent.groupBy, names ?? undefined),
     ownerNames: names,
     provenance: {
       snapshotId: snapshot.id,
