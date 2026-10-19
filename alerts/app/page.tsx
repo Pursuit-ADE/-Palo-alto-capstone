@@ -8,6 +8,7 @@ import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
+import { SyntheticBadge } from './synthetic-badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,7 +41,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Maven CRM data</span>
+          <SyntheticBadge />
           {signedIn ? (
             <form className="who" action={logOutAction}>
               <span>Signed in as {me.displayName}</span>
@@ -63,7 +64,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       <main>
         <div className="page-head">
           <h1>Your alerts</h1>
-          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
         </div>
 
         <section className="kpis" aria-label="Alert summary">

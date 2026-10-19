@@ -59,6 +59,7 @@ export function ProvenancePanel({ a }: { a: Answer }) {
           <span>Audit <code>{p.auditId || 'pending'}</code></span>
         </dd>
       </dl>
+      <p className="governed-note">The number, the sentence and any chart are built from the result rows of the approved metric. Your question was only used to choose the metric and filters; no model wrote any part of this answer.</p>
       <details>
         <summary>Structured intent</summary>
         <code>{JSON.stringify(a.intent)}</code>
