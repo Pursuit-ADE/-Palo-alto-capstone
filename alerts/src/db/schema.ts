@@ -164,7 +164,7 @@ export const alertDeliveries = pgTable(
     claimToken: text('claim_token'),
     attempts: integer('attempts').notNull().default(0),
   },
-  (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId)],
+  (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId), index('alert_deliveries_user_status').on(t.userId, t.status)],
 );
 
 // How far the scheduler has evaluated events, so each run only looks at new events and a restart resumes.
@@ -202,4 +202,4 @@ export const appSessions = pgTable('app_sessions', {
   userId: text('user_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
+}, (t) => [index('app_sessions_expires_at').on(t.expiresAt), index('app_sessions_user_id').on(t.userId)]);

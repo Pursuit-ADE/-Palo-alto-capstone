@@ -43,7 +43,7 @@ describe('sign-up, log-in and sessions', () => {
   const jordanInvite = inviteCode('u_ts_east', SECRET);
 
   it('gives the account the person from the invite, whatever else is sent', async () => {
-    const r = await signUp(database.auditDb, { username: 'Jordan.Lee', password: 'a long demo password', invite: jordanInvite, role: 'analyst' } as never, SECRET);
+    const r = await signUp(database.authDb, { username: 'Jordan.Lee', password: 'a long demo password', invite: jordanInvite, role: 'analyst' } as never, SECRET);
     expect(r).toEqual({ username: 'jordan.lee', userId: 'u_ts_east' });
     const [row] = await database.db.select().from(appAccounts);
     expect(row!.userId).toBe('u_ts_east');
@@ -57,31 +57,31 @@ describe('sign-up, log-in and sessions', () => {
       { username: 'Robert"); DROP TABLE x;--', password: 'a long demo password', invite: jordanInvite },
       { username: 'sam', password: 'a long demo password', invite: 'ABCD-EF01-2345' },
     ];
-    for (const b of bad) await expect(signUp(database.auditDb, b, SECRET)).rejects.toBeInstanceOf(AuthError);
-    await expect(signUp(database.auditDb, { username: 'sam', password: 'a long demo password', invite: jordanInvite }, undefined)).rejects.toThrow(/turned off/);
+    for (const b of bad) await expect(signUp(database.authDb, b, SECRET)).rejects.toBeInstanceOf(AuthError);
+    await expect(signUp(database.authDb, { username: 'sam', password: 'a long demo password', invite: jordanInvite }, undefined)).rejects.toThrow(/turned off/);
   });
 
   it('logs in, keeps only a hash of the session token, and logs out', async () => {
-    const { token, userId } = await logIn(database.auditDb, 'jordan.lee', 'a long demo password');
+    const { token, userId } = await logIn(database.authDb, 'jordan.lee', 'a long demo password');
     expect(userId).toBe('u_ts_east');
-    expect(await sessionUser(database.auditDb, token)).toBe('u_ts_east');
+    expect(await sessionUser(database.authDb, token)).toBe('u_ts_east');
     const stored = await database.db.select().from(appSessions);
     expect(JSON.stringify(stored)).not.toContain(token);
-    await logOut(database.auditDb, token);
-    expect(await sessionUser(database.auditDb, token)).toBeUndefined();
+    await logOut(database.authDb, token);
+    expect(await sessionUser(database.authDb, token)).toBeUndefined();
   });
 
   it('gives the same answer for a wrong username and a wrong password', async () => {
-    await expect(logIn(database.auditDb, 'jordan.lee', 'not the password')).rejects.toThrow('The username or password is not right.');
-    await expect(logIn(database.auditDb, 'nobody.here', 'a long demo password')).rejects.toThrow('The username or password is not right.');
+    await expect(logIn(database.authDb, 'jordan.lee', 'not the password')).rejects.toThrow('The username or password is not right.');
+    await expect(logIn(database.authDb, 'nobody.here', 'a long demo password')).rejects.toThrow('The username or password is not right.');
   });
 
   it('expires sessions and ignores made-up tokens', async () => {
     const start = new Date('2026-10-15T12:00:00Z');
-    const { token } = await logIn(database.auditDb, 'jordan.lee', 'a long demo password', start);
-    expect(await sessionUser(database.auditDb, token, new Date('2026-10-15T19:59:00Z'))).toBe('u_ts_east');
-    expect(await sessionUser(database.auditDb, token, new Date('2026-10-15T20:01:00Z'))).toBeUndefined(); // 8 hours
-    expect(await sessionUser(database.auditDb, 'made-up-token')).toBeUndefined();
-    expect(await sessionUser(database.auditDb, undefined)).toBeUndefined();
+    const { token } = await logIn(database.authDb, 'jordan.lee', 'a long demo password', start);
+    expect(await sessionUser(database.authDb, token, new Date('2026-10-15T19:59:00Z'))).toBe('u_ts_east');
+    expect(await sessionUser(database.authDb, token, new Date('2026-10-15T20:01:00Z'))).toBeUndefined(); // 8 hours
+    expect(await sessionUser(database.authDb, 'made-up-token')).toBeUndefined();
+    expect(await sessionUser(database.authDb, undefined)).toBeUndefined();
   });
 });

@@ -90,6 +90,10 @@ function checkValues(dir: string): string[] {
   for (const region of ['East', 'West']) {
     if (!teams.some((t) => t.regional_office === region)) add(`sales_teams.csv needs at least one ${region} team for the demo technical sellers.`);
   }
+  // Amounts must be plausible (F9): one mistyped or planted value would otherwise move every governed number.
+  // The ceiling is generous: 100 times the most expensive product.
+  const topPrice = Math.max(0, ...products.map((p) => Number(p.sales_price)).filter((n) => Number.isFinite(n)));
+  const maxValue = topPrice * 100;
   deals.forEach((d, i) => {
     const row = `sales_pipeline.csv row ${i + 2}`;
     if (!d.opportunity_id?.trim()) add(`${row}: opportunity_id is blank.`);
@@ -99,6 +103,10 @@ function checkValues(dir: string): string[] {
     if (!STAGES.includes(d.deal_stage ?? '')) add(`${row}: deal_stage must be Prospecting, Engaging, Won or Lost.`);
     for (const col of ['engage_date', 'close_date'] as const) if (d[col] && !isDate(d[col]!)) add(`${row}: ${col} is not a YYYY-MM-DD date.`);
     if (d.close_value && !isNumber(d.close_value)) add(`${row}: close_value is not a number.`);
+    else if (d.close_value && Number(d.close_value) < 0) add(`${row}: close_value can't be negative.`);
+    else if (d.close_value && topPrice > 0 && Number(d.close_value) > maxValue) {
+      add(`${row}: close_value ${d.close_value} is more than 100 times the most expensive product (${topPrice}); check it.`);
+    }
   });
   return problems;
 }

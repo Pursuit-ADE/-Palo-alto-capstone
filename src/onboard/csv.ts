@@ -1,8 +1,21 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Onboarding reads whole files into memory, so refuse anything far larger than a CRM export should be.
+export const MAX_CSV_BYTES = 50 * 1024 * 1024;
+
 export function parseCsvFile(file: string): { headers: string[]; rows: Record<string, string>[] } {
-  const text = fs.readFileSync(file, 'utf8').replace(/\r/g, '');
+  // Size check and read use the same open file, so the file can't be swapped between the two (CodeQL
+  // js/file-system-race).
+  const fd = fs.openSync(file, 'r');
+  let text: string;
+  try {
+    const size = fs.fstatSync(fd).size;
+    if (size > MAX_CSV_BYTES) throw new Error(`${path.basename(file)} is ${Math.round(size / 1048576)} MB; the limit is ${MAX_CSV_BYTES / 1048576} MB.`);
+    text = fs.readFileSync(fd, 'utf8').replace(/\r/g, '');
+  } finally {
+    fs.closeSync(fd);
+  }
   const rows: string[][] = [];
   let row: string[] = [];
   let field = '';
@@ -26,6 +39,8 @@ export function parseCsvFile(file: string): { headers: string[]; rows: Record<st
       field = '';
     } else field += ch;
   }
+  // A quote that never closes would otherwise swallow the rest of the file silently.
+  if (quoted) throw new Error(`${path.basename(file)} ends inside a quoted field; check for an unmatched quote.`);
   if (field || row.length) {
     row.push(field);
     rows.push(row);

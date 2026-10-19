@@ -71,7 +71,11 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
 /** Claude as the intent model. Used only when INTENT_MODEL=claude; needs Anthropic credentials. */
 // A question should fail fast to the deterministic fallback rather than hang: 5 s, no retry (see also the
 // circuit breaker in src/server/ask.ts).
-export function claudeModel(client: Anthropic = new Anthropic({ timeout: 5_000, maxRetries: 0 })): IntentModel {
+// How long one question waits for Claude before the deterministic model answers. Measured Oct 17-18: median about
+// 2.2 s, slowest about 5 s, so 8 s by default; CLAUDE_TIMEOUT_MS (1-60 s) overrides it.
+const timeoutSetting = Number(process.env.CLAUDE_TIMEOUT_MS);
+export const CLAUDE_TIMEOUT_MS = Number.isInteger(timeoutSetting) && timeoutSetting >= 1000 && timeoutSetting <= 60_000 ? timeoutSetting : 8000;
+export function claudeModel(client: Anthropic = new Anthropic({ timeout: CLAUDE_TIMEOUT_MS, maxRetries: 0 })): IntentModel {
   return {
     name: CLAUDE_MODEL,
     async propose(question, registry, asOfDate, previous) {

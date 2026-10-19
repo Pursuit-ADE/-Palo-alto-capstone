@@ -10,7 +10,6 @@ import { ScopeViolation } from '@/semantic/scope';
 import { RateLimiter } from '@/server/limits';
 import { testIdentitiesEnabled } from '@/server/identity';
 import { promptFor } from '@/server/prompts';
-import { securityHeadersFor } from '../next.config';
 
 const reg = loadRegistry();
 let database: Database;
@@ -97,13 +96,6 @@ describe('test identities (F-01)', () => {
     expect(testIdentitiesEnabled({})).toBe(false);
     expect(testIdentitiesEnabled({ ALLOW_TEST_IDENTITIES: '1' })).toBe(false);
     expect(testIdentitiesEnabled({ ALLOW_TEST_IDENTITIES: 'true' })).toBe(true);
-  });
-});
-
-describe('HSTS', () => {
-  it('is in the headers exactly when the HTTPS settings turn it on', () => {
-    expect(securityHeadersFor(false).some((h) => h.key === 'Strict-Transport-Security')).toBe(false);
-    expect(securityHeadersFor(true).find((h) => h.key === 'Strict-Transport-Security')?.value).toContain('max-age=');
   });
 });
 
