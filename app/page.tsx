@@ -8,17 +8,15 @@ import { SyntheticBadge } from './synthetic-badge';
 import { promptFor } from '@/server/prompts';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
-import { format, cell } from './format';
+import { FactChips, scopeText } from './fact-chips';
+import { format, cell, dateRange } from './format';
 
 export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
 
-const EXAMPLES = ['What is our open pipeline?', 'coverage by region for this quarter', 'open opportunities by stage', 'pipeline coverage'];
-
-function compactUsd(value: number): string {
-  return value >= 1_000_000 ? `$${(value / 1_000_000).toFixed(1)}M` : `$${Math.round(value / 1000)}K`;
-}
+// Each example answers for every demo person: coverage needs a quarter, and a technical seller sees one region and one stage.
+const EXAMPLES = ['What is our open pipeline?', 'open pipeline by owner', 'open opportunities by owner', 'pipeline coverage this quarter'];
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
@@ -43,6 +41,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   // Coverage with no quota is NULL: shown as not available, never as 0.00x.
   const covRaw = coverage.rows[0]?.value;
   const cov = covRaw === null || covRaw === undefined ? null : Number(covRaw);
+  const quarter = coverage.filters.period ? `${period} (${dateRange(coverage.filters.period.start, coverage.filters.period.end)})` : period;
 
   return (
     <>
@@ -78,15 +77,19 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
       <main>
         <div className="page-head">
           <h1>Pipeline overview</h1>
-          <p>{pipeline.scope} Fiscal quarter {period} (Aug 1 to Oct 31, 2026). {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          <FactChips
+            label="Scope, quarter and data date"
+            items={[['Scope', scopeText(pipeline.scope)], ['Fiscal quarter', quarter], ['Data as of', dateRange(pipeline.provenance.asOfDate)]]}
+          />
+          <p>{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
         </div>
 
         <div className="overview">
           <section className="kpis stack" aria-label="All open deals">
             <div className="kpi">
               <span className="label">Open pipeline · all open deals</span>
-              <span className="value">{compactUsd(Number(pipeline.rows[0]?.value ?? 0))}</span>
-              <span className="note">{format(pipeline.rows[0]?.value, 'currency')}, any expected close date (not limited to {period})</span>
+              <span className="value">{format(pipeline.rows[0]?.value, 'currency')}</span>
+              <span className="note">Any expected close date (not limited to {period})</span>
             </div>
             <div className="kpi">
               <span className="label">Open opportunities · all open deals</span>
