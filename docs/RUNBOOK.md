@@ -41,6 +41,8 @@ Set the database URLs from `.env.example` and leave `ALLOW_EMBEDDED_DB` unset:
 - **Setup, once per deploy and after new migrations:** `MIGRATION_DATABASE_URL=… npm run db:setup` (in each app). It migrates, loads data and applies grants as the owner login.
 - **Running server:** copilot `DATABASE_URL`, `AUDIT_DATABASE_URL`, `AUTH_DATABASE_URL`; alerts `ALERTS_DATABASE_URL`. Leave `MIGRATION_DATABASE_URL` out of a deployed server's environment, so a leak can't hand over the database. (If it's set, start-up runs the same setup, which is handy on a laptop.)
 
+**Any shared deployment should sit behind a proxy (a load balancer or reverse proxy) with `TRUSTED_PROXY_HOPS` set** to the number of proxies. Without it the apps can't trust `X-Forwarded-For`, so every caller shares one sign-in bucket of 100 attempts a minute, and one person sending wrong passwords can make sign-in say "too many attempts" for everyone.
+
 Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compose down -v` deletes it. A volume created before Oct 18 lacks the `app_auth` login: recreate it, or run the `CREATE ROLE app_auth` lines from `docker/init-roles.sql`.
 
 ## Data retention
