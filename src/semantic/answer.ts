@@ -203,14 +203,14 @@ async function run(database: Database, registry: Registry, principal: Principal,
   };
 }
 
- ui-polish-week5
 /** Names for the owners already in the (scoped) result rows, so charts and sentences show people, not ids. */
 async function ownerNames(database: Database, rows: Answer['rows']): Promise<OwnerNames> {
   const ids = [...new Set(rows.map((r) => r.owner).filter((v): v is string => typeof v === 'string'))];
   if (ids.length === 0) return {};
   const found = await database.db.select({ id: appUsers.id, displayName: appUsers.displayName }).from(appUsers).where(inArray(appUsers.id, ids));
   return Object.fromEntries(found.map((u) => [u.id, u.displayName.split(' (')[0]!]));
-=======
+}
+
 /** Audits a question refused before the pipeline runs (the per-user rate limit), so floods show up in the log. */
 export async function recordRefusal(database: Database, userId: string, question: string, outcome: string, reason: string, actor?: AskOptions['actor']) {
   await audit(database, {
@@ -224,7 +224,6 @@ export async function recordRefusal(database: Database, userId: string, question
     username: actor?.username ?? null,
     sessionId: actor?.sessionId ?? null,
   });
- week5
 }
 
 async function audited<T extends Reply>(
