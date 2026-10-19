@@ -6,6 +6,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
+import { addressLimit, clientAddress } from '@/server/client-address';
 import { allowAttempt } from '@/server/login-limit';
 import { getAlertsRuntime } from '@/server/runtime';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/server/session';
@@ -17,14 +18,14 @@ const limitKey = (name: string) => (/^[a-z0-9._-]{3,32}$/.test(name) ? name : 'i
 
 const Field = z.string().max(200);
 
-// Shared by every process through the database (src/server/login-limit.ts): 10 attempts a minute per username,
-// 30 per address across all usernames, and 300 in total, so one machine or a botnet can't try many accounts.
+// Shared by every process through the database (src/server/login-limit.ts): the caller's address first (trusted
+// only behind TRUSTED_PROXY_HOPS proxies, see src/server/client-address.ts; otherwise one shared bucket of 100), then
+// 10 attempts a minute per username, then 300 in total, so one machine or a botnet can't try many accounts.
 async function attempt(key: string): Promise<boolean> {
   const database = await db();
+  const address = clientAddress(await headers());
+  if (!(await allowAttempt(database, `ip:${address}`, addressLimit(address)))) return false;
   if (!(await allowAttempt(database, key, 10))) return false;
-  const h = await headers();
-  const ip = h.get('x-forwarded-for')?.split(',')[0]?.trim() || h.get('x-real-ip')?.trim();
-  if (ip && !(await allowAttempt(database, `ip:${ip}`, 30))) return false;
   return allowAttempt(database, 'all', 300);
 }
 

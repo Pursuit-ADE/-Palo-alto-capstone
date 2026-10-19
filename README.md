@@ -6,7 +6,7 @@ A governed AI analytics copilot that sits next to certified dashboards. The AI o
 
 **No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
 
-New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md).
+New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md). Reviewing it for security or AI risk? Start with the [system card](docs/SYSTEM-CARD.md), then the [red-team results](docs/RED-TEAM.md) and [detections](docs/DETECTIONS.md).
 
 ## Run it
 
@@ -97,7 +97,7 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): email, per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
 - Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
-- Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the three database URLs.
+- Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the database URLs (see the runbook).
 - The test identity picker is not authentication.
 
 ## Project documents

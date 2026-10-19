@@ -1,5 +1,7 @@
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { listCsvFiles } from './csv';
 import { loadRegistry } from '../registry/load';
 import { GOVERNED_METRIC_IDS, OnboardConfirmation, type OnboardProposal } from './types';
 
@@ -10,6 +12,11 @@ export class OnboardError extends Error {
     super(message);
     this.name = 'OnboardError';
   }
+}
+
+/** SHA-256 of every CSV file in a dataset folder, by file name. */
+export function datasetFileHashes(dir: string): Record<string, string> {
+  return Object.fromEntries(listCsvFiles(dir).map((f) => [path.basename(f), createHash('sha256').update(fs.readFileSync(f)).digest('hex')]));
 }
 
 /**
@@ -38,6 +45,7 @@ export function confirmOnboarding(
     confirmedBy: input.confirmedBy,
     confirmedAt: input.writtenAt ?? new Date().toISOString(),
     notes: input.notes,
+    fileHashes: datasetFileHashes(proposal.profile.datasetDir),
   });
 }
 
@@ -61,6 +69,13 @@ export function assertDatasetConfirmed(datasetDir: string, file: string = proces
   }
   if (!confirmed || path.resolve(confirmed.datasetDir) !== wanted) {
     throw new OnboardError(`Dataset ${datasetDir} is not confirmed. Run npm run onboard:propose and npm run onboard:confirm first.`);
+  }
+  // The confirmation covers the files as they were reviewed (U2): a changed, added or removed CSV needs a new one.
+  const now = datasetFileHashes(datasetDir);
+  const names = new Set([...Object.keys(now), ...Object.keys(confirmed.fileHashes)]);
+  const changed = [...names].filter((n) => now[n] !== confirmed!.fileHashes[n]).sort();
+  if (changed.length) {
+    throw new OnboardError(`Dataset ${datasetDir} changed since it was confirmed (${changed.join(', ')}). Review it again with npm run onboard:propose and npm run onboard:confirm.`);
   }
 }
 

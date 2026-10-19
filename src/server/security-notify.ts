@@ -3,9 +3,12 @@
 // the outcome, who asked and the audit row's id, never the question text: the audit log keeps only a keyed
 // fingerprint of it, and a Slack channel should not hold more than the audit log does.
 const SLACK_WEBHOOK = /^https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/_-]+$/;
-// One message per person per minute, counted from the last post Slack accepted, so a burst of attempts doesn't
-// flood the channel and a failed post doesn't silence the next one. A lock always posts. The memory is per process.
+// One flagged-question message per person per minute, so a burst of attempts doesn't flood the channel. A lock is
+// reported once when it starts: every question a locked user asks is refused and audited as refused_locked, and
+// without its own limit each of those would post again for the whole lock. Both are counted from the last post
+// Slack accepted, so a failed post doesn't silence the next one. The memory is per process.
 const lastSent = new Map<string, number>();
+const LOCK_NOTICE_MS = 10 * 60_000;
 
 export interface SecurityEvent {
   auditId: string;
@@ -39,7 +42,8 @@ export async function notifySecurity(
   const url = env.SECURITY_SLACK_WEBHOOK_URL;
   if (!url || !SLACK_WEBHOOK.test(url)) return false;
   const locked = e.outcome === 'refused_locked';
-  if (!locked && now - (lastSent.get(e.userId) ?? -Infinity) < 60_000) return false;
+  const key = locked ? `lock:${e.userId}` : e.userId;
+  if (now - (lastSent.get(key) ?? -Infinity) < (locked ? LOCK_NOTICE_MS : 60_000)) return false;
   try {
     const res = await post(url, {
       method: 'POST',
@@ -47,7 +51,7 @@ export async function notifySecurity(
       body: JSON.stringify({ text: securityMessage(e) }),
       signal: AbortSignal.timeout(5_000),
     });
-    if (res.ok) lastSent.set(e.userId, now);
+    if (res.ok) lastSent.set(key, now);
     return res.ok;
   } catch {
     return false;

@@ -3,7 +3,7 @@
 // Questions are sent by POST (a Server Action), so their text never lands in URLs, browser history or access
 // logs. Next.js checks the request's Origin against the host for Server Actions.
 import { z } from 'zod';
-import { MAX_QUESTION_LENGTH, type Reply } from '@/semantic/answer';
+import { MAX_QUESTION_LENGTH, recordRefusal, type Reply } from '@/semantic/answer';
 import { selectModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
 import { requireUser } from '@/server/require-user';
@@ -28,7 +28,10 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   const database = await getDatabase();
   const guard = dbSessionGuard(database.auditDb);
   const userId = actor.userId;
-  if (!(await guard.allow(userId))) return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
+  if (!(await guard.allow(userId))) {
+    await recordRefusal(database, userId, parsed.data, 'refused_rate', 'rate_limit', actor);
+    return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
+  }
 
   let previous: unknown;
   const prevRaw = PreviousJson.safeParse(formData.get('previous'));

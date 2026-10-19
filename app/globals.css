@@ -13,6 +13,7 @@
   --fg: #1b1d21;
   --muted: #5d6470;
   --line: #e2e5ea;
+ ui-polish-week5
   --ok: #177245;
   --warn: #c98a00; /* bars and borders only; text uses --warn-text */
   --warn-text: #8a5d00;
@@ -20,6 +21,13 @@
   --field: #868e99; /* input borders, 3:1 on white */
   --font: "Manrope", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+=======
+  --ok: #1f9d55;
+  --warn: #c98a00;
+  --bad: #d64545;
+  --font: var(--font-manrope), "Manrope", "Segoe UI", system-ui, sans-serif;
+  --mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Consolas, monospace;
+ week5
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; }

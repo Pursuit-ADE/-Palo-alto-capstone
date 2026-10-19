@@ -44,6 +44,7 @@ jobs:
       MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/copilot
       DATABASE_URL: postgres://app_readonly:readonly_local_dev@localhost:5432/copilot
       AUDIT_DATABASE_URL: postgres://app_audit:audit_local_dev@localhost:5432/copilot
+      AUTH_DATABASE_URL: postgres://app_auth:auth_local_dev@localhost:5432/copilot
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
