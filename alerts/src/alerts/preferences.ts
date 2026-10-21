@@ -33,14 +33,16 @@ export async function savePreference(db: Db, rules: Map<string, AlertRule>, user
   const parsed = PreferenceInput.safeParse(raw);
   if (!parsed.success) throw new PreferenceError('Those settings are not valid.');
   const p = parsed.data;
-  const rule = rules.get(p.ruleId);
-  const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, userId));
-  if (!rule || !user || !(rule.audience as string[]).includes(user.role)) throw new PreferenceError('That alert is not available for your role.');
   const where = and(eq(alertSubscriptions.userId, userId), eq(alertSubscriptions.ruleId, p.ruleId));
+  // Unsubscribing only removes the person's own row, so it's always allowed, even from a rule their role no
+  // longer covers (otherwise a stale subscription could never be removed).
   if (!p.subscribed) {
     await db.delete(alertSubscriptions).where(where);
     return;
   }
+  const rule = rules.get(p.ruleId);
+  const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, userId));
+  if (!rule || !user || !(rule.audience as string[]).includes(user.role)) throw new PreferenceError('That alert is not available for your role.');
   // Quiet hours need both ends. Half a window is refused rather than silently stored as no quiet hours.
   if ((p.quietStartHour === '') !== (p.quietEndHour === '')) throw new PreferenceError('Choose both a start and an end for quiet hours, or neither.');
   const quiet = p.quietStartHour === '' || p.quietEndHour === '' ? { quietStartHour: null, quietEndHour: null } : { quietStartHour: p.quietStartHour, quietEndHour: p.quietEndHour };

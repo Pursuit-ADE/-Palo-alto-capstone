@@ -49,6 +49,8 @@ export const OnboardConfirmation = z.object({
   confirmedMetricIds: z.array(z.string()).min(1),
   confirmedBy: z.string().min(1),
   confirmedAt: z.string(),
+  /** SHA-256 of each CSV file as reviewed. Loading refuses a folder whose files changed after confirmation. */
+  fileHashes: z.record(z.string(), z.string().regex(/^[0-9a-f]{64}$/)),
   notes: z.string().optional(),
 });
 export type OnboardConfirmation = z.infer<typeof OnboardConfirmation>;

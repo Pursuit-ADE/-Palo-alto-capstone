@@ -57,7 +57,8 @@ function assertInside(scope: Scope, answer: Answer) {
     const dim = answer.chart.encoding.y.field;
     for (const cell of answer.chart.data.values) {
       if (dim === 'region') expect(scope.regions).toContain(String(cell.region).toLowerCase());
-      if (dim === 'owner' && scope.ownerIds) expect(scope.ownerIds).toContain(cell.owner);
+      // The chart shows display names; map the allowed owner ids to the names this answer used.
+      if (dim === 'owner' && scope.ownerIds) expect(scope.ownerIds.map((id) => answer.ownerNames?.[id] ?? id)).toContain(cell.owner);
     }
   }
 }

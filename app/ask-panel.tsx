@@ -2,7 +2,8 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { cell } from './format';
+import { FactChips, scopeText } from './fact-chips';
+import { cell, dateRange } from './format';
 import { ProvenancePanel } from './provenance-panel';
 import type { Answer } from '@/semantic/answer';
 
@@ -70,7 +71,7 @@ export function AskPanel({ user, name, examples, initialQuestion = '' }: { user:
         ))}
         {pending && <li className="turn thinking" role="status">Working out the governed query…</li>}
       </ol>
-      {failed && <div className="answer refused" role="alert">The copilot could not be reached. Check your connection and try again.</div>}
+      {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>The copilot could not be reached. Check your connection and try again.</div>}
 
       <form className="ask" onSubmit={(e) => { e.preventDefault(); send(inputRef.current?.value ?? ''); }}>
         <input ref={inputRef} id="q" name="q" defaultValue={initialQuestion} placeholder={turns.length ? 'Ask a follow-up' : 'Ask about open pipeline, pipeline coverage or open opportunities'} maxLength={300} aria-label="Question" autoComplete="off" />
@@ -88,37 +89,53 @@ export function AskPanel({ user, name, examples, initialQuestion = '' }: { user:
 function TurnResult({ result }: { result: AskResult }) {
   if (!result) return null;
   if (result.kind === 'answer') return <AnswerView a={result} />;
-  return <div className="answer refused" role="status">{result.kind === 'clarify' ? result.question : result.message}</div>;
+  // A clarifying question is the copilot asking back, not a refusal, so it gets its own look.
+  if (result.kind === 'clarify') return <div className="answer notice clarify" role="status"><span className="notice-tag">Question</span>{result.question}</div>;
+  return <div className="answer notice refused" role="status"><span className="notice-tag">Not answered</span>{result.message}</div>;
 }
 
 function AnswerView({ a }: { a: Answer }) {
   const cols = Object.keys(a.rows[0] ?? { value: '' });
+  // A single number is shown as large as the dashboard's, with its scope and data date right under it.
+  const single = a.filters.groupBy.length === 0 && a.rows.length === 1 ? a.rows[0]! : null;
+  const big = single && single.value !== null && single.value !== undefined ? cell('value', single.value, a.metric.unit) : null;
   return (
     <div className="answer">
       <h3>{a.metric.name}</h3>
+      {big && <p className="answer-value">{big}</p>}
+      <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
       <p className="narrative">{a.narrative}</p>
       {a.chart && <BarChart values={a.chart.data.values as { [k: string]: string | number }[]} dim={a.chart.encoding.y.field} unit={a.metric.unit} />}
-      <div className="tablewrap">
-        <table>
-          <thead><tr>{cols.map((k) => (<th key={k}>{k}</th>))}</tr></thead>
-          <tbody>
-            {a.rows.map((r, i) => (
-              <tr key={i}>{cols.map((k) => (<td key={k}>{cell(k, r[k], a.metric.unit)}</td>))}</tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* A one-cell table would only repeat the big number; coverage keeps its numerator and denominator columns. */}
+      {!(big && cols.length === 1) && (
+        <div className="tablewrap">
+          <table>
+            <thead><tr>{cols.map((k) => (<th key={k}>{k}</th>))}</tr></thead>
+            <tbody>
+              {a.rows.map((r, i) => (
+                <tr key={i}>{cols.map((k) => (<td key={k}>{cell(k, k === 'owner' ? (a.ownerNames?.[String(r[k])] ?? r[k]) : r[k], a.metric.unit)}</td>))}</tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <ProvenancePanel a={a} />
     </div>
   );
 }
 
 /** Deterministic horizontal bars drawn from the same rows as the table (the Vega-Lite spec travels with the answer). */
-function BarChart({ values, dim, unit }: { values: { [k: string]: string | number }[]; dim: string; unit: string }) {
+/** Longest label that fits the label column; longer names are shortened, with the full name on hover. */
+const MAX_LABEL = 18;
+const shortLabel = (s: string) => (s.length > MAX_LABEL ? `${s.slice(0, MAX_LABEL - 1).trimEnd()}…` : s);
+
+function BarChart({ values: rows, dim, unit }: { values: { [k: string]: string | number }[]; dim: string; unit: string }) {
+  // Largest first, as the spec's sort '-x' says.
+  const values = [...rows].sort((a, b) => Number(b.value) - Number(a.value));
   const max = Math.max(...values.map((v) => Number(v.value)), 0) || 1;
   const rowH = 28;
-  const labelW = 120;
-  const width = 520;
+  const labelW = 150; // room for a rep's full name
+  const width = 560;
   const barW = width - labelW - 90;
   return (
     <div className="chart">
@@ -127,8 +144,12 @@ function BarChart({ values, dim, unit }: { values: { [k: string]: string | numbe
           const w = (Number(v.value) / max) * barW;
           const y = i * rowH + 4;
           return (
-            <g key={String(v[dim])}>
-              <text x={labelW - 8} y={y + 15} textAnchor="end" className="chart-label">{String(v[dim])}</text>
+            <g key={i}>
+              {/* The spec already holds the display label (src/semantic/narrative.ts chartSpec). */}
+              <text x={labelW - 8} y={y + 15} textAnchor="end" className="chart-label">
+                <title>{String(v[dim])}</title>
+                {shortLabel(String(v[dim]))}
+              </text>
               <rect x={labelW} y={y} width={Math.max(w, 1)} height={rowH - 10} rx={3} className="chart-bar" />
               <text x={labelW + w + 6} y={y + 15} className="chart-value">{cell('value', Number(v.value), unit)}</text>
             </g>

@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -138,7 +138,7 @@ export const appSessions = pgTable('app_sessions', {
   userId: text('user_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-});
+}, (t) => [index('app_sessions_expires_at').on(t.expiresAt), index('app_sessions_user_id').on(t.userId)]);
 
 // Rate-limit hits and session-lock expiry. The audit role may read and update only this table.
 // The read-only app role may not. PGlite uses the same connection, so the laptop demo still works.
@@ -153,7 +153,8 @@ export const sessionGuard = pgTable('session_guard', {
 // role may only INSERT. The raw question is never stored, only its keyed hash (HMAC-SHA-256 with AUDIT_HASH_KEY).
 export const queryAudit = pgTable('query_audit', {
   id: text('id').primaryKey(),
-  at: timestamp('at', { withTimezone: true }).notNull(),
+  // Defaults to the database clock, so rows written by any app server share one time source.
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   requestId: text('request_id').notNull(),
   source: text('source').notNull(),
   userId: text('user_id').notNull(),
@@ -176,4 +177,4 @@ export const queryAudit = pgTable('query_audit', {
   // the first 16 characters of the stored token hash, never the token.
   username: text('username'),
   sessionId: text('session_id'),
-});
+}, (t) => [index('query_audit_at').on(t.at), index('query_audit_user_at').on(t.userId, t.at)]);

@@ -36,7 +36,18 @@ For the alerts app, put the same two lines in `alerts/.env.local`, then in `aler
 docker compose up -d
 ```
 
-Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `DATABASE_URL`, `AUDIT_DATABASE_URL`; alerts: `MIGRATION_DATABASE_URL`, `ALERTS_DATABASE_URL`) and leave `ALLOW_EMBEDDED_DB` unset. The app migrates and loads data as the owner login and runs as the restricted logins. Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compose down -v` deletes it.
+Set the database URLs from `.env.example` and leave `ALLOW_EMBEDDED_DB` unset:
+
+- **Setup, once per deploy and after new migrations:** `MIGRATION_DATABASE_URL=… npm run db:setup` (in each app). It migrates, loads data and applies grants as the owner login.
+- **Running server:** copilot `DATABASE_URL`, `AUDIT_DATABASE_URL`, `AUTH_DATABASE_URL`; alerts `ALERTS_DATABASE_URL`. Leave `MIGRATION_DATABASE_URL` out of a deployed server's environment, so a leak can't hand over the database. (If it's set, start-up runs the same setup, which is handy on a laptop.)
+
+**Any shared deployment should sit behind a proxy (a load balancer or reverse proxy) with `TRUSTED_PROXY_HOPS` set** to the number of proxies. Without it the apps can't trust `X-Forwarded-For`, so every caller shares one sign-in bucket of 100 attempts a minute, and one person sending wrong passwords can make sign-in say "too many attempts" for everyone.
+
+Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compose down -v` deletes it. A volume created before Oct 18 lacks the `app_auth` login: recreate it, or run the `CREATE ROLE app_auth` lines from `docker/init-roles.sql`.
+
+## Data retention
+
+`npm run purge` (each app, owner login; `-- --dry-run` to count only), run daily, deletes expired sessions and idle rate-limit rows, audit rows older than `AUDIT_RETENTION_DAYS` (90), and finished alerts older than `DELIVERY_RETENTION_DAYS` (180). Day counts below 1 are refused.
 
 ## Settings
 
@@ -46,13 +57,17 @@ Set the database URLs from `.env.example` (copilot: `MIGRATION_DATABASE_URL`, `D
 | `DEMO_INVITE_EXPIRES` | both | Optional date after which invite codes stop working. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
 | `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
-| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints. Required (32+ characters) for `npm start`. |
+| `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints and the per-address sign-in limit. Required (32+ characters) for `npm start` (`openssl rand -hex 32`). |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |
+| `CLAUDE_TIMEOUT_MS` | copilot | How long a question waits for Claude before the deterministic model answers (default 8000, 1000-60000). |
+| `AUTH_DATABASE_URL` | copilot | Postgres mode: the `app_auth` login for accounts and sessions. |
+| `AUDIT_RETENTION_DAYS`, `DELIVERY_RETENTION_DAYS` | copilot, alerts | Retention used by `npm run purge` (defaults 90 and 180). |
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
 | `SLACK_USER_WEBHOOKS` | alerts | JSON map of user id to that person's own `https://hooks.slack.com/services/...` webhook. |
-| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`. Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
-| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and every session lock. |
+| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`, read when the server starts (no rebuild needed). Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
+| `TRUSTED_PROXY_HOPS` | both | Proxies in front of the app that append to `X-Forwarded-For` (1 for one load balancer). Unset: the header is ignored and all sign-in attempts share one limit of 100 a minute. |
+| `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and one when a session lock starts. |
 
 ## Common problems
 

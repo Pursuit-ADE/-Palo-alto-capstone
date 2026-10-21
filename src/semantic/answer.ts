@@ -1,16 +1,16 @@
 // End-to-end governed answer: phrase -> intent -> validation -> scope -> compiled SQL -> result with provenance.
 // Every call writes one audit row (PRD S4), including refusals. If the audit row can't be written, no answer is returned.
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
-import { desc } from 'drizzle-orm';
+import { desc, inArray } from 'drizzle-orm';
 import type { Database } from '../db/client';
-import { dataSnapshots, queryAudit } from '../db/schema';
+import { appUsers, dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Dimension, type Intent, type MetricDefinition } from '../registry/types';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { deterministicModel, type IntentModel } from './model';
-import { chartSpec, narrate } from './narrative';
+import { chartSpec, narrate, type OwnerNames } from './narrative';
 import { findPeriod } from './periods';
 import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
@@ -43,6 +43,8 @@ export interface Answer {
   narrative: string;
   /** Vega-Lite bar chart spec for a single breakdown, or null. */
   chart: ReturnType<typeof chartSpec>;
+  /** For a breakdown by owner: each owner id in the rows mapped to the person's name, for labels. Rows and the chart spec keep the ids. Null otherwise. */
+  ownerNames: OwnerNames | null;
   provenance: {
     snapshotId: string;
     asOfDate: string;
@@ -165,6 +167,7 @@ async function run(database: Database, registry: Registry, principal: Principal,
   fields.resultHash = resultHash;
   const scope = scopeStatement(principal, q.regions);
   const period = intent.filters.period ? findPeriod(intent.filters.period) : undefined;
+  const names = intent.groupBy.includes('owner') ? await ownerNames(database, rows) : null;
   return {
     kind: 'answer',
     metric: {
@@ -186,8 +189,9 @@ async function run(database: Database, registry: Registry, principal: Principal,
       groupBy: intent.groupBy,
     },
     parts: ratioParts(metric, registry, scope, intent.filters.period),
-    narrative: narrate(metric, rows, intent.groupBy, intent.filters.period),
-    chart: chartSpec(metric, rows, intent.groupBy),
+    narrative: narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined),
+    chart: chartSpec(metric, rows, intent.groupBy, names ?? undefined),
+    ownerNames: names,
     provenance: {
       snapshotId: snapshot.id,
       asOfDate: snapshot.asOfDate,
@@ -197,6 +201,29 @@ async function run(database: Database, registry: Registry, principal: Principal,
       auditId: '',
     },
   };
+}
+
+/** Names for the owners already in the (scoped) result rows, so charts and sentences show people, not ids. */
+async function ownerNames(database: Database, rows: Answer['rows']): Promise<OwnerNames> {
+  const ids = [...new Set(rows.map((r) => r.owner).filter((v): v is string => typeof v === 'string'))];
+  if (ids.length === 0) return {};
+  const found = await database.db.select({ id: appUsers.id, displayName: appUsers.displayName }).from(appUsers).where(inArray(appUsers.id, ids));
+  return Object.fromEntries(found.map((u) => [u.id, u.displayName.split(' (')[0]!]));
+}
+
+/** Audits a question refused before the pipeline runs (the per-user rate limit), so floods show up in the log. */
+export async function recordRefusal(database: Database, userId: string, question: string, outcome: string, reason: string, actor?: AskOptions['actor']) {
+  await audit(database, {
+    id: randomUUID(),
+    userId,
+    source: 'question',
+    requestId: randomUUID(),
+    outcome,
+    reason,
+    questionSha256: questionFingerprint(question),
+    username: actor?.username ?? null,
+    sessionId: actor?.sessionId ?? null,
+  });
 }
 
 async function audited<T extends Reply>(
@@ -260,9 +287,10 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    // The person is looked up first, so a locked or over-long question's audit row still records their role.
+    const p = await principal();
     if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
     if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
-    const p = await principal();
     const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
     fields.flags = flags;
     if (flags.length) await opts.guard?.record(userId);

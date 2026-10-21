@@ -15,7 +15,7 @@ export async function currentUserId(): Promise<string | undefined> {
 export async function currentSession(): Promise<SessionInfo | undefined> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return undefined;
-  return sessionInfo((await getDatabase()).auditDb, token);
+  return sessionInfo((await getDatabase()).authDb, token);
 }
 
 export async function setSessionCookie(token: string) {
