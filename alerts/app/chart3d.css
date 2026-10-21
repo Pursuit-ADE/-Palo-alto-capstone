@@ -1,0 +1,103 @@
+/* Graphs that turn 3D (chart3d.tsx). PANW palette: charcoal, signature orange, cool greys. Shared by both apps. */
+.c3d { margin: 0; display: grid; gap: 8px; min-width: 0; container-type: inline-size; }
+.c3d-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
+.c3d-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.c3d-tabs { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #f3f4f6; }
+.c3d-tabs button { font: 600 12px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 5px 12px; min-height: 28px; cursor: pointer; }
+.c3d-tabs button[aria-pressed="true"] { color: #fff; background: #1b1d21; }
+.c3d-tabs button:focus-visible, .c3d-btn:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
+.c3d-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: #5d6470; }
+.c3d-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.c3d-legend i { width: 10px; height: 10px; border-radius: 2px; background: #fa582d; }
+.c3d-legend i.s1 { background: #26292f; }
+.c3d-legend i.s2 { background: #868e99; }
+
+/* The stage: the flat SVG, and the canvas that replaces it while the page is turned. */
+.c3d-stage {
+  position: relative; width: 100%; aspect-ratio: var(--c3d-ar); border-radius: 8px; overflow: hidden; cursor: grab;
+  touch-action: pan-y pinch-zoom; user-select: none; -webkit-user-select: none; outline: none;
+}
+.c3d-stage:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
+.c3d-stage:active, html[data-c3d-dragging] .c3d-stage { cursor: grabbing; }
+.c3d-svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.c3d-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: none; }
+.c3d-stage[data-c3d] .c3d-canvas { display: block; }
+.c3d-stage[data-c3d] .c3d-svg { visibility: hidden; }
+/* Phones: the narrow layout (keep 480px in step with NARROW_PX in chart3d-math.ts). */
+.c3d-svg.c3d-narrow { display: none; }
+@container (max-width: 479.98px) {
+  .c3d-stage { aspect-ratio: var(--c3d-ar-narrow, var(--c3d-ar)); }
+  .c3d-svg.c3d-narrow { display: block; }
+  .c3d-svg.c3d-wide { display: none; }
+}
+
+.c3d-svg text { font: 12px var(--font); }
+.c3d-svg .c3d-tick { font-size: 11px; fill: #5d6470; }
+.c3d-svg .c3d-value { fill: #5d6470; }
+.c3d-svg .c3d-cat { fill: #1b1d21; }
+.c3d-svg .c3d-target-label { fill: #1b1d21; }
+.c3d-grid { stroke: #e2e5ea; stroke-width: 1; }
+.c3d-zero { stroke: #868e99; stroke-width: 1; }
+.c3d-bar { fill: #fa582d; transition: fill .15s; }
+.c3d-bar.s1 { fill: #26292f; }
+.c3d-bar.s2 { fill: #868e99; }
+g:hover > .c3d-bar { fill: #c23b16; }
+g:hover > .c3d-bar.s1 { fill: #1b1d21; }
+g:hover > .c3d-bar.s2 { fill: #5d6470; }
+.c3d-zerobar { stroke: #fa582d; stroke-width: 1.5; fill: none; }
+.c3d-ghost { stroke: #868e99; stroke-width: 1.5; stroke-dasharray: 4 3; }
+.c3d-target { stroke: #1b1d21; stroke-width: 2; }
+
+.c3d-tip {
+  position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; display: grid; gap: 2px; max-width: 240px;
+  font: 13px/1.4 var(--font); color: #f5f6f7; background: #1b1d21; border-top: 2px solid #fa582d; border-radius: 6px;
+  padding: 7px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
+}
+.c3d-tip[hidden] { display: none; }
+.c3d-tip b { font-weight: 700; }
+
+.c3d-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.c3d-btn {
+  font: 600 12px var(--font); color: #1b1d21; background: #fff; border: 1px solid #e2e5ea; border-radius: 6px;
+  min-height: 28px; min-width: 28px; padding: 4px 10px; cursor: pointer;
+}
+.c3d-btn:hover { border-color: #fa582d; color: #c23b16; }
+.c3d-btn[aria-pressed="true"] { color: #fff; background: #1b1d21; border-color: #1b1d21; }
+.c3d-numbers { margin-left: auto; }
+.c3d-note { margin: 0; font-size: 12px; color: #5d6470; }
+.c3d-table { overflow-x: auto; }
+.c3d-table caption { text-align: left; font-size: 12px; font-weight: 700; color: #5d6470; padding: 4px 0; }
+.c3d-table th[scope="row"] { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #1b1d21; border-bottom: 1px solid #e2e5ea; }
+
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* The page around the graphs: a mouse drag there turns them too. */
+[data-c3d-surface] { cursor: grab; }
+[data-c3d-surface] > :not([data-c3d-surface]) { cursor: auto; }
+html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important; user-select: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .c3d-bar, .c3d-btn { transition: none; }
+}
+@media (forced-colors: active) {
+  .c3d-canvas, .c3d-tip, .c3d-3d { display: none !important; }
+  .c3d-stage[data-c3d] .c3d-svg { visibility: visible; }
+  .c3d-bar, .c3d-bar.s1, .c3d-bar.s2 { fill: Highlight; }
+  .c3d-svg text { fill: CanvasText; }
+  .c3d-grid, .c3d-zero, .c3d-ghost, .c3d-target { stroke: GrayText; }
+  .c3d-table.visually-hidden { position: static !important; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; white-space: normal; }
+}
+@media print {
+  .c3d-canvas, .c3d-tools, .c3d-tip { display: none !important; }
+  .c3d-stage[data-c3d] .c3d-svg { visibility: visible; }
+}
+
+/* The Numbers / Graphs switch (view-switch.tsx). */
+.view-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; }
+.view-switch > span { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
+.view-switch-buttons { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #fff; }
+.view-switch-buttons button { font: 700 13px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 6px 16px; min-height: 32px; cursor: pointer; }
+.view-switch-buttons button:hover { color: #c23b16; }
+.view-switch-buttons button[aria-pressed="true"] { color: #fff; background: #c23b16; }
+.view-switch-buttons button:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
+.view-switch-hint { flex-basis: 100%; margin: 0; font-size: 13px; color: #5d6470; }

@@ -9,6 +9,10 @@ import { logOutAction } from './auth-actions';
 import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
 import { SyntheticBadge } from './synthetic-badge';
+import { alertKpis } from './alert-kpis';
+import { Chart3D } from './chart3d';
+import { readView } from './view-mode';
+import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +31,11 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   // Only delivered alerts are readable. Held, blocked or failed alerts are counted, never shown.
   const mine = await inbox(database.db, user);
   const counts = await statusCounts(database.db, user);
-  const count = (s: string) => counts[s] ?? 0;
+  const kpis = alertKpis(counts);
+  const view = await readView();
+  const graphs = view === 'graphs';
+  // In the Graphs view, a mouse drag on the page around the graph turns it too.
+  const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
@@ -61,17 +69,39 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         </div>
       </header>
 
-      <main>
+      <main {...surface}>
         <div className="page-head">
           <h1>Your alerts</h1>
           <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          <ViewSwitch view={view} />
         </div>
 
-        <section className="kpis" aria-label="Alert summary">
-          <div className="kpi"><span className="label">Delivered</span><span className="value">{count('delivered')}</span><span className="note">sent to your inbox</span></div>
-          <div className="kpi"><span className="label">Waiting for digest</span><span className="value">{count('queued_digest')}</span><span className="note">held by your digest or quiet-hours setting; shown once delivered</span></div>
-          <div className="kpi"><span className="label">Not sent</span><span className="value">{count('suppressed_no_access') + count('failed')}</span><span className="note">access removed or channel unavailable</span></div>
-        </section>
+        {graphs ? (
+          <section className="card" aria-label="Alert summary">
+            <Chart3D
+              charts={[
+                {
+                  id: 'alert-summary',
+                  title: 'Your alerts by status',
+                  unit: 'count',
+                  size: 'card',
+                  form: 'columns',
+                  categoryName: 'Status',
+                  categories: kpis.map((k) => ({ key: k.key, label: k.label })),
+                  series: ['Alerts'],
+                  data: kpis.map((k) => ({ category: k.key, series: 0, value: k.value, display: k.value.toLocaleString('en-US'), detail: k.detail ?? k.note })),
+                  summary: `Your alerts by status: ${kpis.map((k) => `${k.label} ${k.value}`).join(', ')}.`,
+                },
+              ]}
+            />
+          </section>
+        ) : (
+          <section className="kpis" aria-label="Alert summary">
+            {kpis.map((k) => (
+              <div className="kpi" key={k.key}><span className="label">{k.label}</span><span className="value">{k.value}</span><span className="note">{k.note}</span></div>
+            ))}
+          </section>
+        )}
 
         <section className="card" aria-labelledby="inbox-title">
           <h2 id="inbox-title">Inbox</h2>
