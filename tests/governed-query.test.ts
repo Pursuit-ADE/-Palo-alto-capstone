@@ -97,6 +97,43 @@ describe('governed metrics against the loaded CRM data', () => {
     }
   });
 
+  it('filters open pipeline by product, series, account, sector, rep and deal size', async () => {
+    const gtx = open.filter((o) => o.productId === 'GTX Pro');
+    expect((await answer('u_analyst', 'open pipeline for GTX Pro')).rows[0]!.value).toBeCloseTo(sum(gtx), 2);
+
+    const seriesIds = new Set(data.products.filter((p) => p.series === 'GTX').map((p) => p.id));
+    expect((await answer('u_analyst', 'open pipeline for GTX')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => seriesIds.has(o.productId))), 2);
+
+    const retail = new Set(data.accounts.filter((a) => a.sector === 'retail').map((a) => a.id));
+    expect((await answer('u_analyst', 'open pipeline in the retail sector')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.accountId != null && retail.has(o.accountId))), 2);
+
+    const vehement = data.accounts.find((a) => a.name === 'Vehement Capital Partners')!;
+    expect((await answer('u_analyst', 'open pipeline for Vehement Capital Partners')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.accountId === vehement.id)), 2);
+
+    expect((await answer('u_analyst', 'open pipeline for Darcel Schlecht')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.ownerUserId === 'u_darcel_schlecht')), 2);
+    expect((await answer('u_ts_east', 'open pipeline for Violet Mclelland')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.ownerUserId === 'u_violet_mclelland')), 2);
+
+    const between = open.filter((o) => { const n = Number(o.amount); return n >= 4000 && n <= 5000; });
+    expect((await answer('u_analyst', 'open pipeline for deals between 4000 and 5000')).rows[0]!.value).toBeCloseTo(sum(between), 2);
+    const over = open.filter((o) => Number(o.amount) > 1_000_000);
+    expect((await answer('u_analyst', 'open pipeline over $1M')).rows[0]!.value).toBeCloseTo(sum(over), 2);
+
+    const pipe = sum(open.filter((o) => o.ownerUserId === 'u_darcel_schlecht' && inQ1(o)));
+    const quota = sum(data.quotas.filter((q) => q.userId === 'u_darcel_schlecht' && q.period === 'FY27-Q1'));
+    expect((await answer('u_analyst', 'pipeline coverage for Darcel Schlecht this quarter')).rows[0]!.value).toBeCloseTo(ratio(pipe, quota), 4);
+
+    const first = await answer('u_analyst', 'open pipeline for GTX Pro');
+    const follow = await ask(database, reg, 'u_analyst', 'what about by stage?', { previous: first.intent });
+    if (follow.kind !== 'answer') throw new Error(`expected an answer, got ${follow.kind}`);
+    expect(follow.filters.products).toEqual(['GTX Pro']);
+    expect(follow.filters.groupBy).toEqual(['stage']);
+
+    expect((await ask(database, reg, 'u_analyst', 'open pipeline for Nimbus')).kind).toBe('clarify');
+    expect((await ask(database, reg, 'u_analyst', 'pipeline coverage for GTX Pro this quarter')).kind).toBe('clarify');
+    expect((await ask(database, reg, 'u_analyst', 'open pipeline for Melvin Marxen')).kind).toBe('clarify');
+    await expect(ask(database, reg, 'u_ts_east', 'open pipeline for Darcel Schlecht')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
   it('this-quarter coverage phrasings match the hand-computed ratio', async () => {
     const phrases = [
       'What is our pipeline coverage this quarter?',
@@ -165,6 +202,13 @@ describe('intent validation and injection', () => {
     for (const bad of [tooManyStages, tooManyRegions, duplicateGroupBy]) {
       await expect(answerIntent(database, reg, 'u_analyst', bad)).rejects.toBeInstanceOf(IntentError);
     }
+  });
+
+  it('rejects an unknown product name before running a query', async () => {
+    const before = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
+    await expect(answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: { products: ["GTX Pro'; DROP TABLE accounts;--"] }, groupBy: [] })).rejects.toBeInstanceOf(IntentError);
+    const after = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
   });
 
   it('treats a SQL-injection string in a filter as a plain value, not SQL', async () => {

@@ -36,6 +36,11 @@ export interface Answer {
     regions: string[];
     stages: string[] | null;
     groupBy: Dimension[];
+    amount: Intent['filters']['amount'] | null;
+    products: string[] | null;
+    accounts: string[] | null;
+    sectors: string[] | null;
+    people: string[] | null;
   };
   /** For ratio metrics, the numerator and denominator with their scopes; null otherwise. */
   parts: { numerator: RatioPart; denominator: RatioPart } | null;
@@ -187,9 +192,14 @@ async function run(database: Database, registry: Registry, principal: Principal,
       regions: q.regions,
       stages: intent.filters.stages ?? null,
       groupBy: intent.groupBy,
+      amount: intent.filters.amount ?? null,
+      products: intent.filters.products ?? null,
+      accounts: intent.filters.accounts ?? null,
+      sectors: intent.filters.sectors ?? null,
+      people: intent.filters.people ?? null,
     },
     parts: ratioParts(metric, registry, scope, intent.filters.period),
-    narrative: narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined),
+    narrative: withFilterNote(narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined), intent),
     chart: chartSpec(metric, rows, intent.groupBy, names ?? undefined),
     ownerNames: names,
     provenance: {
@@ -201,6 +211,26 @@ async function run(database: Database, registry: Registry, principal: Principal,
       auditId: '',
     },
   };
+}
+
+function money(n: number): string {
+  return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+}
+
+/** Says which extra filters the number used, so a filtered answer is not read as the whole scope. */
+function withFilterNote(sentence: string, intent: Intent): string {
+  const f = intent.filters;
+  const bits: string[] = [];
+  if (f.amount?.min != null && f.amount.max != null && f.amount.min === f.amount.max && f.amount.minInclusive !== false && f.amount.maxInclusive !== false) bits.push(money(f.amount.min));
+  else if (f.amount) {
+    if (f.amount.min != null) bits.push(`${f.amount.minInclusive === false ? 'over' : 'at least'} ${money(f.amount.min)}`);
+    if (f.amount.max != null) bits.push(`${f.amount.maxInclusive === false ? 'under' : 'at most'} ${money(f.amount.max)}`);
+  }
+  if (f.products?.length) bits.push(f.products.join(', '));
+  if (f.accounts?.length) bits.push(f.accounts.join(', '));
+  if (f.sectors?.length) bits.push(`${f.sectors.join(', ')} sector`);
+  if (f.people?.length) bits.push(f.people.join(', '));
+  return bits.length ? `${sentence} Filtered to ${bits.join('; ')}.` : sentence;
 }
 
 /** Names for the owners already in the (scoped) result rows, so charts and sentences show people, not ids. */

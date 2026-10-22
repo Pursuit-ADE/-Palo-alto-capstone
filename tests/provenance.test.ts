@@ -29,7 +29,7 @@ describe('provenance panel data (answer object)', () => {
     const metric = reg.metrics.get('open_pipeline')!;
     expect(r.metric).toMatchObject({ id: 'open_pipeline', version: metric.version, definition: metric.description, notes: metric.notes });
     // Filters are what the query applied after scoping, not what the question said.
-    expect(r.filters).toEqual({ period: null, regions: ['east'], stages: null, groupBy: [] });
+    expect(r.filters).toEqual({ period: null, regions: ['east'], stages: null, groupBy: [], amount: null, products: null, accounts: null, sectors: null, people: null });
     expect(r.parts).toBeNull();
     expect(r.provenance.snapshotId).toBe(data.snapshot.id);
     expect(new Date(r.provenance.loadedAt).toISOString()).toBe(r.provenance.loadedAt);

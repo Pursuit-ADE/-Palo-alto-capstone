@@ -145,14 +145,20 @@ describe('provider fallback never skips a failed lock check', () => {
   });
 });
 
-describe('unsupported filters get a clarifying question', () => {
+describe('deal size, product, account and sector filters', () => {
   for (const q of [
     'open pipeline for deals between 4000 and 5000',
     'open pipeline in East for deals between 100000 and 200000',
+    'open pipeline worth 5000',
+  ]) {
+    it(`answers: "${q}"`, async () => {
+      expect((await ask(database, reg, 'u_analyst', q)).kind).toBe('answer');
+    });
+  }
+  for (const q of [
     'open pipeline for product Nimbus',
     'open pipeline for Nimbus',
     'pipeline coverage exactly 2 this quarter',
-    'open pipeline worth 5000',
     'open opportunities for customer Acme',
   ]) {
     it(`clarifies: "${q}"`, async () => {

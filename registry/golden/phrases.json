@@ -589,7 +589,16 @@
     {
       "phrase": "open pipeline for deals between 4000 and 5000",
       "expect": {
-        "clarify": true
+        "metric": "open_pipeline",
+        "filters": {
+          "amount": {
+            "min": 4000,
+            "max": 5000,
+            "minInclusive": true,
+            "maxInclusive": true
+          }
+        },
+        "groupBy": []
       }
     },
     {
@@ -607,13 +616,24 @@
     {
       "phrase": "open pipeline over $1M",
       "expect": {
-        "clarify": true
+        "metric": "open_pipeline",
+        "filters": {
+          "amount": {
+            "min": 1000000,
+            "minInclusive": false
+          }
+        },
+        "groupBy": []
       }
     },
     {
       "phrase": "open pipeline in the retail sector",
       "expect": {
-        "clarify": true
+        "metric": "open_pipeline",
+        "filters": {
+          "sectors": ["retail"]
+        },
+        "groupBy": []
       }
     },
     {

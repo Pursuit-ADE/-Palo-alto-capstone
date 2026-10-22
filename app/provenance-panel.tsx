@@ -3,6 +3,15 @@ import { dateRange, format, timestamp } from './format';
 
 const titleCase = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
 const list = (xs: string[]) => xs.join(', ').replace(/, ([^,]*)$/, ' and $1');
+const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+
+function amountText(amount: NonNullable<Answer['filters']['amount']>): string {
+  if (amount.min != null && amount.max != null && amount.min === amount.max && amount.minInclusive !== false && amount.maxInclusive !== false) return `amount ${money(amount.min)}`;
+  const bits: string[] = [];
+  if (amount.min != null) bits.push(`${amount.minInclusive === false ? 'over' : 'at least'} ${money(amount.min)}`);
+  if (amount.max != null) bits.push(`${amount.maxInclusive === false ? 'under' : 'at most'} ${money(amount.max)}`);
+  return bits.join(' and ');
+}
 
 /** Where an answer's number came from: definition, scope, applied filters, snapshot and audit row. Shown under every answer. */
 export function ProvenancePanel({ a }: { a: Answer }) {
@@ -12,6 +21,11 @@ export function ProvenancePanel({ a }: { a: Answer }) {
     f.period ? `${f.period.label} (${dateRange(f.period.start, f.period.end)})` : 'Any expected close date',
     `${list(f.regions.map(titleCase))} region${f.regions.length > 1 ? 's' : ''}`,
     f.stages ? `stage ${list(f.stages)}` : null,
+    f.amount ? amountText(f.amount) : null,
+    f.products?.length ? `product ${list(f.products)}` : null,
+    f.accounts?.length ? `account ${list(f.accounts)}` : null,
+    f.sectors?.length ? `sector ${list(f.sectors)}` : null,
+    f.people?.length ? `rep ${list(f.people)}` : null,
     f.groupBy.length ? `by ${list(f.groupBy)}` : null,
   ].filter(Boolean);
 

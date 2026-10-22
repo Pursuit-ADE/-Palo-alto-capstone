@@ -122,28 +122,35 @@ const ASSETS = ['Zero Trust whitepaper', 'SOC modernization whitepaper', 'Cloud 
 
 export type Dataset = ReturnType<typeof buildSeed>;
 
-const entityNamesCache = new Map<string, { products: string[]; accounts: string[]; people: string[]; sectors: string[] }>();
+export interface Catalog {
+  products: { id: string; series: string }[];
+  accounts: { id: string; name: string; sector: string }[];
+  /** Sales reps, the people who own deals. Ids match the rows the seed writes. */
+  owners: { id: string; name: string }[];
+  /** Managers do not own deals. A question that names one is asked about, not answered as zero. */
+  managers: string[];
+}
 
-/**
- * Names the active dataset holds that a question can't filter by yet: products and product series, accounts,
- * sectors, and people. The normalizer asks a clarifying question when one appears, instead of quietly answering
- * for the whole scope. Read from the same folder the database was loaded from.
- */
-export function entityNames(dataDir: string = resolveDataDir()) {
-  let names = entityNamesCache.get(dataDir);
-  if (!names) {
-    const products = parseCsv('products.csv', dataDir);
-    const accounts = parseCsv('accounts.csv', dataDir);
+const catalogCache = new Map<string, Catalog>();
+
+/** Products, accounts, sectors and people in the folder the database was loaded from. */
+export function catalog(dataDir: string = resolveDataDir()): Catalog {
+  let hit = catalogCache.get(dataDir);
+  if (!hit) {
     const teams = parseCsv('sales_teams.csv', dataDir);
-    names = {
-      products: [...new Set(products.flatMap((p) => [p.product!, p.series!]))],
-      accounts: accounts.map((a) => a.account!),
-      people: [...new Set(teams.flatMap((t) => [t.sales_agent!, t.manager!]))],
-      sectors: [...new Set(accounts.map((a) => SECTOR_FIX[a.sector!] ?? a.sector!))],
+    hit = {
+      products: parseCsv('products.csv', dataDir).map((p) => ({ id: p.product!, series: p.series! })),
+      accounts: parseCsv('accounts.csv', dataDir).map((a) => ({
+        id: `acc_${slug(a.account!)}`,
+        name: a.account!,
+        sector: SECTOR_FIX[a.sector!] ?? a.sector!,
+      })),
+      owners: [...new Map(teams.map((t) => [t.sales_agent!, { id: `u_${slug(t.sales_agent!)}`, name: t.sales_agent! }])).values()],
+      managers: [...new Set(teams.map((t) => t.manager!))],
     };
-    entityNamesCache.set(dataDir, names);
+    catalogCache.set(dataDir, hit);
   }
-  return names;
+  return hit;
 }
 
 /** Business rule "cxo" (registry/glossary.json): a CXO is a contact whose job title starts with "Chief". */

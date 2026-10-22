@@ -3,7 +3,7 @@
 // The real model (Week 3) must produce the same structured Intent and passes the same validation.
 import type { Registry } from '../registry/load';
 import type { Dimension, Intent } from '../registry/types';
-import { entityNames, QUOTA_PERIODS } from '../db/seed';
+import { catalog, QUOTA_PERIODS } from '../db/seed';
 import type { Glossary } from '../registry/types';
 import { findPeriod, resolvePeriod } from './periods';
 
@@ -18,42 +18,171 @@ const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all t
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
-// Selectors the registry can't express. Matching the metric while ignoring them would answer a narrower
-// question with the whole scope's number, so they get a clarifying question instead (PRD A2).
-const AMOUNT = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding) \d| \d+ ?(k|m|mm|million|thousand|bn|billion) | (deal size|deal sizes|size of deal|size of deals) /;
-const SECTOR = / (sector|sectors|industry|industries|vertical|verticals) /;
-
-// Shapes of a filter the registry can't express, whatever the words around them: a range, an exact value, a
-// bare number that isn't a year, or a product, account or customer named by its kind.
-const RANGE = / between \d| \d+ (and|to) \d+ | from \d+ to \d+ /;
-const EXACT = / (exactly|equal to|equals|worth|valued at|at least|at most|up to) /;
+// Deal-size words. A year on its own (2025) is a period, not an amount. A number with no comparison is asked
+// about, because guessing "exactly" would answer a different question.
+const AMOUNT_CUE = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding|between|exactly|equal to|equals|worth|valued at|up to) | (deal size|deal sizes|size of deal|size of deals) | \d+ (and|to) \d+ | \d+(?:\.\d+)?\s?(?:k|m|mm|million|thousand|bn|billion)\b /;
 const BARE_NUMBER = / (?!(?:19|20)\d\d )\d{3,} /;
-const KIND = / (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku|account|customer|client)s? /;
-// A capitalized name after "for", "at" or "from" that isn't a word the registry knows ("open pipeline for Nimbus").
+const NUM = String.raw`(\d+(?:\.\d+)?)(?:\s*(mm|million|thousand|bn|billion|k|m))?`;
+const LOWER_WORDS = 'over|above|more than|greater than|bigger than|larger than|exceeding|at least';
+const UPPER_WORDS = 'under|below|less than|smaller than|at most|up to';
 const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+)*)/g;
-const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost', 'cara', 'losch']);
+const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
 
-function unknownName(phrase: string): boolean {
-  for (const m of phrase.matchAll(NAMED)) {
-    const words = m[1]!.toLowerCase().split(/\s+/);
-    const known = (w: string) => KNOWN_WORDS.has(w) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(w);
-    if (!words.every((w) => known(w.replace(/[^a-z0-9]/g, '')))) return true;
-  }
-  return false;
+type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people'>;
+
+function scale(raw: string, suffix?: string): number {
+  const n = Number(raw);
+  const mult = suffix === 'k' || suffix === 'thousand' ? 1_000 : suffix === 'bn' || suffix === 'billion' ? 1_000_000_000 : suffix ? 1_000_000 : 1;
+  return n * mult;
 }
 
-function unsupportedSelector(phrase: string, text: string): string | undefined {
-  if (AMOUNT.test(text) || /[$<>]\s*\d/.test(phrase) || RANGE.test(text) || EXACT.test(text) || BARE_NUMBER.test(text)) return 'deal size';
-  if (SECTOR.test(text)) return 'sector';
-  const names = entityNames();
-  const has = (n: string) => text.includes(clean(n));
-  if (names.products.some(has)) return 'product';
-  if (names.accounts.some(has)) return 'account';
-  if (names.sectors.some(has)) return 'sector';
-  if (names.people.some(has)) return 'person';
-  if (KIND.test(text)) return 'product or account';
-  if (unknownName(phrase)) return 'a name the registry does not know';
-  return undefined;
+function parseAmount(text: string): { amount?: Intent['filters']['amount']; clarify?: string } {
+  const t = text.replace(/\s+/g, ' ');
+  const between = t.match(new RegExp(` (?:between|from) ${NUM} (?:and|to) ${NUM} `));
+  if (between) {
+    return { amount: { min: scale(between[1]!, between[2]), max: scale(between[3]!, between[4]), minInclusive: true, maxInclusive: true } };
+  }
+  const lower = t.match(new RegExp(` (${LOWER_WORDS}) ${NUM} `));
+  const upper = t.match(new RegExp(` (${UPPER_WORDS}) ${NUM} `));
+  const exact = t.match(new RegExp(` (exactly|equal to|equals|worth|valued at) ${NUM} `));
+  if (lower || upper || exact) {
+    const amount: NonNullable<Intent['filters']['amount']> = {};
+    if (exact && !lower && !upper) {
+      const n = scale(exact[2]!, exact[3]);
+      amount.min = n;
+      amount.max = n;
+      amount.minInclusive = true;
+      amount.maxInclusive = true;
+    }
+    if (lower) {
+      amount.min = scale(lower[2]!, lower[3]);
+      amount.minInclusive = lower[1] === 'at least';
+    }
+    if (upper) {
+      amount.max = scale(upper[2]!, upper[3]);
+      amount.maxInclusive = upper[1] === 'at most' || upper[1] === 'up to';
+    }
+    return { amount };
+  }
+  if (AMOUNT_CUE.test(t) || BARE_NUMBER.test(t) || /[$<>]\s*\d/.test(text)) {
+    return { clarify: 'I can filter by deal size, but I need the comparison: for example over $1M, under $5,000, or between 4000 and 5000.' };
+  }
+  return {};
+}
+
+interface Hit { kind: 'product' | 'account' | 'sector' | 'owner' | 'manager'; name: string; at: number; len: number }
+
+function findNames(text: string, kind: Hit['kind'], names: string[]): Hit[] {
+  const hits: Hit[] = [];
+  for (const name of names) {
+    const n = name.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim();
+    if (n.length < 2) continue;
+    const token = ` ${n} `;
+    const at = text.indexOf(token);
+    if (at >= 0) hits.push({ kind, name, at, len: token.length });
+  }
+  return hits;
+}
+
+/**
+ * Filters named in this question. An unknown name, a manager, or a deal size with no comparison is a
+ * clarifying question: dropping it would answer for the whole scope (PRD A2).
+ */
+export function readSelectors(phrase: string): { filters: SelectorFilters; clarify?: string } {
+  const text = clean(phrase);
+  const cat = catalog();
+  const series = [...new Set(cat.products.map((p) => p.series))];
+  const sectors = [...new Set(cat.accounts.map((a) => a.sector))];
+  const hits = [
+    ...findNames(text, 'product', [...cat.products.map((p) => p.id), ...series]),
+    ...findNames(text, 'account', cat.accounts.map((a) => a.name)),
+    ...findNames(text, 'sector', sectors),
+    ...findNames(text, 'owner', cat.owners.map((o) => o.name)),
+    ...findNames(text, 'manager', cat.managers),
+  ].sort((a, b) => b.len - a.len || a.at - b.at);
+  const used: [number, number][] = [];
+  const picked: Hit[] = [];
+  for (const hit of hits) {
+    const end = hit.at + hit.len;
+    if (used.some(([start, stop]) => hit.at < stop && end > start)) continue;
+    used.push([hit.at, end]);
+    picked.push(hit);
+  }
+  const managers = picked.filter((h) => h.kind === 'manager').map((h) => h.name);
+  if (managers.length) {
+    return { filters: {}, clarify: `${managers.join(', ')} manages a team and doesn't own deals. I can break the number down by owner, or filter by a sales rep.` };
+  }
+  const ofKind = (kind: Hit['kind']) => [...new Set(picked.filter((h) => h.kind === kind).sort((a, b) => a.at - b.at).map((h) => h.name))];
+  const products = ofKind('product');
+  const accounts = ofKind('account');
+  const sectorNames = ofKind('sector');
+  const people = ofKind('owner');
+  const covered = [...products, ...accounts, ...sectorNames, ...people];
+  for (const m of phrase.matchAll(NAMED)) {
+    const raw = m[1]!;
+    const words = raw.toLowerCase().split(/\s+/);
+    const known = words.every((w) => {
+      const token = w.replace(/[^a-z0-9]/g, '');
+      return KNOWN_WORDS.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
+    });
+    const named = covered.some((c) => c.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim() === raw.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim());
+    if (!known && !named) {
+      return { filters: {}, clarify: `I don't know "${raw}", so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.` };
+    }
+  }
+  if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku)s? /.test(text) && products.length === 0) {
+    return { filters: {}, clarify: "I don't know that product, so I won't answer for everything. I can filter by a product that is in the data." };
+  }
+  if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(account|customer|client)s? /.test(text) && accounts.length === 0) {
+    return { filters: {}, clarify: "I don't know that account, so I won't answer for everything. I can filter by an account that is in the data." };
+  }
+  if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
+    return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
+  }
+  let rest = text;
+  for (const hit of [...picked].sort((a, b) => b.at - a.at)) rest = `${rest.slice(0, hit.at)}${' '.repeat(hit.len)}${rest.slice(hit.at + hit.len)}`;
+  const amount = parseAmount(rest);
+  if (amount.clarify) return { filters: {}, clarify: amount.clarify };
+  const filters: SelectorFilters = {};
+  if (amount.amount) filters.amount = amount.amount;
+  if (products.length) filters.products = products;
+  if (accounts.length) filters.accounts = accounts;
+  if (sectorNames.length) filters.sectors = sectorNames;
+  if (people.length) filters.people = people;
+  if ((filters.products?.length ?? 0) > 10 || (filters.accounts?.length ?? 0) > 10 || (filters.sectors?.length ?? 0) > 10 || (filters.people?.length ?? 0) > 10) {
+    return { filters: {}, clarify: 'Name up to 10 products, accounts, sectors or people in one question.' };
+  }
+  return { filters };
+}
+
+/** Coverage divides by quota, which is not split by deal size, product, account or sector. */
+export function quotaBlocked(filters: Intent['filters']): string | undefined {
+  const which = [filters.amount ? 'deal size' : '', filters.products?.length ? 'product' : '', filters.accounts?.length ? 'account' : '', filters.sectors?.length ? 'sector' : ''].filter(Boolean);
+  if (!which.length) return undefined;
+  const list = which.length === 1 ? which[0]! : `${which.slice(0, -1).join(', ')} or ${which[which.length - 1]}`;
+  return `Pipeline coverage can't be filtered by ${list}, because quota isn't split that way. I can filter open pipeline by that, or filter coverage by the sales rep who owns the deal.`;
+}
+
+/** The phrase's selectors win. On a follow-up, selectors the phrase doesn't mention stay from the previous intent. */
+export function assignSelectors(intent: Intent, phrase: string, inherited?: Intent): Intent | { kind: 'clarify'; question: string } {
+  const read = readSelectors(phrase);
+  if (read.clarify) return { kind: 'clarify', question: read.clarify };
+  const filters: Intent['filters'] = {};
+  if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
+  if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
+  if (intent.filters.period) filters.period = intent.filters.period;
+  const source = inherited?.filters;
+  const amount = read.filters.amount ?? source?.amount;
+  if (amount) filters.amount = amount;
+  const products = read.filters.products ?? source?.products;
+  if (products?.length) filters.products = products;
+  const accounts = read.filters.accounts ?? source?.accounts;
+  if (accounts?.length) filters.accounts = accounts;
+  const sectors = read.filters.sectors ?? source?.sectors;
+  if (sectors?.length) filters.sectors = sectors;
+  const people = read.filters.people ?? source?.people;
+  if (people?.length) filters.people = people;
+  return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 
 /** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
@@ -205,13 +334,8 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   if (EXCLUSION.test(text)) {
     return { kind: 'clarify', question: "I can't leave out a region or stage yet. Which regions or stages do you want included?" };
   }
-  const unsupported = unsupportedSelector(phrase, text);
-  if (unsupported) {
-    return {
-      kind: 'clarify',
-      question: `I can't filter ${metric.name.toLowerCase()} by ${unsupported} yet, so I won't answer for everything instead. I can break it down by ${metric.dimensions.join(', ')}, or filter by region${metric.kind === 'aggregate' ? ', stage' : ''} and quarter.`,
-    };
-  }
+  const read = readSelectors(phrase);
+  if (read.clarify) return { kind: 'clarify', question: read.clarify };
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
   if (unknownRegion) {
     return { kind: 'clarify', question: `"${unknownRegion.toUpperCase()}" isn't a region here. The regions are Central, East and West.` };
@@ -255,8 +379,17 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     // Keep everything the question already named, so the reply to the clarification only adds what was missing.
     const openStages = stages.filter((st) => st === 'Prospecting' || st === 'Engaging');
     if (metric.kind === 'aggregate' && openStages.length) f.stages = openStages;
-    return { metric: metric.id, filters: f, groupBy: groupBy.filter((d) => metric.dimensions.includes(d)) };
+    const draft: Intent = { metric: metric.id, filters: f, groupBy: groupBy.filter((d) => metric.dimensions.includes(d)) };
+    const withSelectors = assignSelectors(draft, phrase, inherit);
+    return 'kind' in withSelectors ? draft : withSelectors;
   };
+
+  const selected = assignSelectors({ metric: metric.id, filters: {}, groupBy }, phrase, inherit);
+  if ('kind' in selected) return selected;
+  if (metric.kind === 'ratio') {
+    const blocked = quotaBlocked(selected.filters);
+    if (blocked) return { kind: 'clarify', question: blocked };
+  }
 
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
@@ -279,10 +412,13 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     return { kind: 'clarify', question: `${metric.name} needs a period. Which quarter do you mean, for example this quarter or next quarter?`, resume: partial() };
   }
 
-  const filters: Intent['filters'] = {};
+  const filters: Intent['filters'] = { ...selected.filters };
   const finalRegions = regions.length ? regions : (inherit?.filters.regions ?? []);
   if (finalRegions.length) filters.regions = [...finalRegions];
+  else delete filters.regions;
   if (stages.length) filters.stages = stages;
+  else delete filters.stages;
   if (period) filters.period = period;
+  else delete filters.period;
   return { kind: 'intent', intent: { metric: metric.id, filters, groupBy } };
 }

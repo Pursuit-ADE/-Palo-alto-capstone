@@ -108,7 +108,7 @@ describe('A7 confirmed dataset is queryable', () => {
   });
 });
 
-// Review of #12: with the second dataset active, names from that dataset are recognized, invite codes follow
+// Review of #12: with the second dataset active, filters use that dataset's names, invite codes follow
 // its demo people, and DATASET_DIR alone can't load a dataset nobody confirmed.
 describe('second dataset, after review', () => {
   const env = process.env as Record<string, string | undefined>;
@@ -129,9 +129,17 @@ describe('second dataset, after review', () => {
     writeConfirmation(confirmOnboarding(proposal, { confirmedBy: 'Review test', metricIds: ['open_pipeline'] }), env.ONBOARDING_CONFIRMATION);
     const db = await openDatabase();
     try {
-      // A filter on a Northstar account name gets a clarifying question, not the whole-scope number.
+      // A Northstar account filter uses that dataset's accounts, not Maven's, and not the $16,500 whole-scope number.
+      const northstar = buildSeed(undefined, { dataDir: NORTHSTAR });
+      const amberline = northstar.accounts.find((a) => a.name === 'Amberline')!;
+      const expected = northstar.opportunities.filter((o) => !o.isClosed && o.accountId === amberline.id).reduce((t, o) => t + Number(o.amount), 0);
       const r = await ask(db, loadRegistry(), 'u_analyst', 'open pipeline for Amberline');
-      expect(r.kind).toBe('clarify');
+      expect(r.kind).toBe('answer');
+      if (r.kind === 'answer') {
+        expect(r.filters.accounts).toEqual(['Amberline']);
+        expect(r.rows[0]!.value).toBeCloseTo(expected, 2);
+        expect(r.rows[0]!.value).not.toBe(16500);
+      }
       // Invite codes follow the demo people of the dataset that is loaded.
       expect(userForInvite(inviteCode('u_priya_nair', 'secret'), 'secret')).toBe('u_priya_nair');
       expect(userForInvite(inviteCode('u_darcel_schlecht', 'secret'), 'secret')).toBeUndefined();
