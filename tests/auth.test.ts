@@ -58,7 +58,7 @@ describe('sign-up, log-in and sessions', () => {
       { username: 'sam', password: 'a long demo password', invite: 'ABCD-EF01-2345' },
     ];
     for (const b of bad) await expect(signUp(database.authDb, b, SECRET)).rejects.toBeInstanceOf(AuthError);
-    await expect(signUp(database.authDb, { username: 'sam', password: 'a long demo password', invite: jordanInvite }, undefined)).rejects.toThrow(/turned off/);
+    await expect(signUp(database.authDb, { username: 'sam', password: 'a long demo password', invite: jordanInvite }, '')).rejects.toThrow(/turned off/); // '' not undefined, so a DEMO_INVITE_SECRET in the environment can't fill it in
   });
 
   it('logs in, keeps only a hash of the session token, and logs out', async () => {
