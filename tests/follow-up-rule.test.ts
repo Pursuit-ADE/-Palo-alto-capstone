@@ -49,4 +49,10 @@ describe('follow-up rule', () => {
     const r = followUpRule({ kind: 'intent', intent: { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] } }, 'what is pipeline coverage?', reg, prev);
     expect(r).toMatchObject({ kind: 'clarify', question: CLARIFY_TEXT.period });
   });
+
+  it('keeps a checked amount from the model when the phrase has no digits', () => {
+    const proposal: Intent = { metric: 'open_pipeline', filters: { amount: { min: 1_000_000, minInclusive: false } }, groupBy: [] };
+    expect(followUpRule({ kind: 'intent', intent: proposal }, 'open pipeline for deals bigger than a million', reg, undefined)).toEqual({ kind: 'intent', intent: proposal });
+    expect(normalize('open pipeline for deals bigger than a million', reg, AS_OF).kind).toBe('clarify');
+  });
 });

@@ -103,6 +103,7 @@ describe('governed metrics against the loaded CRM data', () => {
 
     const seriesIds = new Set(data.products.filter((p) => p.series === 'GTX').map((p) => p.id));
     expect((await answer('u_analyst', 'open pipeline for GTX')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => seriesIds.has(o.productId))), 2);
+    expect((await answer('u_analyst', 'open pipeline for GTX')).narrative).toContain('GTX series');
 
     const retail = new Set(data.accounts.filter((a) => a.sector === 'retail').map((a) => a.id));
     expect((await answer('u_analyst', 'open pipeline in the retail sector')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.accountId != null && retail.has(o.accountId))), 2);
@@ -132,6 +133,23 @@ describe('governed metrics against the loaded CRM data', () => {
     expect((await ask(database, reg, 'u_analyst', 'pipeline coverage for GTX Pro this quarter')).kind).toBe('clarify');
     expect((await ask(database, reg, 'u_analyst', 'open pipeline for Melvin Marxen')).kind).toBe('clarify');
     await expect(ask(database, reg, 'u_ts_east', 'open pipeline for Darcel Schlecht')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it('keeps commas and decimals in a deal size, and does not guess a sector or another manager team', async () => {
+    const under = open.filter((o) => Number(o.amount) < 5000);
+    expect((await answer('u_analyst', 'open pipeline under $5,000')).rows[0]!.value).toBeCloseTo(sum(under), 2);
+    const million = open.filter((o) => Number(o.amount) > 1_000_000);
+    expect((await answer('u_analyst', 'open pipeline over 1,000,000')).rows[0]!.value).toBeCloseTo(sum(million), 2);
+    expect((await answer('u_analyst', 'open pipeline over $1.5M')).rows[0]!.value).toBeCloseTo(sum(open.filter((o) => Number(o.amount) > 1_500_000)), 2);
+
+    expect((await ask(database, reg, 'u_analyst', 'what is marketing seeing for open pipeline')).kind).toBe('clarify');
+    expect((await ask(database, reg, 'u_analyst', 'open pipeline for the finance team')).kind).toBe('clarify');
+
+    const cara = teamOf('u_mgr_cara_losch');
+    const caraPipe = sum(open.filter((o) => cara.has(o.ownerUserId)));
+    expect((await answer('u_analyst', "open pipeline for Cara Losch's team")).rows[0]!.value).toBeCloseTo(caraPipe, 2);
+    expect((await answer('u_ts_east', "open pipeline for Cara Losch's team")).rows[0]!.value).toBeCloseTo(caraPipe, 2);
+    await expect(ask(database, reg, 'u_ts_west', "open pipeline for Cara Losch's team")).rejects.toBeInstanceOf(ScopeViolation);
   });
 
   it('this-quarter coverage phrasings match the hand-computed ratio', async () => {

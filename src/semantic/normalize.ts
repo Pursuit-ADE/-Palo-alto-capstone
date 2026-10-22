@@ -28,7 +28,7 @@ const UPPER_WORDS = 'under|below|less than|smaller than|at most|up to';
 const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+)*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
 
-type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people'>;
+type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people' | 'teams'>;
 
 function scale(raw: string, suffix?: string): number {
   const n = Number(raw);
@@ -36,8 +36,41 @@ function scale(raw: string, suffix?: string): number {
   return n * mult;
 }
 
+const SECTOR_CUES = ['sector', 'sectors', 'industry', 'industries', 'vertical', 'verticals'];
+
+function words(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** Possessive "'s" survives cleaning as a stray "s". Fold it so "Cara Losch's" matches "Cara Losch". */
+function sameName(a: string, b: string): boolean {
+  const fold = (s: string) => words(s).replace(/\bs\b/g, '').replace(/\s+/g, ' ').trim();
+  return fold(a) === fold(b);
+}
+
+function sectorBeside(text: string, name: string): boolean {
+  const n = words(name);
+  return SECTOR_CUES.some((c) => text.includes(` ${n} ${c} `) || text.includes(` ${c} ${n} `));
+}
+
+function managerWithTeam(text: string, name: string): boolean {
+  const n = words(name);
+  return text.includes(` ${n} s team `) || text.includes(` ${n} team `) || text.includes(` team of ${n} `);
+}
+
+/**
+ * Amounts keep commas between digits and the decimal point. clean() would turn $5,000 into "5 000"
+ * and $1.5M into "1 5m", which then parse as $5 and $1.
+ */
+function amountText(phrase: string): string {
+  let s = phrase.toLowerCase();
+  while (/\d,\d/.test(s)) s = s.replace(/(\d),(?=\d)/g, '$1');
+  s = s.replace(/(\d)\.(\d)/g, '$1dpt$2');
+  return ` ${s.replace(/[^a-z0-9-]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
+}
+
 function parseAmount(text: string): { amount?: Intent['filters']['amount']; clarify?: string } {
-  const t = text.replace(/\s+/g, ' ');
+  const t = text.replace(/dpt/g, '.').replace(/\s+/g, ' ');
   const between = t.match(new RegExp(` (?:between|from) ${NUM} (?:and|to) ${NUM} `));
   if (between) {
     return { amount: { min: scale(between[1]!, between[2]), max: scale(between[3]!, between[4]), minInclusive: true, maxInclusive: true } };
@@ -96,9 +129,9 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   const hits = [
     ...findNames(text, 'product', [...cat.products.map((p) => p.id), ...series]),
     ...findNames(text, 'account', cat.accounts.map((a) => a.name)),
-    ...findNames(text, 'sector', sectors),
+    ...findNames(text, 'sector', sectors.filter((s) => sectorBeside(text, s))),
     ...findNames(text, 'owner', cat.owners.map((o) => o.name)),
-    ...findNames(text, 'manager', cat.managers),
+    ...findNames(text, 'manager', cat.managers.map((m) => m.name)),
   ].sort((a, b) => b.len - a.len || a.at - b.at);
   const used: [number, number][] = [];
   const picked: Hit[] = [];
@@ -109,23 +142,36 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
     picked.push(hit);
   }
   const managers = picked.filter((h) => h.kind === 'manager').map((h) => h.name);
-  if (managers.length) {
-    return { filters: {}, clarify: `${managers.join(', ')} manages a team and doesn't own deals. I can break the number down by owner, or filter by a sales rep.` };
+  const teams = managers.filter((name) => managerWithTeam(text, name));
+  const loneManagers = managers.filter((name) => !teams.includes(name));
+  if (loneManagers.length) {
+    return { filters: {}, clarify: `${loneManagers.join(', ')} manages a team and doesn't own deals. I can break the number down by owner, or filter by a sales rep.` };
+  }
+  const bareSectors = sectors.filter((name) => {
+    const n = words(name);
+    if (!text.includes(` ${n} `) || sectorBeside(text, name)) return false;
+    const at = text.indexOf(` ${n} `);
+    const end = at + n.length + 2;
+    return !picked.some((h) => h.kind !== 'sector' && at >= h.at && end <= h.at + h.len);
+  });
+  if (bareSectors.length) {
+    const list = bareSectors.join(', ');
+    return { filters: {}, clarify: `I won't treat ${list} as a sector unless you say it with "sector", "industry", or "vertical".` };
   }
   const ofKind = (kind: Hit['kind']) => [...new Set(picked.filter((h) => h.kind === kind).sort((a, b) => a.at - b.at).map((h) => h.name))];
   const products = ofKind('product');
   const accounts = ofKind('account');
   const sectorNames = ofKind('sector');
   const people = ofKind('owner');
-  const covered = [...products, ...accounts, ...sectorNames, ...people];
+  const covered = [...products, ...accounts, ...sectorNames, ...people, ...teams];
   for (const m of phrase.matchAll(NAMED)) {
     const raw = m[1]!;
-    const words = raw.toLowerCase().split(/\s+/);
-    const known = words.every((w) => {
+    const parts = raw.toLowerCase().split(/\s+/);
+    const known = parts.every((w) => {
       const token = w.replace(/[^a-z0-9]/g, '');
       return KNOWN_WORDS.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
-    const named = covered.some((c) => c.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim() === raw.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim());
+    const named = covered.some((c) => sameName(c, raw));
     if (!known && !named) {
       return { filters: {}, clarify: `I don't know "${raw}", so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.` };
     }
@@ -139,8 +185,8 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
     return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
   }
-  let rest = text;
-  for (const hit of [...picked].sort((a, b) => b.at - a.at)) rest = `${rest.slice(0, hit.at)}${' '.repeat(hit.len)}${rest.slice(hit.at + hit.len)}`;
+  let rest = amountText(phrase);
+  for (const name of [...covered].sort((a, b) => words(b).length - words(a).length)) rest = rest.replaceAll(` ${words(name)} `, ' ');
   const amount = parseAmount(rest);
   if (amount.clarify) return { filters: {}, clarify: amount.clarify };
   const filters: SelectorFilters = {};
@@ -149,7 +195,8 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   if (accounts.length) filters.accounts = accounts;
   if (sectorNames.length) filters.sectors = sectorNames;
   if (people.length) filters.people = people;
-  if ((filters.products?.length ?? 0) > 10 || (filters.accounts?.length ?? 0) > 10 || (filters.sectors?.length ?? 0) > 10 || (filters.people?.length ?? 0) > 10) {
+  if (teams.length) filters.teams = teams;
+  if ([filters.products, filters.accounts, filters.sectors, filters.people, filters.teams].some((xs) => (xs?.length ?? 0) > 10)) {
     return { filters: {}, clarify: 'Name up to 10 products, accounts, sectors or people in one question.' };
   }
   return { filters };
@@ -163,25 +210,100 @@ export function quotaBlocked(filters: Intent['filters']): string | undefined {
   return `Pipeline coverage can't be filtered by ${list}, because quota isn't split that way. I can filter open pipeline by that, or filter coverage by the sales rep who owns the deal.`;
 }
 
-/** The phrase's selectors win. On a follow-up, selectors the phrase doesn't mention stay from the previous intent. */
+function boundOk(n: number | undefined): boolean {
+  return n == null || (Number.isFinite(n) && n >= 0 && n <= 1e12);
+}
+
+/** A model-proposed amount is kept only when it is a real bound. The phrase's own parse still wins. */
+function checkedAmount(amount: Intent['filters']['amount']): Intent['filters']['amount'] | undefined {
+  if (!amount || !boundOk(amount.min) || !boundOk(amount.max) || (amount.min == null && amount.max == null)) return undefined;
+  return amount;
+}
+
+function checkedProducts(names: string[] | undefined): string[] | undefined {
+  if (!names?.length || names.length > 10) return undefined;
+  const products = catalog().products;
+  const out: string[] = [];
+  for (const name of names) {
+    const exact = products.find((p) => p.id.toLowerCase() === name.toLowerCase());
+    if (exact) { out.push(exact.id); continue; }
+    const series = products.find((p) => p.series.toLowerCase() === name.toLowerCase());
+    if (!series) return undefined;
+    out.push(series.series);
+  }
+  return [...new Set(out)];
+}
+
+function checkedAccounts(names: string[] | undefined): string[] | undefined {
+  if (!names?.length || names.length > 10) return undefined;
+  const accounts = catalog().accounts;
+  const out: string[] = [];
+  for (const name of names) {
+    const hit = accounts.find((a) => a.name.toLowerCase() === name.toLowerCase());
+    if (!hit) return undefined;
+    out.push(hit.name);
+  }
+  return [...new Set(out)];
+}
+
+function checkedSectors(names: string[] | undefined, phrase: string): string[] | undefined {
+  if (!names?.length || names.length > 10 || !SECTOR_CUES.some((c) => clean(phrase).includes(` ${c} `))) return undefined;
+  const known = [...new Set(catalog().accounts.map((a) => a.sector))];
+  const out: string[] = [];
+  for (const name of names) {
+    const hit = known.find((s) => s.toLowerCase() === name.toLowerCase());
+    if (!hit) return undefined;
+    out.push(hit);
+  }
+  return [...new Set(out)];
+}
+
+function checkedPeople(names: string[] | undefined): string[] | undefined {
+  if (!names?.length || names.length > 10) return undefined;
+  const owners = catalog().owners;
+  const out: string[] = [];
+  for (const name of names) {
+    const hit = owners.find((o) => o.name.toLowerCase() === name.toLowerCase());
+    if (!hit) return undefined;
+    out.push(hit.name);
+  }
+  return [...new Set(out)];
+}
+
+function checkedTeams(names: string[] | undefined): string[] | undefined {
+  if (!names?.length || names.length > 10) return undefined;
+  const managers = catalog().managers;
+  const out: string[] = [];
+  for (const name of names) {
+    const hit = managers.find((m) => m.name.toLowerCase() === name.toLowerCase());
+    if (!hit) return undefined;
+    out.push(hit.name);
+  }
+  return [...new Set(out)];
+}
+
+/** The phrase's selectors win. A checked model value fills a gap. On a follow-up, an unnamed selector stays from the previous intent. */
 export function assignSelectors(intent: Intent, phrase: string, inherited?: Intent): Intent | { kind: 'clarify'; question: string } {
   const read = readSelectors(phrase);
-  if (read.clarify) return { kind: 'clarify', question: read.clarify };
+  const modelAmount = checkedAmount(intent.filters.amount);
+  if (read.clarify && !(read.clarify.startsWith('I can filter by deal size') && modelAmount)) return { kind: 'clarify', question: read.clarify };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
   if (intent.filters.period) filters.period = intent.filters.period;
   const source = inherited?.filters;
-  const amount = read.filters.amount ?? source?.amount;
+  const amount = read.filters.amount ?? modelAmount ?? source?.amount;
   if (amount) filters.amount = amount;
-  const products = read.filters.products ?? source?.products;
+  const products = read.filters.products ?? checkedProducts(intent.filters.products) ?? source?.products;
   if (products?.length) filters.products = products;
-  const accounts = read.filters.accounts ?? source?.accounts;
+  const accounts = read.filters.accounts ?? checkedAccounts(intent.filters.accounts) ?? source?.accounts;
   if (accounts?.length) filters.accounts = accounts;
-  const sectors = read.filters.sectors ?? source?.sectors;
+  const sectors = read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase) ?? source?.sectors;
   if (sectors?.length) filters.sectors = sectors;
-  const people = read.filters.people ?? source?.people;
+  const people = read.filters.people ?? checkedPeople(intent.filters.people) ?? source?.people;
   if (people?.length) filters.people = people;
+  const teams = read.filters.teams ?? checkedTeams(intent.filters.teams) ?? source?.teams;
+  if (teams?.length) filters.teams = teams;
   return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 

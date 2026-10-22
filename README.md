@@ -25,7 +25,7 @@ For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm
 
 **Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
-Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused. Open pipeline and open opportunity count can also be filtered by deal size, product, account, sector, or the sales rep who owns the deal. Pipeline coverage can be filtered by that rep. A filter quota is not split by, or a name that is not in the data, gets a clarifying question instead of a number for the whole scope.
+Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused. Open pipeline and open opportunity count can also be filtered by deal size, product, account, sector, or the sales rep who owns the deal. A sector counts when the question says sector, industry, or vertical beside the name. A manager named with their team means that manager's reps. Pipeline coverage can be filtered by that rep or team. A filter quota is not split by, or a name that is not in the data, gets a clarifying question instead of a number for the whole scope.
 
 ## How it works
 

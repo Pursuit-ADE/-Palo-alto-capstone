@@ -91,6 +91,8 @@ export const Intent = z
         accounts: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
         sectors: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
         people: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
+        /** Manager names. "Cara Losch's team" is that manager's reps, not a filter on the manager. */
+        teams: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
       })
       .strict(),
     groupBy: z

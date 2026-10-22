@@ -126,9 +126,9 @@ export interface Catalog {
   products: { id: string; series: string }[];
   accounts: { id: string; name: string; sector: string }[];
   /** Sales reps, the people who own deals. Ids match the rows the seed writes. */
-  owners: { id: string; name: string }[];
-  /** Managers do not own deals. A question that names one is asked about, not answered as zero. */
-  managers: string[];
+  owners: { id: string; name: string; managerId: string; managerName: string }[];
+  /** Managers do not own deals. A question that names one is asked about, unless it names their team. */
+  managers: { id: string; name: string }[];
 }
 
 const catalogCache = new Map<string, Catalog>();
@@ -145,8 +145,8 @@ export function catalog(dataDir: string = resolveDataDir()): Catalog {
         name: a.account!,
         sector: SECTOR_FIX[a.sector!] ?? a.sector!,
       })),
-      owners: [...new Map(teams.map((t) => [t.sales_agent!, { id: `u_${slug(t.sales_agent!)}`, name: t.sales_agent! }])).values()],
-      managers: [...new Set(teams.map((t) => t.manager!))],
+      owners: [...new Map(teams.map((t) => [t.sales_agent!, { id: `u_${slug(t.sales_agent!)}`, name: t.sales_agent!, managerId: `u_mgr_${slug(t.manager!)}`, managerName: t.manager! }])).values()],
+      managers: [...new Map(teams.map((t) => [t.manager!, { id: `u_mgr_${slug(t.manager!)}`, name: t.manager! }])).values()],
     };
     catalogCache.set(dataDir, hit);
   }

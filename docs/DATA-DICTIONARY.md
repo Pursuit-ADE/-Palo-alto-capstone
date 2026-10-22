@@ -24,7 +24,7 @@ Generated from `registry/` by `npm run docs:dictionary`. Do not edit by hand: ch
 | cxo | A CXO is a contact whose job title starts with "Chief". Only engagement by a CXO fires the CXO alert. | `src/db/seed.ts` |
 | snapshot | Every answer comes from the newest data snapshot and states its as-of date. | `src/semantic/answer.ts` |
 | follow_up | A follow-up keeps the earlier filters and breakdown only when it names no metric ("what about West?") or names the same metric with a follow-up word ("and the open pipeline by stage?"). Naming a different metric starts a new question. | `src/semantic/normalize.ts` |
-| extra_filters | Open pipeline and open opportunity count can be filtered by deal size, product or series, account, sector, and the sales rep who owns the deal. Pipeline coverage can be filtered by that rep, because quota is per rep. It cannot be filtered by deal size, product, account or sector, because quota is not split that way. An unknown name is asked about, not dropped. | `src/semantic/compile.ts` |
+| extra_filters | Open pipeline and open opportunity count can be filtered by deal size, product or series, account, sector, and the sales rep who owns the deal. A sector counts only when the question says sector, industry, or vertical beside the name. A manager named with their team means that manager's reps. A product series is labeled as a series. Commas and decimals in a deal size are kept. Pipeline coverage can be filtered by that rep or team, because quota is per rep. It cannot be filtered by deal size, product, account or sector, because quota is not split that way. An unknown name is asked about, not dropped. | `src/semantic/compile.ts` |
 
 ## Glossary
 

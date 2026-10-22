@@ -26,6 +26,7 @@ export function ProvenancePanel({ a }: { a: Answer }) {
     f.accounts?.length ? `account ${list(f.accounts)}` : null,
     f.sectors?.length ? `sector ${list(f.sectors)}` : null,
     f.people?.length ? `rep ${list(f.people)}` : null,
+    f.teams?.length ? list(f.teams.map((name) => `${name}'s team`)) : null,
     f.groupBy.length ? `by ${list(f.groupBy)}` : null,
   ].filter(Boolean);
 

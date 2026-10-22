@@ -131,11 +131,34 @@ function resolvePeople(names: string[] | undefined, principal: Principal): strin
   return ids;
 }
 
+/** Reps who report to the named manager. A team outside this principal's scope is a refusal, not a partial number. */
+function resolveTeams(names: string[] | undefined, principal: Principal): string[] | undefined {
+  if (!names?.length) return undefined;
+  const cat = catalog();
+  const ids: string[] = [];
+  const outside: string[] = [];
+  for (const name of names) {
+    const manager = cat.managers.find((m) => m.name.toLowerCase() === name.toLowerCase());
+    if (!manager) throw new IntentError(`Unknown team: ${name}`);
+    const reps = cat.owners.filter((o) => o.managerId === manager.id);
+    if (!reps.length) throw new IntentError(`Unknown team: ${name}`);
+    if (principal.ownerIds && reps.some((r) => !principal.ownerIds!.includes(r.id))) outside.push(manager.name);
+    else for (const rep of reps) ids.push(rep.id);
+  }
+  if (outside.length) throw new ScopeViolation(`You do not have access to ${[...new Set(outside)].join(', ')}'s team.`);
+  return [...new Set(ids)];
+}
+
+function limitPeople(personIds: string[] | undefined, teamIds: string[] | undefined): string[] | undefined {
+  if (personIds && teamIds) return personIds.filter((id) => teamIds.includes(id));
+  return personIds ?? teamIds;
+}
+
 function extraFilters(intent: Intent, alias: string, table: Source['table'], p: Params, people: string[] | undefined): string {
   const parts: string[] = [];
-  if (people?.length) {
+  if (people) {
     const column = table === 'opportunities' ? 'owner_user_id' : 'user_id';
-    parts.push(`${alias}.${column} = ANY(${p.add(people)}::text[])`);
+    parts.push(people.length ? `${alias}.${column} = ANY(${p.add(people)}::text[])` : 'FALSE');
   }
   if (table !== 'opportunities') return parts.length ? ` AND ${parts.join(' AND ')}` : '';
   const amount = intent.filters.amount;
@@ -153,7 +176,7 @@ export function compile(intent: Intent, registry: Registry, principal: Principal
   const regions = effectiveRegions(principal, intent.filters.regions);
   const p = new Params();
   const period = intent.filters.period;
-  const people = resolvePeople(intent.filters.people, principal);
+  const people = limitPeople(resolvePeople(intent.filters.people, principal), resolveTeams(intent.filters.teams, principal));
 
   if (metric.kind === 'aggregate') {
     const s = metric.source;

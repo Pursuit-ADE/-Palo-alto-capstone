@@ -3,6 +3,7 @@
 import { createHash, createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { desc, inArray } from 'drizzle-orm';
 import type { Database } from '../db/client';
+import { catalog } from '../db/seed';
 import { appUsers, dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
@@ -41,6 +42,7 @@ export interface Answer {
     accounts: string[] | null;
     sectors: string[] | null;
     people: string[] | null;
+    teams: string[] | null;
   };
   /** For ratio metrics, the numerator and denominator with their scopes; null otherwise. */
   parts: { numerator: RatioPart; denominator: RatioPart } | null;
@@ -193,10 +195,11 @@ async function run(database: Database, registry: Registry, principal: Principal,
       stages: intent.filters.stages ?? null,
       groupBy: intent.groupBy,
       amount: intent.filters.amount ?? null,
-      products: intent.filters.products ?? null,
+      products: intent.filters.products?.map(labelProduct) ?? null,
       accounts: intent.filters.accounts ?? null,
       sectors: intent.filters.sectors ?? null,
       people: intent.filters.people ?? null,
+      teams: intent.filters.teams ?? null,
     },
     parts: ratioParts(metric, registry, scope, intent.filters.period),
     narrative: withFilterNote(narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined), intent),
@@ -217,6 +220,13 @@ function money(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
 }
 
+function labelProduct(name: string): string {
+  const products = catalog().products;
+  if (products.some((p) => p.id.toLowerCase() === name.toLowerCase())) return name;
+  if (products.some((p) => p.series.toLowerCase() === name.toLowerCase())) return `${name} series`;
+  return name;
+}
+
 /** Says which extra filters the number used, so a filtered answer is not read as the whole scope. */
 function withFilterNote(sentence: string, intent: Intent): string {
   const f = intent.filters;
@@ -226,10 +236,11 @@ function withFilterNote(sentence: string, intent: Intent): string {
     if (f.amount.min != null) bits.push(`${f.amount.minInclusive === false ? 'over' : 'at least'} ${money(f.amount.min)}`);
     if (f.amount.max != null) bits.push(`${f.amount.maxInclusive === false ? 'under' : 'at most'} ${money(f.amount.max)}`);
   }
-  if (f.products?.length) bits.push(f.products.join(', '));
+  if (f.products?.length) bits.push(f.products.map(labelProduct).join(', '));
   if (f.accounts?.length) bits.push(f.accounts.join(', '));
   if (f.sectors?.length) bits.push(`${f.sectors.join(', ')} sector`);
   if (f.people?.length) bits.push(f.people.join(', '));
+  if (f.teams?.length) bits.push(f.teams.map((name) => `${name}'s team`).join(', '));
   return bits.length ? `${sentence} Filtered to ${bits.join('; ')}.` : sentence;
 }
 

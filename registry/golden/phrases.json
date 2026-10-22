@@ -637,6 +637,45 @@
       }
     },
     {
+      "phrase": "open pipeline under $5,000",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "amount": {
+            "max": 5000,
+            "maxInclusive": false
+          }
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "open pipeline over $1.5M",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "amount": {
+            "min": 1500000,
+            "minInclusive": false
+          }
+        },
+        "groupBy": []
+      }
+    },
+    {
+      "phrase": "open pipeline over 1,000,000",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "amount": {
+            "min": 1000000,
+            "minInclusive": false
+          }
+        },
+        "groupBy": []
+      }
+    },
+    {
       "phrase": "open pipeline excluding prospecting",
       "expect": {
         "clarify": true
