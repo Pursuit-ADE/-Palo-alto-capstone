@@ -52,7 +52,24 @@
         "useTemplate": "off"
       },
       "complexity": {
-        "useOptionalChain": "off"
+        "useOptionalChain": "off",
+        "noExcessiveCognitiveComplexity": {
+          "level": "warn",
+          "options": {
+            "maxAllowedComplexity": 15
+          }
+        },
+        "noExcessiveLinesPerFunction": {
+          "level": "warn",
+          "options": {
+            "maxLines": 60,
+            "skipBlankLines": true
+          }
+        }
+      },
+      "nursery": {
+        "noFloatingPromises": "warn",
+        "noMisusedPromises": "warn"
       }
     }
   },

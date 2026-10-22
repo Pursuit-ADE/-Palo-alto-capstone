@@ -43,7 +43,8 @@ Formatting-only changes go in their own commit, never mixed with a behavior chan
 - **Names:** files `kebab-case.ts`, components `PascalCase`, functions and variables `camelCase`, constants
   `UPPER_SNAKE_CASE`.
 - **No `console.log`** in `app/` or `src/`. Scripts in `scripts/` may print.
-- **Size:** keep a file under ~350 lines and a function under ~60. Split before you add to one that is over.
+- **Size:** keep a file under ~350 lines and a function under 60 lines with a cognitive complexity of 15 or less
+  (Biome warns on both). Split before you add to one that is over.
 
 ## 4. Comments
 
@@ -95,7 +96,29 @@ These come from the security reviews and the PRD; each has tests. Breaking one i
 - **No force-push** to a shared branch. Rebase or merge only on your own branch.
 - **Binary files** (PDF, DOCX, images, video) don't belong in the repo; link them from the docs instead.
 
-## 9. Definition of done
+## 9. Safety rules (NASA/JPL Power of 10, adapted)
+
+The [Power of 10](https://en.wikipedia.org/wiki/The_Power_of_10:_Rules_for_Developing_Safety-Critical_Code) are
+JPL's rules for safety-critical C. These are their TypeScript equivalents. New code follows them, and existing code
+is brought in line when it is next touched.
+
+| # | Rule here | Checked by |
+|---|---|---|
+| 1 | Simple control flow: no recursion in app code. | Review |
+| 2 | Every loop has a visible bound: loop over a finite collection, no `while (true)`, cap every input (question length, rows, rate limits, statement timeout). | Review |
+| 3 | Bounded resources: every pool, queue, cache and request has a limit. | Review |
+| 4 | Functions under 60 lines and cognitive complexity 15. | Biome (warning) |
+| 5 | Check what you assume: validate at every boundary with Zod, and `throw` on a broken invariant instead of carrying on. | Review, tests |
+| 6 | Smallest scope: `const` by default, no `var`, no module-level mutable state except a documented cache. | Biome, review |
+| 7 | Never ignore a result: await or return every promise, no empty `catch`, no `.catch(() => undefined)` in app code. | Biome (warning), review |
+| 8 | No code built at runtime: no `eval`, `new Function` or dynamic `require`. | Biome, CodeQL |
+| 9 | No unchecked access: avoid non-null `!` and `as unknown as`. Use a checked helper that throws a clear error, or a comment saying why it is safe. | Review |
+| 10 | Zero warnings from the strictest settings, and static analysis on every change: `strict`, `noUncheckedIndexedAccess`, Biome, CodeQL and gitleaks in CI. | CI |
+
+Security commitments from Palo Alto Networks' public posture (the CISA Secure by Design pledge and NIST SSDF) are in
+section 5. MFA, branch protection on `main` and an SBOM are tracked as open items in `SECURITY.md`.
+
+## 10. Definition of done
 
 Checks in section 1 pass, tests cover the change, docs (README, RUNBOOK, DATA-DICTIONARY, SYSTEM-CARD) are
 updated when behavior changes, and a reviewer has approved.
