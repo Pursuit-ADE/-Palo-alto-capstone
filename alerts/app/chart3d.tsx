@@ -4,14 +4,18 @@
 // Numbers view). Drag it, or the page around it, and every graph on the page turns together and becomes 3D: the
 // backdrop goes to the dark PANW stage and the bars become glass. The values stay in a table for screen readers,
 // and "Show numbers" puts that table on screen. Shared byte-for-byte by both apps.
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import {
   buildScene,
   camera,
   clampPose,
   coastStep,
+  defaultKind,
   hasNarrow,
   hitTest,
+  KINDS,
+  KINDS_COOKIE,
+  kindsFor,
   layout2D,
   LIMITS,
   morph,
@@ -19,13 +23,19 @@ import {
   poseToT,
   PRESET,
   releaseVelocity,
+  rememberKind,
   rubberBand,
+  smooth,
   springStep,
   unRubberBand,
-  type Box,
+  wedgeOutline,
+  type Anchor,
+  type Bar,
   type Camera,
   type ChartData,
+  type ChartKind,
   type Layout,
+  type Mark,
   type Pose,
 } from './chart3d-math';
 import { drawFrame, makeScratch, releaseScratch, type Scratch } from './chart3d-draw';
@@ -276,15 +286,51 @@ function installSurfaceDrag() {
 
 // ---------------------------------------------------------------- the flat chart
 
-function FlatChart({ chart, L, variant }: { chart: ChartData; L: Layout; variant?: 'wide' | 'narrow' }) {
+const r2 = (n: number) => Math.round(n * 100) / 100; // sin and cos may differ in the last bit between engines
+/** A column with its two top corners rounded. */
+const roundTop = (x: number, y: number, w: number, h: number, r: number) => `M${x} ${y + h}V${y + r}Q${x} ${y} ${x + r} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h}Z`;
+/** A bar with its two outer (right) corners rounded. */
+const roundEnd = (x: number, y: number, w: number, h: number, r: number) => `M${x} ${y}H${x + w - r}Q${x + w} ${y} ${x + w} ${y + r}V${y + h - r}Q${x + w} ${y + h} ${x + w - r} ${y + h}H${x}Z`;
+
+function FlatChart({ chart, L, variant, enter }: { chart: ChartData; L: Layout; variant?: 'wide' | 'narrow'; enter: boolean }) {
   const cols = L.form === 'columns';
+  const S = chart.series.length;
   const name = (k: number) => {
     const d = chart.data[k]!;
     const cat = chart.categories.find((c) => c.key === d.category)?.label ?? d.category;
-    return `${cat}${chart.series.length > 1 ? ` · ${chart.series[d.series]}` : ''}: ${d.display}`;
+    return `${cat}${S > 1 ? ` · ${chart.series[d.series]}` : ''}: ${d.display}`;
   };
+  const cls = ['c3d-svg', variant && `c3d-${variant}`, `c3d-k-${L.kind}`, cols ? 'c3d-cols' : 'c3d-rows', enter && 'c3d-enter'].filter(Boolean).join(' ');
+  const valueText = (b: { text: string; tx: number; ty: number; anchor: Anchor; ink?: 'dark' | 'light' }) =>
+    b.text ? <text x={b.tx} y={b.ty} textAnchor={b.anchor} className={b.ink ? `c3d-ink-${b.ink}` : 'c3d-value'}>{b.text}</text> : null;
+
+  const bar = (b: Bar) => {
+    const r = Math.min(3, b.w / 2, b.h / 2);
+    if (b.role === 'case') {
+      // The target as a glass case, open at the baseline: the bar it holds stands inside it.
+      const d = cols ? `M${b.x} ${b.y + b.h}V${b.y}H${b.x + b.w}V${b.y + b.h}` : `M${b.x} ${b.y}H${b.x + b.w}V${b.y + b.h}H${b.x}`;
+      return <path className={`c3d-case s${b.series}`} d={d} />;
+    }
+    if (b.dot) {
+      return (
+        <>
+          <rect className={`c3d-bar c3d-stem s${b.series}`} x={b.x} y={b.y} width={Math.max(b.w, cols ? 2 : 0)} height={Math.max(b.h, cols ? 0 : 2)} />
+          <circle className={`c3d-dot s${b.series}`} cx={b.dot.x} cy={b.dot.y} r={b.dot.r} />
+        </>
+      );
+    }
+    // A real zero, or a part too thin to see: a line where it sits (the baseline, or on top of the parts below it).
+    if (cols && b.h < 0.5) return <line x1={b.x} x2={b.x + b.w} y1={b.y + b.h} y2={b.y + b.h} className={`c3d-bar s${b.series} c3d-zerobar`} />;
+    if (b.round === 'none') return <rect className={`c3d-bar s${b.series}`} x={b.x} y={b.y} width={Math.max(b.w, 1)} height={b.h} />;
+    if (cols) return <path className={`c3d-bar s${b.series}`} d={roundTop(b.x, b.y, b.w, b.h, r)} />;
+    if (b.round === 'end') return <path className={`c3d-bar s${b.series}`} d={roundEnd(b.x, b.y, Math.max(b.w, 1), b.h, Math.min(3, b.h / 2, Math.max(b.w, 1) / 2))} />;
+    return <rect className={`c3d-bar s${b.series}`} x={b.x} y={b.y} width={Math.max(b.w, 1)} height={b.h} rx={Math.min(3, b.h / 2)} />;
+  };
+
+  const D = L.donut;
+  const H = L.heat;
   return (
-    <svg className={variant ? `c3d-svg c3d-${variant}` : 'c3d-svg'} viewBox={`0 0 ${L.vw} ${L.vh}`} aria-hidden="true" focusable="false">
+    <svg className={cls} viewBox={`0 0 ${L.vw} ${L.vh}`} aria-hidden="true" focusable="false">
       {cols &&
         L.ticks.map((t, i) => (
           <g key={t.value}>
@@ -292,30 +338,79 @@ function FlatChart({ chart, L, variant }: { chart: ChartData; L: Layout; variant
             <text x={L.plot.x0 - 8} y={t.pos + 4} textAnchor="end" className="c3d-tick">{t.text}</text>
           </g>
         ))}
-      {L.bars.map((b) => {
-        const r = Math.min(3, b.w / 2, b.h / 2);
-        const shape = cols ? (
-          b.h < 0.5 ? (
-            <line x1={b.x} x2={b.x + b.w} y1={L.base} y2={L.base} className={`c3d-bar s${b.series} c3d-zerobar`} />
-          ) : (
-            <path className={`c3d-bar s${b.series}`} d={`M${b.x} ${b.y + b.h}V${b.y + r}Q${b.x} ${b.y} ${b.x + r} ${b.y}H${b.x + b.w - r}Q${b.x + b.w} ${b.y} ${b.x + b.w} ${b.y + r}V${b.y + b.h}Z`} />
-          )
-        ) : (
-          <rect className={`c3d-bar s${b.series}`} x={b.x} y={b.y} width={Math.max(b.w, 1)} height={b.h} rx={Math.min(3, b.h / 2)} />
-        );
-        return (
-          <g key={b.datum}>
+      <g className="c3d-marks">
+        {L.bars.map((b) => (
+          <g key={b.datum} className={b.role === 'case' ? 'c3d-hold' : undefined}>
             <title>{name(b.datum)}</title>
-            {shape}
-            <text x={b.tx} y={b.ty} textAnchor={b.anchor} className="c3d-value">{b.text}</text>
+            {bar(b)}
+            {valueText(b)}
           </g>
-        );
-      })}
+        ))}
+        {L.runs.map((r, i) => {
+          const pts = r.points.map((j) => L.points[j]!);
+          if (pts.length < 2) return null;
+          const d = pts.map((p, k) => `${k ? 'L' : 'M'}${p.x} ${p.y}`).join('');
+          return (
+            <g key={`r${i}`}>
+              {L.kind === 'area' && <path className={`c3d-area s${r.series}`} d={`${d}L${pts[pts.length - 1]!.x} ${L.base}L${pts[0]!.x} ${L.base}Z`} />}
+              <path className={`c3d-line s${r.series}`} d={d} pathLength={1} />
+            </g>
+          );
+        })}
+        {L.points.map((p) => (
+          <g key={`p${p.datum}`} className="c3d-pt">
+            <title>{name(p.datum)}</title>
+            <circle className="c3d-hit" cx={p.x} cy={p.y} r={12} />
+            <circle className={`c3d-dot s${p.series}`} cx={p.x} cy={p.y} r={4} />
+            {valueText(p)}
+          </g>
+        ))}
+        {D &&
+          D.wedges.filter((w) => w.a1 > w.a0).map((w) => (
+            <g key={`w${w.datum}`}>
+              <title>{name(w.datum)}</title>
+              <path className={`c3d-wedge t${w.tone}`} d={`M${wedgeOutline(D, w.a0, w.a1).map(([x, y]) => `${r2(x)} ${r2(y)}`).join('L')}Z`} />
+            </g>
+          ))}
+        {H &&
+          H.cells.map((c) => (
+            <g key={`c${c.cat}-${c.series}`}>
+              <title>{c.datum >= 0 ? name(c.datum) : `${chart.categories[c.cat]?.label ?? ''} · ${chart.series[c.series] ?? ''}: no data`}</title>
+              <rect className={c.value === null ? 'c3d-cell c3d-cell-empty' : 'c3d-cell'} x={c.x} y={c.y} width={c.w} height={c.h} rx={3} fill={c.fill} />
+              {c.text && <text x={c.tx} y={c.ty} textAnchor="middle" className={`c3d-ink-${c.ink}`}>{c.text}</text>}
+            </g>
+          ))}
+      </g>
+      {D && (
+        <>
+          {D.legend.map((l) => (
+            <g key={`l${l.datum}`}>
+              <title>{name(l.datum)}</title>
+              <rect className={`c3d-sw t${l.tone}`} x={l.x} y={l.y - 9} width={10} height={10} rx={2} />
+              <text x={l.x + 16} y={l.y} className="c3d-cat">{l.label}</text>
+              <text x={l.vx} y={l.y} textAnchor="end" className="c3d-value">{l.value}</text>
+            </g>
+          ))}
+          {D.center && (
+            <g>
+              <text x={D.cx} y={D.center.y} textAnchor="middle" className="c3d-total">{D.center.text}</text>
+              <text x={D.cx} y={D.center.subY} textAnchor="middle" className="c3d-tick">{D.center.sub}</text>
+            </g>
+          )}
+        </>
+      )}
+      {H &&
+        H.rows.map((r, i) => (
+          <text key={`h${i}`} x={r.x} y={r.y} textAnchor="end" className="c3d-cat">
+            <title>{r.full}</title>
+            {r.text}
+          </text>
+        ))}
       {L.ghosts.map((g) => (
         <g key={`g${g.datum}`}>
           <title>{name(g.datum)}</title>
           {cols ? <line x1={g.x} x2={g.x + g.w} y1={g.y} y2={g.y} className="c3d-ghost" /> : <line x1={g.x} x2={g.x} y1={g.y} y2={g.y + g.w} className="c3d-ghost" />}
-          <text x={g.tx} y={g.ty} textAnchor={g.anchor} className="c3d-tick">{g.text}</text>
+          {g.text && <text x={g.tx} y={g.ty} textAnchor={g.anchor} className="c3d-tick">{g.text}</text>}
         </g>
       ))}
       {L.target && (
@@ -330,6 +425,66 @@ function FlatChart({ chart, L, variant }: { chart: ChartData; L: Layout; variant
           {c.text}
         </text>
       ))}
+    </svg>
+  );
+}
+
+/** A small drawing of each chart type, for the picker. */
+function KindIcon({ kind }: { kind: ChartKind }) {
+  const shapes: Record<ChartKind, ReactNode> = {
+    columns: <path d="M3 14V8h2.5v6zM6.75 14V3h2.5v11zM10.5 14V6H13v8z" />,
+    bars: <path d="M2 3h8v2.5H2zM2 6.75h12v2.5H2zM2 10.5h6V13H2z" />,
+    stacked: (
+      <>
+        <path d="M3 14V9h4v5zM9 14V7h4v7z" />
+        <path d="M3 8V4.5h4V8zM9 6V2.5h4V6z" opacity=".45" />
+      </>
+    ),
+    bullet: (
+      <>
+        <path d="M2.75 14.5V4.25h4.5V14.5M8.75 14.5V2.75h4.5V14.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
+        <path d="M4.25 14V7h1.5v7zM10.25 14V5.5h1.5V14z" />
+      </>
+    ),
+    lollipop: (
+      <>
+        <path d="M3.5 14V8M8 14V4.5M12.5 14V7" stroke="currentColor" strokeWidth="1.3" />
+        <circle cx="3.5" cy="7" r="1.9" />
+        <circle cx="8" cy="3.5" r="1.9" />
+        <circle cx="12.5" cy="6" r="1.9" />
+      </>
+    ),
+    line: (
+      <>
+        <path d="M2 12 6 6.5l4 2.5 4-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+        <circle cx="6" cy="6.5" r="1.5" />
+        <circle cx="10" cy="9" r="1.5" />
+      </>
+    ),
+    area: (
+      <>
+        <path d="M2 12 6 6.5l4 2.5 4-6V14H2z" opacity=".45" />
+        <path d="M2 12 6 6.5l4 2.5 4-6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+      </>
+    ),
+    donut: (
+      <>
+        <path d="M8.6 2.03A6 6 0 0 1 13.97 8.6L11 8.3A3 3 0 0 0 8.3 5.03z" />
+        <path d="M13.8 9.8A6 6 0 1 1 7.4 2.03l.3 3A3 3 0 1 0 10.9 9.2z" opacity=".45" />
+      </>
+    ),
+    heatmap: (
+      <>
+        <rect x="2" y="2" width="5.5" height="5.5" rx="1" />
+        <rect x="8.5" y="2" width="5.5" height="5.5" rx="1" opacity=".45" />
+        <rect x="2" y="8.5" width="5.5" height="5.5" rx="1" opacity=".3" />
+        <rect x="8.5" y="8.5" width="5.5" height="5.5" rx="1" opacity=".7" />
+      </>
+    ),
+  };
+  return (
+    <svg className="c3d-kind-icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false" fill="currentColor">
+      {shapes[kind]}
     </svg>
   );
 }
@@ -365,15 +520,41 @@ function NumbersTable({ chart, id, shown }: { chart: ChartData; id: string; show
 
 // ---------------------------------------------------------------- the component
 
-export function Chart3D({ charts }: { charts: ChartData[] }) {
+/** Remember a graph's chart type in this browser (a display preference, read back on the server for the first paint). */
+function saveKind(id: string, kind: ChartKind) {
+  const prefix = `${KINDS_COOKIE}=`;
+  const raw = document.cookie.split('; ').find((c) => c.startsWith(prefix))?.slice(prefix.length);
+  let old = raw;
+  try {
+    old = raw && decodeURIComponent(raw);
+  } catch {
+    old = '';
+  }
+  const value = rememberKind(old, id, kind);
+  document.cookie = `${prefix}${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=lax${location.protocol === 'https:' ? '; secure' : ''}`;
+}
+
+/**
+ * charts: one or more charts of the same rows (tabs). kinds: the chart types this browser picked before, by chart id;
+ * when given, a new pick is remembered too (dashboard graphs). Without it a pick lasts while the page is open.
+ */
+export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record<string, ChartKind> }) {
   const uid = useId();
   const [which, setWhich] = useState(0);
   const [tableShown, setTableShown] = useState(false);
   const [solo, setSolo] = useState(false); // reduced motion: each graph turns on its own
+  const [picked, setPicked] = useState<Record<string, ChartKind>>(() => ({ ...kinds }));
+  const [entered, setEntered] = useState<string | null>(null); // the chart and type just picked: its marks animate in
   const chart = charts[Math.min(which, charts.length - 1)]!;
-  const L = useMemo(() => layout2D(chart), [chart]);
+  const offered = useMemo(() => kindsFor(chart), [chart]);
+  const want = picked[chart.id];
+  const kind: ChartKind = want && offered.includes(want) ? want : defaultKind(chart);
+  const L = useMemo(() => layout2D(chart, kind), [chart, kind]);
   // Phones: a narrower layout, so the text is not shrunk to half size. Both are rendered; CSS shows the one that fits.
-  const N = useMemo(() => (hasNarrow(chart) ? layout2D(chart, undefined, true) : null), [chart]);
+  const N = useMemo(() => (hasNarrow(chart, kind) ? layout2D(chart, kind, true) : null), [chart, kind]);
+  const growRef = useRef(0); // when the type changed while turned: the new marks rise into place
+  const enterTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(enterTimer.current), []);
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const tip = useRef<HTMLDivElement>(null);
@@ -387,7 +568,7 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
   const chartRef = useRef(chart);
   chartRef.current = chart;
   // What the last frame drew, for hit testing.
-  const drawnRef = useRef<{ order: Box[]; cam: Camera } | null>(null);
+  const drawnRef = useRef<{ order: Mark[]; cam: Camera } | null>(null);
   const hoverRef = useRef(-1);
   const tipPose = useRef<Pose | null>(null); // the pose the tooltip was placed for
   const liveRef = useRef<Live | null>(null);
@@ -477,10 +658,16 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
       }
       const layout = layoutAt(size.w);
       const m = morph(t);
+      if (growRef.current) {
+        const p = Math.min(1, (performance.now() - growRef.current) / 650);
+        m.grow = smooth(p);
+        if (p < 1) live.dirty = true;
+        else growRef.current = 0;
+      }
       const scene = buildScene(layout, m);
       const cam = camera(scene, o.pose, m);
       const t0 = performance.now();
-      const order = drawFrame(ctx, scene, layout, cam, m, { unit: size.w / layout.vw, dpr, hover: o.mode === 'drag' ? -1 : hoverRef.current, font, quality }, scratch);
+      const drawn = drawFrame(ctx, scene, layout, cam, m, { unit: size.w / layout.vw, dpr, hover: o.mode === 'drag' ? -1 : hoverRef.current, font, quality }, scratch);
       const cost = performance.now() - t0;
       costEma = costEma ? costEma * 0.8 + cost * 0.2 : cost;
       // Slow machine: drop the light pools, then the bloom; come back after two calm seconds.
@@ -498,7 +685,7 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
           fastSince = 0;
         }
       } else fastSince = 0;
-      drawnRef.current = { order, cam };
+      drawnRef.current = drawn;
       el.dataset.c3d = '';
       if (m.dark) el.dataset.dark = '';
       else delete el.dataset.dark;
@@ -709,11 +896,28 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
     const o = orbit();
     springTo(o, clampPose({ yaw: (o.mode === 'spring' ? o.target : o.pose).yaw + d, tilt: Math.max(o.pose.tilt, 12) }), 12);
   };
+  const pick = (k: ChartKind) => {
+    if (k === kind) return;
+    setPicked((p) => ({ ...p, [chart.id]: k }));
+    setEntered(`${chart.id}.${k}`);
+    // Done animating: drop the class, so a later re-show (a resize past the phone layout) doesn't replay it.
+    window.clearTimeout(enterTimer.current);
+    enterTimer.current = window.setTimeout(() => setEntered(null), 1200);
+    if (kinds) saveKind(chart.id, k);
+    // The old marks are gone: no tooltip for them, and a turned graph grows its new marks into place.
+    hideTip();
+    hoverRef.current = -1;
+    if (!orbit().flat && !reduced()) growRef.current = performance.now();
+  };
+  const kindName = KINDS.find((k) => k.kind === kind)!.name;
+  // The donut and the heatmap name their parts on the chart itself; the bullet's legend shows the case.
+  const legend = chart.series.length > 1 && kind !== 'heatmap';
+  const enter = entered === `${chart.id}.${kind}`;
 
   return (
     <figure className={`c3d c3d-${chart.size ?? 'answer'}`}>
       <figcaption id={capId} className="c3d-title">{chart.title}</figcaption>
-      {(charts.length > 1 || chart.series.length > 1) && (
+      {(charts.length > 1 || legend || offered.length > 1) && (
         <div className="c3d-head">
           {charts.length > 1 && (
             <div className="c3d-tabs" role="group" aria-label="Chart">
@@ -722,10 +926,23 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
               ))}
             </div>
           )}
-          {chart.series.length > 1 && (
+          {offered.length > 1 && (
+            <div className="c3d-kinds" role="group" aria-label="Chart type">
+              {offered.map((k) => {
+                const info = KINDS.find((x) => x.kind === k)!;
+                return (
+                  <button key={k} type="button" className="c3d-kind" aria-pressed={k === kind} aria-label={info.name} title={`${info.name}: ${info.hint}`} onClick={() => pick(k)}>
+                    <KindIcon kind={k} />
+                    <span>{info.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          {legend && (
             <ul className="c3d-legend" aria-hidden="true">
               {chart.series.map((s, i) => (
-                <li key={s}><i className={`s${i}`} />{s}</li>
+                <li key={s}><i className={kind === 'bullet' && i === 1 ? `s${i} case` : `s${i}`} />{s}</li>
               ))}
             </ul>
           )}
@@ -759,8 +976,8 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
         onDoubleClick={() => flatten(orbit())}
         onKeyDown={onKeyDown}
       >
-        <FlatChart chart={chart} L={L} variant={N ? 'wide' : undefined} />
-        {N && <FlatChart chart={chart} L={N} variant="narrow" />}
+        <FlatChart key={`w-${kind}`} chart={chart} L={L} variant={N ? 'wide' : undefined} enter={enter} />
+        {N && <FlatChart key={`n-${kind}`} chart={chart} L={N} variant="narrow" enter={enter} />}
         <canvas ref={canvas} className="c3d-canvas" aria-hidden="true" />
         <div ref={tip} className="c3d-tip" hidden aria-hidden="true" />
       </div>
@@ -781,7 +998,7 @@ export function Chart3D({ charts }: { charts: ChartData[] }) {
       </div>
       {chart.note && <p className="c3d-note">{chart.note}</p>}
       <p id={descId} className="visually-hidden">
-        {chart.summary} Drag the chart, or use the arrow keys, to turn it into 3D. Escape flattens it. The values are in the table that follows.
+        {chart.summary} Shown as {kindName.toLowerCase()}. Drag the chart, or use the arrow keys, to turn it into 3D. Escape flattens it. The values are in the table that follows.
       </p>
       <NumbersTable chart={chart} id={tableId} shown={tableShown} />
     </figure>

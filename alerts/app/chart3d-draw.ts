@@ -1,20 +1,41 @@
-// Draws one frame of a turned chart on a canvas: the dark stage, grid floor, back glass panel, glass bars in paint
-// order, the target plane, a bloom built from a downsample chain (no ctx.filter or shadowBlur, so it looks the same
-// in every browser), and labels on backing chips so they stay readable at every angle. Colours come only from
-// chart3d-math (PANW tokens and their mixes). Shared byte-for-byte by both apps.
-import { paintOrder, rgba, mix, SERIES_TONES, TOKENS as T, type Box, type Camera, type Layout, type Morph, type Scene, type SeriesTone, type V3 } from './chart3d-math';
+// Draws one frame of a turned chart on a canvas: the dark stage, grid floor, back glass panel, glass marks in paint
+// order (bars, a donut's ring, a line's ribbon, an area's slab, a heatmap's towers), the target plane, a bloom built
+// from a downsample chain (no ctx.filter or shadowBlur, so it looks the same in every browser), and labels on backing
+// chips so they stay readable at every angle. Colours come only from chart3d-math (PANW tokens and their mixes).
+// Shared byte-for-byte by both apps.
+import {
+  dotRadius,
+  isPrism,
+  labelSize,
+  localCamera,
+  mix,
+  paintOrder,
+  rgba,
+  SERIES_TONES,
+  TOKENS as T,
+  type Box,
+  type Camera,
+  type Dot,
+  type Layout,
+  type Mark,
+  type Morph,
+  type Prism,
+  type Scene,
+  type SeriesTone,
+  type V3,
+} from './chart3d-math';
 
 export interface DrawOptions {
   unit: number; // CSS pixels per viewBox unit
   dpr: number;
   hover: number; // datum under the pointer, or -1
   font: string; // font family of the page
-  quality: 0 | 1 | 2; // 0 full; 1 drops light pools; 2 also drops the bloom
+  quality: 0 | 1 | 2; // 0 full; 1 drops light pools and reflections; 2 also drops the bloom
 }
 
 /** Offscreen buffers, owned by one chart and reused every frame. */
 export interface Scratch {
-  layer: HTMLCanvasElement; // the bars alone, the source of the bloom
+  layer: HTMLCanvasElement; // the marks alone, the source of the bloom
   mips: HTMLCanvasElement[]; // 1/4, 1/8 and 1/16 of the layer
 }
 
@@ -85,7 +106,20 @@ function poly(c: CanvasRenderingContext2D, pts: Pt[]) {
   c.closePath();
 }
 
-function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesTone, m: Morph, form: Layout['form'], px: number, hot: number) {
+function line(c: CanvasRenderingContext2D, pts: Pt[]) {
+  c.beginPath();
+  pts.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
+}
+
+/** A side face's fill: tops catch the light like a cap, the rest are shaded by how they face the light. */
+function sideFill(n: V3, tone: SeriesTone, flat: string, g: number, hot: number): string {
+  const lam = Math.max(0, n[0] * LIGHT[0] + n[1] * LIGHT[1] + n[2] * LIGHT[2]);
+  return n[1] > 0.5
+    ? rgba(mix(flat, tone.cap, g), Math.min(1, (0.35 + 0.43 * g) * hot))
+    : rgba(mix(tone.shade, tone.rim, lam), Math.min(1, (0.3 + 0.25 * lam) * Math.max(g, 0.6) * hot));
+}
+
+function boxCorners(b: Box, cam: Camera): { P: Pt[]; W: V3[] } {
   const P: Pt[] = [];
   const W: V3[] = [];
   for (let i = 0; i < 8; i++) {
@@ -93,15 +127,21 @@ function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesT
     W.push(w);
     P.push(cam.project(w));
   }
+  return { P, W };
+}
+
+const faceVisible = (f: (typeof FACES)[number], W: V3[], eye: V3) => {
+  const cx = (W[f.loop[0]]![0] + W[f.loop[2]]![0]) / 2;
+  const cy = (W[f.loop[0]]![1] + W[f.loop[2]]![1]) / 2;
+  const cz = (W[f.loop[0]]![2] + W[f.loop[2]]![2]) / 2;
+  return f.n[0] * (eye[0] - cx) + f.n[1] * (eye[1] - cy) + f.n[2] * (eye[2] - cz) > 0;
+};
+
+function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesTone, m: Morph, form: Layout['form'], px: number, hot: number) {
+  const { P, W } = boxCorners(b, cam);
   const g = m.glass;
   const thick = b.z1 - b.z0 > 0.05;
   const flat = mix(tone.flat, tone.hover, hot > 1 ? 1 - g : 0);
-  const visible = (f: (typeof FACES)[number]) => {
-    const cx = (W[f.loop[0]]![0] + W[f.loop[2]]![0]) / 2;
-    const cy = (W[f.loop[0]]![1] + W[f.loop[2]]![1]) / 2;
-    const cz = (W[f.loop[0]]![2] + W[f.loop[2]]![2]) / 2;
-    return f.n[0] * (cam.eye[0] - cx) + f.n[1] * (cam.eye[1] - cy) + f.n[2] * (cam.eye[2] - cz) > 0;
-  };
 
   if (b.y1 - b.y0 < 0.5 && form === 'columns') {
     // A real zero: a thin line on the baseline, a flat footprint in 3D.
@@ -119,7 +159,7 @@ function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesT
     return;
   }
 
-  const shown = thick ? FACES.filter(visible) : [FACES[0]!];
+  const shown = thick ? FACES.filter((f) => faceVisible(f, W, cam.eye)) : [FACES[0]!];
   if (thick && g > 0) {
     // The far faces first, faintly: the glass's thickness seen through the front.
     for (const f of FACES) {
@@ -136,8 +176,8 @@ function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesT
     const pts = f.loop.map((i) => P[i]!);
     if (f.front) {
       const r = 3 * (1 - g);
-      // Columns round their two top corners; rows round all four, as the flat charts do.
-      const radii = form === 'columns' ? [0, 0, r, r] : [r, r, r, r];
+      // Columns round their two top corners and bars all four, as the flat charts do; a stack only its last part.
+      const radii = b.round === 'none' ? [0, 0, 0, 0] : b.round === 'all' ? [r, r, r, r] : b.round === 'end' && form === 'rows' ? [0, r, r, 0] : form === 'columns' ? [0, 0, r, r] : [r, r, r, r];
       roundedPath(c, pts, radii);
       const top = [(pts[2]![0] + pts[3]![0]) / 2, (pts[2]![1] + pts[3]![1]) / 2];
       const bot = [(pts[0]![0] + pts[1]![0]) / 2, (pts[0]![1] + pts[1]![1]) / 2];
@@ -166,10 +206,8 @@ function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesT
       }
       continue;
     }
-    const lam = Math.max(0, f.n[0] * LIGHT[0] + f.n[1] * LIGHT[1] + f.n[2] * LIGHT[2]);
     poly(c, pts);
-    const isTop = f.n[1] > 0.5;
-    c.fillStyle = isTop ? rgba(mix(flat, tone.cap, g), Math.min(1, (0.35 + 0.43 * g) * hot)) : rgba(mix(tone.shade, tone.rim, lam), Math.min(1, (0.3 + 0.25 * lam) * Math.max(g, 0.6) * hot));
+    c.fillStyle = sideFill(f.n, tone, flat, g, hot);
     c.fill();
     c.strokeStyle = rgba(tone.edge, Math.min(1, 0.9 * g * hot));
     c.lineWidth = 1.1 * px;
@@ -177,16 +215,226 @@ function drawBox(c: CanvasRenderingContext2D, b: Box, cam: Camera, tone: SeriesT
   }
 }
 
-function drawLabel(c: CanvasRenderingContext2D, text: string, x: number, y: number, anchor: CanvasTextAlign, color: string, m: Morph, size: number, font: string) {
-  c.font = `${size}px ${font}`;
+/**
+ * A bullet's target: flat, a pale case with a grey outline (open at the baseline), the bar inside drawn over it; in 3D
+ * a clear glass case, its far faces behind the bar and its near faces in front of it.
+ */
+function drawCase(c: CanvasRenderingContext2D, b: Box, cam: Camera, m: Morph, form: Layout['form'], px: number, hot: number, inner: () => void) {
+  const { P, W } = boxCorners(b, cam);
+  const g = m.glass;
+  const thick = b.z1 - b.z0 > 0.05;
+  const front = FACES[0]!.loop.map((i) => P[i]!);
+  poly(c, front);
+  c.fillStyle = rgba(T.line, 0.55 * (1 - g));
+  c.fill();
+  const shown = thick ? FACES.filter((f) => faceVisible(f, W, cam.eye)) : [FACES[0]!];
+  if (thick && g > 0) {
+    for (const f of FACES) {
+      if (shown.includes(f)) continue;
+      poly(c, f.loop.map((i) => P[i]!));
+      c.fillStyle = rgba(T.line, 0.05 * g);
+      c.fill();
+      c.strokeStyle = rgba(T.chromeFg, 0.22 * g * hot);
+      c.lineWidth = px;
+      c.stroke();
+    }
+  }
+  inner();
+  for (const f of shown) {
+    const pts = f.loop.map((i) => P[i]!);
+    if (g > 0) {
+      poly(c, pts);
+      c.fillStyle = rgba(f.n[1] > 0.5 ? T.white : T.line, (f.front ? 0.06 : 0.1) * g);
+      c.fill();
+    }
+    if (f.front) {
+      // Open at the baseline: the bottom edge for columns, the left edge for bars (the front loop is BL, BR, TR, TL).
+      line(c, form === 'rows' ? [pts[3]!, pts[2]!, pts[1]!, pts[0]!] : [pts[0]!, pts[3]!, pts[2]!, pts[1]!]);
+      c.strokeStyle = rgba(mix(T.field, T.chromeFg, g), Math.min(1, (1 - 0.4 * g) * hot));
+      // In viewBox units, like the flat case's stroke, so the outline keeps its width at the hand-off.
+      c.lineWidth = 1.5 - 0.4 * g;
+      c.stroke();
+    } else if (g > 0) {
+      poly(c, pts);
+      c.strokeStyle = rgba(T.chromeFg, Math.min(1, 0.45 * g * hot));
+      c.lineWidth = px;
+      c.stroke();
+    }
+  }
+}
+
+/** A marker: flat, a dot with a white ring that parts it from the line; in 3D a glass bead with a highlight. */
+function drawDot(c: CanvasRenderingContext2D, d: Dot, cam: Camera, tone: SeriesTone, m: Morph, hot: number) {
+  const [x, y] = cam.project(d.c);
+  const rs = dotRadius(cam, d.c, d.r);
+  const g = m.glass;
+  const col = mix(mix(tone.flat, tone.hover, hot > 1 ? 1 - g : 0), tone.core, g);
+  c.beginPath();
+  c.arc(x, y, rs, 0, Math.PI * 2);
+  if (g > 0) {
+    const fill = c.createRadialGradient(x - rs * 0.35, y - rs * 0.35, 0, x, y, rs);
+    fill.addColorStop(0, rgba(mix(col, T.white, 0.55 * g), Math.min(1, hot)));
+    fill.addColorStop(0.55, rgba(col, Math.min(1, hot)));
+    fill.addColorStop(1, rgba(mix(col, tone.shade, 0.5 * g), Math.min(1, hot)));
+    c.fillStyle = fill;
+  } else c.fillStyle = col;
+  c.fill();
+  c.strokeStyle = mix(T.white, T.stageTop, m.stage);
+  c.lineWidth = 2 - 0.8 * g;
+  c.stroke();
+  if (g > 0.02) {
+    c.beginPath();
+    c.arc(x - rs * 0.35, y - rs * 0.4, rs * 0.28, 0, Math.PI * 2);
+    c.fillStyle = rgba(T.white, 0.5 * g);
+    c.fill();
+  }
+}
+
+/**
+ * An outline pushed out in depth: the far face faintly, the sides that face the eye far to near (a curve's sides as
+ * one shaded surface, so no seams show), then the front. A line's ribbon also has a glow down to the floor, and an
+ * area its top line along the front. Markers go on last.
+ */
+function drawPrism(c: CanvasRenderingContext2D, pr: Prism, cam: Camera, m: Morph, px: number, hot: number, lift: Pt) {
+  const g = m.glass;
+  const tone = pr.tone;
+  const flat = mix(tone.flat, tone.hover, hot > 1 ? 1 - g : 0);
+  const col = mix(flat, tone.core, g);
+  const pts: Pt[] = pr.pts.map(([x, y]) => [x + lift[0], y + lift[1]]);
+  const n = pts.length;
+  const thick = pr.z1 - pr.z0 > 0.05;
+  const F = pts.map(([x, y]) => cam.project([x, y, pr.z1]));
+  const B = pts.map(([x, y]) => cam.project([x, y, pr.z0]));
+
+  if (pr.curtain && g > 0) {
+    const zc = (pr.z0 + pr.z1) / 2;
+    const q = pr.curtain.map(([x, y]) => cam.project([x, y, zc]));
+    const ys = pr.curtain.map((p) => p[1]);
+    const xm = (Math.min(...pr.curtain.map((p) => p[0])) + Math.max(...pr.curtain.map((p) => p[0]))) / 2;
+    const [tx, ty] = cam.project([xm, Math.max(...ys), zc]);
+    const [bx, by] = cam.project([xm, Math.min(...ys), zc]);
+    const glow = c.createLinearGradient(tx, ty, bx, by);
+    glow.addColorStop(0, rgba(tone.core, 0.26 * g * hot));
+    glow.addColorStop(1, rgba(tone.core, 0));
+    poly(c, q);
+    c.fillStyle = glow;
+    c.fill();
+  }
+
+  if (n >= 3) {
+    let area2 = 0;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % n]!;
+      area2 += a[0] * b[1] - b[0] * a[1];
+    }
+    const sign = area2 >= 0 ? 1 : -1;
+    if (thick && g > 0 && pr.look !== 'ribbon') {
+      poly(c, B);
+      c.fillStyle = rgba(tone.core, 0.08 * g * hot);
+      c.fill();
+    }
+    if (thick) {
+      // Outward normal of each edge, and whether it faces the eye.
+      const zm = (pr.z0 + pr.z1) / 2;
+      const edges = pts.map((a, i) => {
+        const b = pts[(i + 1) % n]!;
+        const dx = b[0] - a[0];
+        const dy = b[1] - a[1];
+        const l = Math.hypot(dx, dy) || 1;
+        const nn: V3 = [(sign * dy) / l, (-sign * dx) / l, 0];
+        const mx = (a[0] + b[0]) / 2;
+        const my = (a[1] + b[1]) / 2;
+        const vis = nn[0] * (cam.eye[0] - mx) + nn[1] * (cam.eye[1] - my) > 0 && l > 1e-6;
+        return { i, nn, vis, dist: Math.hypot(mx - cam.eye[0], my - cam.eye[1], zm - cam.eye[2]) };
+      });
+      // Runs: neighbouring visible edges of one curve.
+      const runs: number[][] = [];
+      for (const e of edges) {
+        if (!e.vis) continue;
+        const last = runs[runs.length - 1];
+        const prev = last?.[last.length - 1];
+        if (last && prev === e.i - 1 && pr.smooth[prev] && pr.smooth[e.i]) last.push(e.i);
+        else runs.push([e.i]);
+      }
+      // A run that wraps past the last edge joins the first one.
+      if (runs.length > 1) {
+        const first = runs[0]!;
+        const last = runs[runs.length - 1]!;
+        if (first[0] === 0 && last[last.length - 1] === n - 1 && pr.smooth[n - 1] && pr.smooth[0]) {
+          runs[0] = [...last, ...first];
+          runs.pop();
+        }
+      }
+      runs.sort((a, b) => edges[b[Math.floor(b.length / 2)]!]!.dist - edges[a[Math.floor(a.length / 2)]!]!.dist);
+      for (const run of runs) {
+        const idx = [...run.map((i) => i), (run[run.length - 1]! + 1) % n];
+        const top = idx.map((i) => F[i]!);
+        const bottom = idx.map((i) => B[i]!).reverse();
+        poly(c, [...top, ...bottom]);
+        if (run.length === 1) c.fillStyle = sideFill(edges[run[0]!]!.nn, tone, flat, g, hot);
+        else {
+          const mid = (i: number): Pt => [(F[i]![0] + F[(i + 1) % n]![0] + B[i]![0] + B[(i + 1) % n]![0]) / 4, (F[i]![1] + F[(i + 1) % n]![1] + B[i]![1] + B[(i + 1) % n]![1]) / 4];
+          const a = mid(run[0]!);
+          const b = mid(run[run.length - 1]!);
+          const grad = c.createLinearGradient(a[0], a[1], b[0], b[1]);
+          run.forEach((i, k) => grad.addColorStop(k / (run.length - 1), sideFill(edges[i]!.nn, tone, flat, g, hot)));
+          c.fillStyle = grad;
+        }
+        c.fill();
+        if (g > 0.02) {
+          c.strokeStyle = rgba(tone.edge, Math.min(1, (pr.look === 'ribbon' ? 0.5 : 0.9) * g * hot));
+          c.lineWidth = 1.1 * px;
+          line(c, top);
+          c.stroke();
+          line(c, bottom);
+          c.stroke();
+        }
+      }
+    }
+    poly(c, F);
+    if (pr.look === 'ribbon') c.fillStyle = rgba(col, Math.min(1, hot));
+    else {
+      const ys = F.map((p) => p[1]);
+      const xm = F.reduce((s, p) => s + p[0], 0) / n;
+      const grad = c.createLinearGradient(xm, Math.min(...ys), xm, Math.max(...ys));
+      if (pr.look === 'area') {
+        grad.addColorStop(0, rgba(col, Math.min(1, 0.22 + 0.3 * g)));
+        grad.addColorStop(1, rgba(col, Math.min(1, 0.22 - 0.08 * g)));
+      } else {
+        grad.addColorStop(0, rgba(col, Math.min(1, (1 - 0.5 * g) * (g > 0 ? hot : 1))));
+        grad.addColorStop(1, rgba(col, Math.min(1, (1 - 0.75 * g) * (g > 0 ? hot : 1))));
+      }
+      c.fillStyle = grad;
+    }
+    c.fill();
+    if (g > 0.02 && pr.look !== 'ribbon') {
+      c.strokeStyle = rgba(tone.edge, Math.min(1, 0.9 * g * hot));
+      c.lineWidth = 1.1 * px;
+      c.stroke();
+    }
+  }
+  if (pr.edge && pr.edge.length > 1) {
+    // The area's line, along the top of its front.
+    line(c, pr.edge.map(([x, y]) => cam.project([x + lift[0], y + lift[1], pr.z1])));
+    c.strokeStyle = rgba(mix(flat, tone.edge, g), Math.min(1, hot));
+    c.lineWidth = 2 - 0.8 * g;
+    c.lineJoin = 'round';
+    c.stroke();
+  }
+  for (const d of pr.dots) drawDot(c, d, cam, tone, m, hot);
+}
+
+function drawLabel(c: CanvasRenderingContext2D, text: string, x: number, y: number, anchor: CanvasTextAlign, color: string, chip: string | null, m: Morph, size: number, font: string, weight: number) {
+  c.font = `${weight} ${size}px ${font}`;
   c.textAlign = anchor;
   c.textBaseline = 'alphabetic';
-  if (m.chips > 0.01) {
+  if (m.chips > 0.01 && chip) {
     const w = c.measureText(text).width;
     const x0 = anchor === 'center' ? x - w / 2 : anchor === 'right' ? x - w : x;
     c.beginPath();
     c.roundRect(x0 - 3, y - size * 0.82, w + 6, size * 1.1, 3);
-    c.fillStyle = m.dark ? rgba(T.stageTop, 0.72 * m.chips) : rgba(T.white, 0.85 * m.chips);
+    c.fillStyle = chip;
     c.fill();
   }
   c.fillStyle = color;
@@ -195,11 +443,13 @@ function drawLabel(c: CanvasRenderingContext2D, text: string, x: number, y: numb
 
 const ALIGN = { start: 'left', middle: 'center', end: 'right' } as const;
 
+const quad = (cam: Camera, x0: number, x1: number, y0: number, y1: number, z: number): Pt[] => [cam.project([x0, y0, z]), cam.project([x1, y0, z]), cam.project([x1, y1, z]), cam.project([x0, y1, z])];
+
 /**
- * One frame. The canvas is sized in device pixels; drawing happens in viewBox units. Returns the boxes in paint order
- * (far to near), for hit testing.
+ * One frame. The canvas is sized in device pixels; drawing happens in viewBox units. Returns the marks in paint order
+ * (far to near) and the camera they were drawn with, for hit testing.
  */
-export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout, cam: Camera, m: Morph, opt: DrawOptions, s: Scratch): Box[] {
+export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout, cam: Camera, m: Morph, opt: DrawOptions, s: Scratch): { order: Mark[]; cam: Camera } {
   const cw = ctx.canvas.width;
   const ch = ctx.canvas.height;
   const k = opt.unit * opt.dpr;
@@ -208,6 +458,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
   ctx.clearRect(0, 0, cw, ch);
   ctx.setTransform(k, 0, 0, k, 0, 0);
   const { vw, vh } = scene;
+  const f = scene.floor;
+  const hotFor = (datum: number) => (opt.hover < 0 ? 1 : datum === opt.hover ? 1.5 : 0.7);
 
   // The stage: the card's white gives way to the dark PANW stage.
   if (m.stage > 0) {
@@ -220,8 +472,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
     ctx.fillRect(0, 0, vw, vh);
     ctx.globalAlpha = 1;
     if (m.glow > 0) {
-      const f = scene.floor;
-      const [gx, gy] = cam.project([(f.x0 + f.x1) / 2, f.y, (f.z0 + f.z1) / 2]);
+      const { min, max } = scene.bounds;
+      const [gx, gy] = f ? cam.project([(f.x0 + f.x1) / 2, f.y, (f.z0 + f.z1) / 2]) : cam.project([(min[0] + max[0]) / 2, min[1], (min[2] + max[2]) / 2]);
       const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 0.65 * Math.hypot(vw, vh));
       glow.addColorStop(0, rgba(T.orange, 0.16 * m.glow));
       glow.addColorStop(1, rgba(T.orange, 0));
@@ -231,9 +483,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
   }
 
   // Grid floor.
-  if (m.floor > 0) {
-    const f = scene.floor;
-    poly(ctx, [cam.project([f.x0, f.y, f.z0]), cam.project([f.x1, f.y, f.z0]), cam.project([f.x1, f.y, f.z1]), cam.project([f.x0, f.y, f.z1])]);
+  if (f && m.floor > 0) {
+    poly(ctx, quad3(cam, f));
     ctx.fillStyle = rgba(T.chrome2, 0.35 * m.floor);
     ctx.fill();
     const step = 28;
@@ -254,14 +505,16 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
       ctx.lineTo(...cam.project([f.x1, f.y, z]));
       ctx.stroke();
     }
-    // Light pools under the bars that stand on the floor, and their reflections, both kept inside the floor's edges.
+    // Light pools under the bars that stand on the floor, and reflections, both kept inside the floor's edges.
     if (opt.quality === 0 && m.glow > 0) {
       ctx.save();
-      poly(ctx, [cam.project([f.x0, f.y, f.z0]), cam.project([f.x1, f.y, f.z0]), cam.project([f.x1, f.y, f.z1]), cam.project([f.x0, f.y, f.z1])]);
+      poly(ctx, quad3(cam, f));
       ctx.clip();
-      for (const b of scene.boxes) {
+      // A case is clear glass: it gives no light; the bar inside it does.
+      const lit = scene.boxes.flatMap((b) => (b.inner ? [b.inner] : b.role === 'case' ? [] : [b]));
+      for (const b of lit) {
         if (b.part === 'above' || Math.abs(b.y0 - f.y) > 0.5) continue;
-        const tone = SERIES_TONES[b.series] ?? SERIES_TONES[0]!;
+        const tone = b.tone ?? SERIES_TONES[b.series] ?? SERIES_TONES[0]!;
         const [cx, cy] = cam.project([(b.x0 + b.x1) / 2, f.y, (b.z0 + b.z1) / 2]);
         const [ex] = cam.project([b.x1 + (b.x1 - b.x0) * 0.7, f.y, (b.z0 + b.z1) / 2]);
         const [, ey] = cam.project([(b.x0 + b.x1) / 2, f.y, b.z1 + (b.z1 - b.z0) * 0.7]);
@@ -279,13 +532,13 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
         ctx.fill();
         ctx.restore();
       }
-      // Reflections: each bar mirrored in the floor, fading out with depth the way a polished floor does.
+      // Reflections: each mark mirrored in the floor, fading out with depth the way a polished floor does.
       const fade = 0.25 * vh;
-      for (const b of scene.boxes) {
+      for (const b of lit) {
         const y1 = 2 * f.y - b.y0;
         const y0 = Math.max(2 * f.y - b.y1, f.y - fade);
         if (y1 - y0 < 0.5 || b.y0 < f.y - 0.01) continue;
-        const tone = SERIES_TONES[b.series] ?? SERIES_TONES[0]!;
+        const tone = b.tone ?? SERIES_TONES[b.series] ?? SERIES_TONES[0]!;
         const [sx, sy] = cam.project([(b.x0 + b.x1) / 2, f.y, b.z1]);
         const [ex, ey] = cam.project([(b.x0 + b.x1) / 2, f.y - fade, b.z1]);
         const shine = ctx.createLinearGradient(sx, sy, ex, ey);
@@ -301,16 +554,55 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
           ctx.fill();
         }
       }
+      for (const p of scene.prisms) {
+        if (p.look === 'ribbon' || p.pts.length < 3 || p.y0 > f.y + 4) continue;
+        const [sx, sy] = cam.project([(p.x0 + p.x1) / 2, f.y, p.z1]);
+        const [ex, ey] = cam.project([(p.x0 + p.x1) / 2, f.y - fade, p.z1]);
+        const shine = ctx.createLinearGradient(sx, sy, ex, ey);
+        shine.addColorStop(0, rgba(p.tone.core, (p.look === 'area' ? 0.18 : 0.26) * m.glow * m.glass * p.tone.glow));
+        shine.addColorStop(1, rgba(p.tone.core, 0));
+        ctx.fillStyle = shine;
+        poly(ctx, p.pts.map(([x, y]) => cam.project([x, 2 * f.y - y, p.z1])));
+        ctx.fill();
+      }
       ctx.restore();
+    }
+  }
+
+  // A heatmap's grid: a dark glass table top in 3D; flat, the empty cells' pale squares.
+  if (scene.board && scene.frame) {
+    const lc = localCamera(cam, scene.frame);
+    const b = scene.board;
+    if (m.glass > 0) {
+      poly(ctx, quad(lc, b.x0 - 6, b.x1 + 6, b.y0 - 6, b.y1 + 6, 0));
+      ctx.fillStyle = rgba(T.chrome2, 0.6 * m.glass);
+      ctx.fill();
+      ctx.strokeStyle = rgba(T.line, 0.2 * m.glass);
+      ctx.lineWidth = px;
+      ctx.stroke();
+    }
+    for (const e of b.empty) {
+      // Flat, the same rounded pale square as the SVG; the dashed outline comes in with the glass.
+      const r = 3 * (1 - m.glass);
+      roundedPath(ctx, quad(lc, e.x0, e.x1, e.y0, e.y1, 0), [r, r, r, r]);
+      ctx.fillStyle = rgba(mix(T.line, T.white, 0.5), 1 - m.glass);
+      ctx.fill();
+      if (m.glass > 0) {
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = rgba(T.line, (m.dark ? 0.4 : 1) * m.glass);
+        ctx.lineWidth = px;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 
   // Back glass panel, carrying the value gridlines (in the bars' plane when flat, so they are the 2D gridlines).
   const pn = scene.panel;
-  if (m.glass > 0) {
-    const quad = [cam.project([pn.x0, pn.y0, pn.z]), cam.project([pn.x1, pn.y0, pn.z]), cam.project([pn.x1, pn.y1, pn.z]), cam.project([pn.x0, pn.y1, pn.z])] as Pt[];
-    poly(ctx, quad);
-    const pf = ctx.createLinearGradient(quad[3]![0], quad[3]![1], quad[0]![0], quad[0]![1]);
+  if (pn && m.glass > 0) {
+    const q = quad(cam, pn.x0, pn.x1, pn.y0, pn.y1, pn.z);
+    poly(ctx, q);
+    const pf = ctx.createLinearGradient(q[3]![0], q[3]![1], q[0]![0], q[0]![1]);
     pf.addColorStop(0, rgba(T.chrome2, 0.55 * m.glass));
     pf.addColorStop(1, rgba(T.chrome, 0.2 * m.glass));
     ctx.fillStyle = pf;
@@ -319,8 +611,8 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
     ctx.lineWidth = px;
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(...quad[3]!);
-    ctx.lineTo(...quad[2]!);
+    ctx.moveTo(...q[3]!);
+    ctx.lineTo(...q[2]!);
     ctx.strokeStyle = rgba(T.white, 0.22 * m.glass);
     ctx.stroke();
   }
@@ -352,15 +644,39 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
     ctx.setLineDash([]);
   }
 
-  // The bars, on their own layer so the bloom can be made from them.
+  // A donut's legend keys.
+  for (const sw of scene.swatches) {
+    const [x, y, z] = sw.p;
+    poly(ctx, quad(cam, x, x + sw.s, y - sw.s, y, z));
+    ctx.fillStyle = mix(sw.tone.flat, sw.tone.core, m.glass);
+    ctx.fill();
+  }
+
+  // The marks, on their own layer so the bloom can be made from them.
   fitScratch(s, cw, ch);
   const lc = s.layer.getContext('2d')!;
   lc.setTransform(1, 0, 0, 1, 0, 0);
   lc.clearRect(0, 0, cw, ch);
   lc.setTransform(k, 0, 0, k, 0, 0);
-  const { below, above, eyeAbove } = paintOrder(scene, cam);
-  const hotFor = (b: Box) => (opt.hover < 0 ? 1 : b.datum === opt.hover ? 1.5 : 0.7);
-  const drawAll = (list: Box[]) => list.forEach((b) => drawBox(lc, b, cam, SERIES_TONES[b.series] ?? SERIES_TONES[0]!, m, L.form, px, hotFor(b)));
+  const po = paintOrder(scene, cam);
+  const mc = po.cam;
+  const drawMark = (b: Mark) => {
+    if (isPrism(b)) {
+      // A hovered wedge slides out a little, in 3D.
+      const out = b.out && b.datum === opt.hover ? 6 * m.glass : 0;
+      drawPrism(lc, b, mc, m, px, b.datum >= 0 ? hotFor(b.datum) : opt.hover < 0 ? 1 : b.dots.some((d) => d.datum === opt.hover) ? 1.2 : 0.8, b.out ? [b.out[0] * out, b.out[1] * out] : [0, 0]);
+      return;
+    }
+    const tone = b.tone ?? SERIES_TONES[b.series] ?? SERIES_TONES[0]!;
+    if (b.role === 'case') {
+      drawCase(lc, b, mc, m, L.form, px, hotFor(b.datum), () => {
+        if (b.inner) drawBox(lc, b.inner, mc, SERIES_TONES[b.inner.series] ?? SERIES_TONES[0]!, m, L.form, px, hotFor(b.inner.datum));
+      });
+      return;
+    }
+    drawBox(lc, b, mc, tone, m, L.form, px, hotFor(b.datum));
+    if (b.cap) drawDot(lc, { datum: b.datum, c: b.cap.c, r: b.cap.r }, mc, tone, m, hotFor(b.datum));
+  };
   const plane = () => {
     const t = scene.target;
     if (!t) return;
@@ -383,28 +699,28 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
     lc.lineTo(...cam.project([t.x1, t.y, t.z1]));
     lc.stroke();
   };
-  if (eyeAbove) {
-    drawAll(below);
+  if (po.eyeAbove) {
+    po.below.forEach(drawMark);
     plane();
-    drawAll(above);
+    po.above.forEach(drawMark);
   } else {
-    drawAll(above);
+    po.above.forEach(drawMark);
     plane();
-    drawAll(below);
+    po.below.forEach(drawMark);
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.drawImage(s.layer, 0, 0);
 
-  // Bloom: the bar layer, downsampled three times and added back as light.
+  // Bloom: the mark layer, downsampled three times and added back as light.
   if (opt.quality < 2 && m.glow > 0.01) {
     let src: HTMLCanvasElement = s.layer;
     for (const mip of s.mips) {
-      const mc = mip.getContext('2d')!;
-      mc.setTransform(1, 0, 0, 1, 0, 0);
-      mc.clearRect(0, 0, mip.width, mip.height);
-      mc.imageSmoothingEnabled = true;
-      mc.imageSmoothingQuality = 'high';
-      mc.drawImage(src, 0, 0, src.width, src.height, 0, 0, mip.width, mip.height);
+      const mcx = mip.getContext('2d')!;
+      mcx.setTransform(1, 0, 0, 1, 0, 0);
+      mcx.clearRect(0, 0, mip.width, mip.height);
+      mcx.imageSmoothingEnabled = true;
+      mcx.imageSmoothingQuality = 'high';
+      mcx.drawImage(src, 0, 0, src.width, src.height, 0, 0, mip.width, mip.height);
       src = mip;
     }
     ctx.save();
@@ -428,10 +744,14 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
     ctx.fillRect(0, 0, vw, vh);
   }
 
-  // Labels last, on chips. Turned, labels can collide: the target line's label wins (it is the only label not in the
-  // table), then value labels (nearest first), categories, "n/a" and ticks; a label that would overlap one already
-  // placed is left out (it is in the table).
-  const RANK = { target: 0, value: 1, category: 2, na: 3, tick: 4 } as const;
+  // Labels last, on chips. Turned, labels can collide: the target line's label and a donut's total win (they are the
+  // only labels not in the table), then value labels (nearest first), categories, "n/a" and ticks; a label that would
+  // overlap one already placed is left out (it is in the table). A heatmap's row and column names come before its
+  // values: without them no cell can be read.
+  const RANK =
+    scene.kind === 'heatmap'
+      ? ({ target: 0, total: 0, category: 1, value: 2, na: 3, tick: 4 } as const)
+      : ({ target: 0, total: 0, value: 1, category: 2, na: 3, tick: 4 } as const);
   const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
   const labels = scene.labels
     .map((l) => ({ l, at: cam.project(l.p), depth: cam.depth(l.p) }))
@@ -439,20 +759,27 @@ export function drawFrame(ctx: CanvasRenderingContext2D, scene: Scene, L: Layout
   for (const { l, at } of labels) {
     const x = at[0] + l.dx;
     const y = at[1] + l.dy;
-    const size = l.kind === 'tick' ? 11 : 12;
+    const size = labelSize(l.kind);
+    const weight = l.kind === 'total' ? 700 : 400;
     if (m.t > 0.05) {
-      ctx.font = `${size}px ${opt.font}`;
+      ctx.font = `${weight} ${size}px ${opt.font}`;
       const w = ctx.measureText(l.text).width;
       const x0 = l.anchor === 'middle' ? x - w / 2 : l.anchor === 'end' ? x - w : x;
       const r = { x0: x0 - 3, y0: y - size * 0.85, x1: x0 + w + 3, y1: y + size * 0.3 };
       if (placed.some((d) => r.x0 < d.x1 && d.x0 < r.x1 && r.y0 < d.y1 && d.y0 < r.y1)) continue;
       placed.push(r);
     }
+    // A label inside a coloured mark keeps its ink on the light card; on the stage every value is white on a chip.
     const color =
-      l.kind === 'category' || l.kind === 'target'
-        ? m.dark ? T.chromeFg : T.chrome
-        : m.dark ? (l.kind === 'value' ? T.white : T.stageMuted) : T.muted;
-    drawLabel(ctx, l.text, x, y, ALIGN[l.anchor], color, m, size, opt.font);
+      l.ink && !m.dark
+        ? l.ink === 'light' ? T.white : T.chrome
+        : l.kind === 'category' || l.kind === 'target' || l.kind === 'total'
+          ? m.dark ? T.chromeFg : T.chrome
+          : m.dark ? (l.kind === 'value' ? T.white : T.stageMuted) : T.muted;
+    const chip = m.dark || l.ink === 'light' ? rgba(T.stageTop, 0.72 * m.chips) : l.ink ? null : rgba(T.white, 0.85 * m.chips);
+    drawLabel(ctx, l.text, x, y, ALIGN[l.anchor], color, chip, m, size, opt.font, weight);
   }
-  return eyeAbove ? [...below, ...above] : [...above, ...below];
+  return { order: po.eyeAbove ? [...po.below, ...po.above] : [...po.above, ...po.below], cam: mc };
 }
+
+const quad3 = (cam: Camera, f: NonNullable<Scene['floor']>): Pt[] => [cam.project([f.x0, f.y, f.z0]), cam.project([f.x1, f.y, f.z0]), cam.project([f.x1, f.y, f.z1]), cam.project([f.x0, f.y, f.z1])];

@@ -45,6 +45,8 @@ g:hover > .c3d-bar { fill: #c23b16; }
 g:hover > .c3d-bar.s1 { fill: #1b1d21; }
 g:hover > .c3d-bar.s2 { fill: #5d6470; }
 .c3d-zerobar { stroke: #fa582d; stroke-width: 1.5; fill: none; }
+.c3d-zerobar.s1 { stroke: #26292f; }
+.c3d-zerobar.s2 { stroke: #868e99; }
 .c3d-ghost { stroke: #868e99; stroke-width: 1.5; stroke-dasharray: 4 3; }
 .c3d-target { stroke: #1b1d21; stroke-width: 2; }
 
@@ -88,7 +90,7 @@ html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important
   .c3d-table.visually-hidden { position: static !important; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; clip-path: none; white-space: normal; }
 }
 @media print {
-  .c3d-canvas, .c3d-tools, .c3d-tip { display: none !important; }
+  .c3d-canvas, .c3d-tools, .c3d-tip, .c3d-kinds { display: none !important; }
   .c3d-stage[data-c3d] .c3d-svg { visibility: visible; }
 }
 
@@ -101,3 +103,89 @@ html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important
 .view-switch-buttons button[aria-pressed="true"] { color: #fff; background: #c23b16; }
 .view-switch-buttons button:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
 .view-switch-hint { flex-basis: 100%; margin: 0; font-size: 13px; color: #5d6470; }
+
+/* The chart type picker. */
+.c3d-kinds { display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid #e2e5ea; border-radius: 8px; padding: 2px; background: #f3f4f6; }
+.c3d-kind {
+  display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--font); color: #5d6470; background: none; border: 0;
+  border-radius: 6px; padding: 4px 8px; min-height: 28px; min-width: 28px; cursor: pointer;
+}
+.c3d-kind:hover { color: #c23b16; }
+.c3d-kind[aria-pressed="true"] { color: #fff; background: #1b1d21; }
+.c3d-kind:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
+.c3d-kind-icon { flex: none; }
+@container (max-width: 519.98px) {
+  .c3d-kind { padding: 4px 6px; }
+  .c3d-kind span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+.c3d-legend i.case { background: rgba(226, 229, 234, .55); border: 1.5px solid #868e99; box-sizing: border-box; }
+
+/* Marks of the other chart types. Text stays in text colours; the colour is on the mark beside it. */
+.c3d-svg .c3d-ink-dark { fill: #1b1d21; }
+.c3d-svg .c3d-ink-light { fill: #fff; }
+.c3d-svg .c3d-total { font-size: 16px; font-weight: 700; fill: #1b1d21; }
+.c3d-case { fill: rgba(226, 229, 234, .55); stroke: #868e99; stroke-width: 1.5; transition: fill .15s; }
+g.c3d-hold:hover > .c3d-case { fill: rgba(194, 199, 207, .55); }
+.c3d-dot { fill: #fa582d; stroke: #fff; stroke-width: 2; transition: fill .15s; }
+.c3d-dot.s1 { fill: #26292f; }
+.c3d-dot.s2 { fill: #868e99; }
+g:hover > .c3d-dot { fill: #c23b16; }
+g:hover > .c3d-dot.s1 { fill: #1b1d21; }
+g:hover > .c3d-dot.s2 { fill: #5d6470; }
+.c3d-line { fill: none; stroke: #fa582d; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.c3d-line.s1 { stroke: #26292f; }
+.c3d-line.s2 { stroke: #868e99; }
+.c3d-area { fill: #fa582d; fill-opacity: .22; }
+.c3d-area.s1 { fill: #26292f; }
+.c3d-area.s2 { fill: #868e99; }
+.c3d-hit { fill: transparent; }
+.c3d-wedge, .c3d-sw { fill: #fa582d; transition: fill .15s; }
+.c3d-wedge.t1, .c3d-sw.t1 { fill: #26292f; }
+.c3d-wedge.t2, .c3d-sw.t2 { fill: #fdb4a1; }
+.c3d-wedge.t3, .c3d-sw.t3 { fill: #868e99; }
+.c3d-wedge.t4, .c3d-sw.t4 { fill: #c23b16; }
+.c3d-wedge.t5, .c3d-sw.t5 { fill: #b4bac2; }
+g:hover > .c3d-wedge.t0 { fill: #c23b16; }
+g:hover > .c3d-wedge.t1 { fill: #1b1d21; }
+g:hover > .c3d-wedge.t2 { fill: #fc9277; }
+g:hover > .c3d-wedge.t3 { fill: #5d6470; }
+g:hover > .c3d-wedge.t4 { fill: #9b2f12; }
+g:hover > .c3d-wedge.t5 { fill: #868e99; }
+.c3d-cell { stroke: transparent; stroke-width: 1.5; transition: stroke .15s; }
+g:hover > .c3d-cell { stroke: #1b1d21; }
+
+/* A newly picked type: its marks grow in from the baseline, a line draws itself, a donut turns into place. */
+@keyframes c3d-rise { from { transform: scaleY(0); } }
+@keyframes c3d-reach { from { transform: scaleX(0); } }
+@keyframes c3d-pop { from { transform: scale(0); } }
+@keyframes c3d-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes c3d-fade { from { opacity: 0; } }
+@keyframes c3d-turn { from { opacity: 0; transform: rotate(-35deg) scale(.86); } }
+@keyframes c3d-cell { from { opacity: 0; transform: scale(.7); } }
+.c3d-enter .c3d-bar, .c3d-enter .c3d-case, .c3d-enter .c3d-dot, .c3d-enter .c3d-cell, .c3d-enter.c3d-k-donut .c3d-marks { transform-box: fill-box; }
+.c3d-enter.c3d-cols .c3d-bar, .c3d-enter.c3d-cols .c3d-case { transform-origin: 50% 100%; animation: c3d-rise .5s cubic-bezier(.2, .8, .2, 1) both; }
+.c3d-enter.c3d-rows .c3d-bar, .c3d-enter.c3d-rows .c3d-case { transform-origin: 0 50%; animation: c3d-reach .5s cubic-bezier(.2, .8, .2, 1) both; }
+.c3d-enter .c3d-case { animation-duration: .4s; }
+.c3d-enter .c3d-dot { transform-origin: 50% 50%; animation: c3d-pop .3s .3s cubic-bezier(.2, .8, .2, 1.3) both; }
+.c3d-enter .c3d-line { stroke-dasharray: 1; animation: c3d-draw .7s ease-out both; }
+.c3d-enter .c3d-area { animation: c3d-fade .6s .15s both; }
+.c3d-enter.c3d-k-donut .c3d-marks { transform-origin: 50% 50%; animation: c3d-turn .6s cubic-bezier(.2, .8, .2, 1) both; }
+.c3d-enter .c3d-cell { transform-origin: 50% 50%; animation: c3d-cell .45s cubic-bezier(.2, .8, .2, 1) both; }
+.c3d-enter .c3d-marks text { animation: c3d-fade .3s .35s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .c3d-dot, .c3d-wedge, .c3d-sw, .c3d-case, .c3d-cell { transition: none; }
+  .c3d-enter * { animation: none !important; }
+}
+@media (forced-colors: active) {
+  .c3d-kind[aria-pressed="true"] { forced-color-adjust: none; color: HighlightText; background: Highlight; }
+  /* !important: the series, tone and hover colours above are more specific. */
+  .c3d-dot, .c3d-wedge, .c3d-sw, .c3d-area { fill: Highlight !important; stroke: Canvas; }
+  .c3d-line { stroke: Highlight !important; }
+  .c3d-case { fill: Canvas; stroke: CanvasText; }
+  .c3d-cell { fill: Canvas; stroke: CanvasText !important; }
+  .c3d-svg .c3d-ink-dark, .c3d-svg .c3d-ink-light, .c3d-svg .c3d-total { fill: CanvasText; }
+  .c3d-svg.c3d-k-stacked .c3d-ink-dark, .c3d-svg.c3d-k-stacked .c3d-ink-light { fill: HighlightText; }
+  .c3d-wedge { stroke: CanvasText; stroke-width: 1; }
+  .c3d-legend i.case { background: Canvas; border-color: CanvasText; }
+}

@@ -81,6 +81,10 @@ export function kpiStageChart(total: Answer, byStage: Answer | null, id: string,
     series: [total.metric.name],
     data,
     summary: sentence(title, data, (d) => d.category),
+    // Stages run in funnel order, and the parts add up to the tile's number (checked above), which the donut's hole shows.
+    ordered: true,
+    parts: true,
+    total: { value: totalV, display: format(totalV, unit), label: 'total' },
   };
 }
 
@@ -131,6 +135,7 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
       categories: cats,
       series: [`Pipeline closing in ${period}`, `Quota for ${period}`],
       data: money,
+      compare: true,
       summary: `Open pipeline closing in ${period} and quota for ${period}, by region: ${regions
         .map((k) => `${label(k)} ${format(row(k).numerator, 'currency')} vs ${format(row(k).denominator, 'currency')}`)
         .join(', ')}.`,
@@ -192,6 +197,8 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
       series: [a.metric.name],
       data,
       summary: a.narrative,
+      ordered: dim === 'stage',
+      parts: unit !== 'ratio', // sums and counts add up; coverage ratios don't
     };
     if (unit !== 'ratio') return [base];
     const ratioChart: ChartData = { ...base, tab: 'Coverage', target: { value: 1, label: '1.00x = quota' }, axisFloor: 1.25 };
@@ -215,6 +222,8 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
         unit: 'currency',
         series: ['Open pipeline', 'Quota'],
         data: money,
+        parts: false,
+        compare: true,
         summary: `Open pipeline and quota by ${dim}: ${ordered.map((k) => `${dimLabel(a, dim, row(k)[dim])} ${format(row(k).numerator, 'currency')} vs ${format(row(k).denominator, 'currency')}`).join(', ')}.`,
       },
     ];
@@ -245,6 +254,9 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
       series: seriesKeys.map((k) => labelOf(seriesDim, k)),
       data,
       summary: a.narrative,
+      ordered: catDim === 'stage',
+      parts: unit !== 'ratio',
+      grid: true,
     },
   ];
 }

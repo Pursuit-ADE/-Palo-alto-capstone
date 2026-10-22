@@ -12,7 +12,7 @@ import { FactChips, scopeText } from './fact-chips';
 import { format, cell, dateRange } from './format';
 import { Chart3D } from './chart3d';
 import { coverageRegionCharts, kpiStageChart } from './chart-data';
-import { readView } from './view-mode';
+import { readChartKinds, readView } from './view-mode';
 import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +36,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   const period = resolvePeriod('current', AS_OF_DATE)!;
   const view = await readView();
   const graphs = view === 'graphs';
+  const kinds = graphs ? await readChartKinds() : undefined;
 
   // Dashboard tiles: the same governed path as any typed question, so they obey the same scope.
   // The Graphs view also splits the two tiles by stage: two more governed (scoped, audited) calls, made only then.
@@ -105,13 +106,13 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
               <span className="label">Open pipeline · all open deals</span>
               <span className="value">{format(pipeline.rows[0]?.value, 'currency')}</span>
               <span className="note">Any expected close date (not limited to {period})</span>
-              {graphs && <Chart3D charts={[kpiStageChart(pipeline, pipelineByStage, 'kpi-pipeline', 'Open pipeline by stage')]} />}
+              {graphs && <Chart3D charts={[kpiStageChart(pipeline, pipelineByStage, 'kpi-pipeline', 'Open pipeline by stage')]} kinds={kinds} />}
             </div>
             <div className="kpi">
               <span className="label">Open opportunities · all open deals</span>
               <span className="value">{format(count.rows[0]?.value, 'count')}</span>
               <span className="note">deals not yet won or lost</span>
-              {graphs && <Chart3D charts={[kpiStageChart(count, countByStage, 'kpi-count', 'Open opportunities by stage')]} />}
+              {graphs && <Chart3D charts={[kpiStageChart(count, countByStage, 'kpi-count', 'Open opportunities by stage')]} kinds={kinds} />}
             </div>
           </section>
 
@@ -120,7 +121,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             <span className="cov-value">{format(cov, 'ratio')}</span>
             <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : '1.00x means pipeline equals quota.'}</p>
             {graphs ? (
-              <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} />
+              <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} kinds={kinds} />
             ) : (
             <>
             <h2>By region</h2>

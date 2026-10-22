@@ -11,7 +11,7 @@ import { getAlertsRuntime } from '@/server/runtime';
 import { SyntheticBadge } from './synthetic-badge';
 import { alertKpis } from './alert-kpis';
 import { Chart3D } from './chart3d';
-import { readView } from './view-mode';
+import { readChartKinds, readView } from './view-mode';
 import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
@@ -34,6 +34,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   const kpis = alertKpis(counts);
   const view = await readView();
   const graphs = view === 'graphs';
+  const kinds = graphs ? await readChartKinds() : undefined;
   // In the Graphs view, a mouse drag on the page around the graph turns it too.
   const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
@@ -91,8 +92,10 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                   series: ['Alerts'],
                   data: kpis.map((k) => ({ category: k.key, series: 0, value: k.value, display: k.value.toLocaleString('en-US'), detail: k.detail ?? k.note })),
                   summary: `Your alerts by status: ${kpis.map((k) => `${k.label} ${k.value}`).join(', ')}.`,
+                  parts: true, // the three statuses don't overlap, so a donut of them is honest
                 },
               ]}
+              kinds={kinds}
             />
           </section>
         ) : (
