@@ -1,6 +1,6 @@
 // Data retention (Oct 17 audit, P1). Run daily with the owner login: `npm run purge` (add --dry-run to only count).
 // Defaults follow docs/SYSTEM-CARD.md and can be changed with AUDIT_RETENTION_DAYS; confirm them with the client.
-import { and, isNull, lt, or, sql } from 'drizzle-orm';
+import { type and, isNull, lt, or, sql } from 'drizzle-orm';
 import type { Db } from './client';
 import { appSessions, queryAudit, sessionGuard } from './schema';
 
