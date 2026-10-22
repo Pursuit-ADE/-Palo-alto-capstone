@@ -29,10 +29,10 @@ event (support case, engagement)
   -> one alert per (rule, user, event), enforced by a unique index
   -> preferences: right away, daily digest, quiet hours, P1 bypass
   -> access checked again immediately before delivery
-  -> channel: in-app inbox, or that user's own Slack webhook
+  -> channel: in-app inbox, that user's own Slack webhook, or that user's own email
 ```
 
-Before each channel call the sender re-checks, fresh from the database, that the user still has a role in the rule's audience, is still subscribed, and can still see the account; anything else is suppressed. Each alert is claimed with a unique token before sending, and only the holder of that token can record the result, so a slow sender whose claim was taken over can't overwrite it. Failed alerts are retried on later flushes with backoff (2^attempts minutes, at most 5 attempts), without needing the original event again. Slack calls time out after 10 seconds. Delivery is at-least-once.
+Before each channel call the sender re-checks, fresh from the database, that the user still has a role in the rule's audience, is still subscribed, and can still see the account; anything else is suppressed. Each alert is claimed with a unique token before sending, and only the holder of that token can record the result, so a slow sender whose claim was taken over can't overwrite it. Failed alerts are retried on later flushes with backoff (2^attempts minutes, at most 5 attempts), without needing the original event again. Slack calls and email posts time out after 10 seconds. Delivery is at-least-once.
 
 The inbox follows current access: an alert about an account the user can no longer see leaves the inbox (to confirm with the client; a Slack message already sent can't be recalled). Only delivered alerts are readable in the inbox. Alerts that are held for a digest, blocked by the access check or failed show up only as counts, with no account or case details. An alert whose send failed, or was cut off mid-send, is retried on the next run; delivered, queued and blocked alerts are not resent.
 
@@ -45,7 +45,7 @@ The inbox follows current access: an alert about an account the user can no long
 | L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks and per-user email; no shared fallback |
 | L6 explanation and copilot link | `explain` template per rule; link opens the copilot with that rule's fixed question. Identity comes from the copilot's own sign-in; in test mode only, the test identity is carried along |
 
-Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is made safe for Slack: angle-bracket links and mentions are escaped, and bare URLs and domain names are defanged (`https[:]//evil[.]example`), so a case subject is readable but never clickable. Only the "Ask the copilot" link is a real link. The seller still reads the text, so a real alert never asks for a password.
+Templates only accept the placeholders their event type provides, and case statuses must be a known value. Event text is inserted as plain text, so a case subject can't inject template variables, and it is made safe for Slack and email: angle-bracket links and mentions are escaped, and bare URLs and domain names are defanged (`https[:]//evil[.]example`), so a case subject is readable but never clickable. Only the "Ask the copilot" link is a real link. The seller still reads the text, so a real alert never asks for a password.
 
 Migrations in `alerts/drizzle/` start at this release's baseline (the alerts service has not been deployed with a persistent database yet). From here on they are append-only: new numbered files, never edits.
 
@@ -56,7 +56,7 @@ Migrations in `alerts/drizzle/` start at this release's baseline (the alerts ser
 | `COPILOT_URL` | Base URL for "Ask the copilot" links (default `http://localhost:3000`). Links open the copilot with a fixed prompt id (`?prompt=high_severity_case`) that the copilot maps to a known question. |
 | `SLACK_USER_WEBHOOKS` | JSON map of user id to that user's own `https://hooks.slack.com/...` webhook. Never commit real values. |
 | `EMAIL_USER_ADDRESSES` | JSON map of user id to that user's own email address. Never commit real inboxes. |
-| `EMAIL_WEBHOOK_URL` | HTTPS (or http://127.0.0.1 / localhost) endpoint that receives `{ to, subject, text, html }`. No shared team inbox. |
+| `EMAIL_WEBHOOK_URL` | HTTPS endpoint that receives `{ to, subject, text, html }`. `http://127.0.0.1` / `localhost` is allowed only with `npm run dev`. No shared team inbox, and no API key is sent: a real mail provider would need one. |
 
 ## Schedule, preferences and persistence (Week 4)
 

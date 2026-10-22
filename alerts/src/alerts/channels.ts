@@ -19,18 +19,26 @@ export interface Channels {
 }
 
 /**
+ * Breaks bare URLs and domain names so Slack and mail clients cannot turn case text into a link
+ * (`https[:]//evil[.]example`). The copilot link we build ourselves is added after this runs.
+ */
+export function defang(text: string): string {
+  return text
+    .replace(/\b([a-z][a-z0-9+.-]*):\/\//gi, '$1[:]//')
+    .replace(/\b([a-z0-9-]+)\.(?=[a-z])/gi, '$1[.]');
+}
+
+/**
  * Makes event text safe to show in Slack. Escaping stops angle-bracket links and mentions. Slack also turns
  * bare URLs and domain names into links, so those are defanged ("https[:]//evil[.]example"): readable, but not
  * clickable. Only the copilot link we build ourselves is a real link. Slack has no escape for its formatting
  * characters, so *, _, ~ and ` in event text become look-alikes (∗ ＿ ∼ ˋ) and can't bold, strike or hide text.
  */
 export function slackEscape(text: string): string {
-  return text
+  return defang(text)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\b([a-z][a-z0-9+.-]*):\/\//gi, '$1[:]//')
-    .replace(/\b([a-z0-9-]+)\.(?=[a-z])/gi, '$1[.]')
     .replace(/[*_~`]/g, (c) => SLACK_LOOKALIKE[c] ?? c);
 }
 
@@ -48,11 +56,11 @@ export function emailEscape(text: string): string {
 /** Subjects cannot carry CR/LF, or a planted title could add Bcc/To headers. */
 export function emailSubject(items: Delivery[], isDigest: boolean): string {
   const raw = isDigest ? `Your alert digest (${items.length})` : items[0]?.title ?? 'Alert';
-  return raw.replace(/[\r\n\0]+/g, ' ').trim().slice(0, 200);
+  return defang(raw.replace(/[\r\n\0]+/g, ' ').trim()).slice(0, 200);
 }
 
 export function emailText(items: Delivery[], isDigest: boolean): string {
-  const lines = items.map((i) => `${i.title}\n${i.explanation}\nAsk the copilot: ${i.link}`);
+  const lines = items.map((i) => `${defang(i.title)}\n${defang(i.explanation)}\nAsk the copilot: ${i.link}`);
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
 }
 
@@ -70,10 +78,13 @@ export function emailHtml(items: Delivery[], isDigest: boolean): string {
   const blocks = items.map((i) => {
     const href = copilotHref(i.link);
     const ask = href ? `<a href="${emailEscape(href)}">Ask the copilot</a>` : 'Ask the copilot';
-    return `<p><b>${emailEscape(i.title)}</b><br>${emailEscape(i.explanation)}<br>${ask}</p>`;
+    return `<p><b>${emailEscape(defang(i.title))}</b><br>${emailEscape(defang(i.explanation))}<br>${ask}</p>`;
   });
   return heading + blocks.join('');
 }
+
+export const EMAIL_WEBHOOK_WARNING =
+  'EMAIL_WEBHOOK_URL is missing or not an allowed catcher; email alerts will fail until it is set (HTTPS, or http://127.0.0.1 / localhost with npm run dev).';
 
 export function createChannels(opts: {
   slackWebhooks?: Record<string, unknown>;
@@ -81,14 +92,20 @@ export function createChannels(opts: {
   emailWebhook?: string;
   fetch?: Fetch;
   sendMail?: SendMail;
+  env?: Record<string, string | undefined>;
+  warn?: (message: string) => void;
 } = {}): Channels {
   // Validated once at startup, whether passed in or read from the environment.
-  const webhooks = parseWebhooks(opts.slackWebhooks ?? process.env.SLACK_USER_WEBHOOKS);
-  const emails = parseEmails(opts.emails ?? process.env.EMAIL_USER_ADDRESSES);
-  const emailWebhook = opts.emailWebhook ?? process.env.EMAIL_WEBHOOK_URL;
+  const env = opts.env ?? process.env;
+  const webhooks = parseWebhooks(opts.slackWebhooks ?? env.SLACK_USER_WEBHOOKS);
+  const emails = parseEmails(opts.emails ?? env.EMAIL_USER_ADDRESSES);
+  const emailWebhook = opts.emailWebhook ?? env.EMAIL_WEBHOOK_URL;
+  if (!opts.sendMail && Object.keys(emails).length > 0 && !isEmailWebhook(emailWebhook, env)) {
+    (opts.warn ?? console.warn)(EMAIL_WEBHOOK_WARNING);
+  }
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
-    if (!isEmailWebhook(emailWebhook)) return false;
+    if (!isEmailWebhook(emailWebhook, env)) return false;
     try {
       const res = await doFetch(emailWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(msg), signal: init.signal });
       return res.ok;
@@ -150,15 +167,15 @@ export function isUserEmail(value: unknown): value is string {
   return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
 }
 
-/** HTTPS catcher, or http://127.0.0.1 / localhost for a laptop Mailpit-style receiver. No credentials in the URL. */
-export function isEmailWebhook(value: unknown): value is string {
+/** HTTPS catcher, or http://127.0.0.1 / localhost in development. No credentials in the URL. */
+export function isEmailWebhook(value: unknown, env: Record<string, string | undefined> = process.env): value is string {
   if (typeof value !== 'string') return false;
   try {
     const url = new URL(value);
     if (url.username || url.password) return false;
     if (url.protocol === 'https:') return true;
     const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
-    return url.protocol === 'http:' && local;
+    return url.protocol === 'http:' && local && env.NODE_ENV !== 'production';
   } catch {
     return false;
   }
