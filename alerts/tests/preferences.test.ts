@@ -33,11 +33,16 @@ describe('preferences (L3)', () => {
     await expect(savePreference(database.db, rules, 'u_ts_east', { ...base, ruleId: 'cxo_engagement' })).rejects.toBeInstanceOf(PreferenceError);
   });
 
+  it('lets a user pick email as the channel', async () => {
+    await savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'email' });
+    expect(await subOf('u_ts_east', 'high_severity_case')).toMatchObject({ channel: 'email' });
+  });
+
   it('refuses invalid values and unknown fields', async () => {
     for (const bad of [
       { ...base, frequency: 'hourly' },
       { ...base, quietStartHour: 24 },
-      { ...base, channel: 'email' },
+      { ...base, channel: 'sms' },
       { ...base, ruleId: 'x'.repeat(100) },
       { ...base, userId: 'u_analyst' },
       { ...base, quietStartHour: 22, quietEndHour: '' }, // half a quiet window

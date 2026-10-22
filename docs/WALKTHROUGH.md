@@ -85,7 +85,7 @@ Every business row is stamped with snapshot `snap_alto-pals-v2`.
 
 **Week 5 (on the week5 branch):** demo accounts with invite codes in both apps, onboarding a second dataset (`docs/ONBOARDING.md`), a golden set of 66 phrasings (14 to 17 per metric), and nine business rules in `registry/glossary.json` (fiscal quarters, what counts as open, regions, estimates, quota, CXO), each checked against the code that applies it.
 
-Not built yet: company sign-in (Active Directory and SSO), alerts on a second dataset, email alerts, per-user time zones, and running on Postgres by default (`npm start` still uses the embedded database; Postgres mode needs the database URLs).
+Not built yet: company sign-in (Active Directory and SSO), alerts on a second dataset, per-user time zones, and running on Postgres by default (`npm start` still uses the embedded database; Postgres mode needs the database URLs).
 
 ## Where to look in the repo
 
