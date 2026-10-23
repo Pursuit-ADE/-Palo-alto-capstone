@@ -274,7 +274,7 @@ function findStages(text: string): string[] {
 }
 
 /** Every period the question mentions, resolved to quarter labels; `unsupported` if any can't be answered. */
-function findPeriods(text: string, glossary: Glossary, asOfDate: string): { labels: Set<string>; unsupported: boolean } {
+export function findPeriods(text: string, glossary: Glossary, asOfDate: string): { labels: Set<string>; unsupported: boolean } {
   const labels = new Set<string>();
   let unsupported = false;
   let rest = text;

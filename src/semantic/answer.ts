@@ -9,6 +9,7 @@ import { Intent as IntentSchema, type Intent } from '../registry/types';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
+import { EXPLAINED_METRIC, explainDiscrepancy, isDiscrepancyQuestion, type Explanation } from './explain';
 import { deterministicModel, type IntentModel } from './model';
 import { ALL_REGIONS, resolvePrincipal, ScopeViolation, type Principal } from './scope';
 
@@ -16,7 +17,7 @@ export { currentSnapshot, type Answer, type RatioPart } from './governed';
 
 export const MAX_QUESTION_LENGTH = 300;
 
-export type Reply = Answer | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
+export type Reply = Answer | Explanation | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
 
 // Questions are short and predictable, so a plain hash could be reversed by hashing likely questions. The
 // audit log stores a keyed hash (HMAC-SHA-256) instead. Set AUDIT_HASH_KEY to keep fingerprints comparable
@@ -119,7 +120,10 @@ async function audited<T extends Reply>(
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
   await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome });
   // The audit ID is filled in only once its row is written.
-  return result.kind === 'answer' ? { ...result, provenance: { ...result.provenance, auditId } } : result;
+  const withId = (a: Answer): Answer => ({ ...a, provenance: { ...a.provenance, auditId } });
+  if (result.kind === 'answer') return { ...result, provenance: { ...result.provenance, auditId } };
+  if (result.kind === 'explanation') return { ...result, answer: withId(result.answer), other: result.other && withId(result.other) };
+  return result;
 }
 
 /** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
@@ -145,24 +149,34 @@ export function parsePrevious(raw: unknown): Intent | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
+/** The checks every question passes before anything reads it: the session lock (S3), the length cap and the flags. */
+async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields) {
+  if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
+  if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
+  const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
+  fields.flags = flags;
+  if (flags.length) await opts.guard?.record(userId);
+  // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
+  // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
+  if (flags.includes('link')) throw new InjectionRefused('link');
+  if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
+}
+
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
-    const p = await principal();
-    if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
-    if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
-    const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
-    fields.flags = flags;
-    if (flags.length) await opts.guard?.record(userId);
-    // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
-    // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
-    if (flags.includes('link')) throw new InjectionRefused('link');
-    if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
+    await screen(phrase, userId, await principal(), opts, fields);
+    // "Why is my coverage different?" gets a fixed explanation inside the asker's scope, before any model sees it.
+    const previous = parsePrevious(opts.previous);
+    if (isDiscrepancyQuestion(phrase, registry, previous)) {
+      Object.assign(fields, { metricId: EXPLAINED_METRIC });
+      return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields);
+    }
     const snapshot = await currentSnapshot(database);
-    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
+    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), previous);
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
