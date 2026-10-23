@@ -1,0 +1,16 @@
+# Keep the image small and free of local state and secrets.
+**/node_modules
+**/.next
+**/.pglite
+**/coverage
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.claude
+docs
+tests
+alerts/tests
+*.pdf

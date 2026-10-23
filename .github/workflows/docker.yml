@@ -1,0 +1,81 @@
+# Builds both container images and runs the whole stack the way a server would (docker compose --profile app):
+# Postgres, the one-shot database setups, then the copilot and alerts as production servers. Passes when both
+# servers redirect to and render their sign-in pages with the security headers.
+name: docker
+
+on:
+  push:
+    branches: [main, week5]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Write throwaway secrets for this run
+        run: |
+          {
+            echo "AUDIT_HASH_KEY=$(openssl rand -hex 32)"
+            echo "DEMO_INVITE_SECRET=$(openssl rand -hex 24)"
+          } > .env
+
+      - name: Build and start the stack
+        run: docker compose --profile app up -d --build --wait --wait-timeout 300
+
+      - name: Both setups finished cleanly
+        run: |
+          for s in copilot-setup alerts-setup; do
+            code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -a -q $s)")
+            echo "$s exited with $code"; test "$code" = 0
+          done
+
+      - name: Both databases were migrated and loaded
+        shell: bash
+        run: |
+          for db in copilot alerts; do
+            tables=$(docker compose exec -T postgres psql -U copilot_owner -d "$db" -tAc "select count(*) from information_schema.tables where table_schema = 'public'")
+            echo "$db: $tables tables"; test "$tables" -gt 0
+          done
+
+      - name: Copilot and alerts serve their sign-in pages with security headers
+        shell: bash
+        run: |
+          for port in 3000 3001; do
+            # Signed out, the home page must redirect to /login, and the login page must render from the production build.
+            read -r code location < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' "http://127.0.0.1:$port/")
+            echo "port $port home: HTTP $code -> $location"
+            test "$code" = 307
+            test "$location" = "http://127.0.0.1:$port/login"
+            curl -s -D /tmp/headers-$port.txt -o /tmp/login-$port.html "http://127.0.0.1:$port/login"
+            head -1 /tmp/headers-$port.txt | grep -q ' 200'
+            grep -qi 'password' /tmp/login-$port.html
+            # Each security header from proxy.ts and next.config.ts must be present on its own.
+            for h in content-security-policy x-frame-options x-content-type-options; do
+              grep -qi "^$h:" /tmp/headers-$port.txt || { echo "port $port is missing $h"; exit 1; }
+            done
+            echo "port $port /login: HTTP 200, all three security headers present"
+          done
+
+      - name: Invite codes can be generated for this secret
+        shell: bash
+        run: |
+          # The script derives codes from DEMO_INVITE_SECRET and the demo user list; it does not open the database.
+          # Written to a file, not piped to head, so a failing script fails the step.
+          docker compose run --rm -e DEMO_INVITE_SECRET="$(grep DEMO_INVITE_SECRET .env | cut -d= -f2)" copilot-setup npx tsx scripts/invites.ts > /tmp/invites.txt
+          count=$(grep -cE '^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4} ' /tmp/invites.txt)
+          echo "$count invite codes"; test "$count" -gt 0
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail 200
+
+      - name: Stop
+        if: always()
+        run: docker compose --profile app down -v
