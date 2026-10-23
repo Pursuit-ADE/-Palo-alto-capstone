@@ -88,6 +88,13 @@ export function kpiStageChart(total: Answer, byStage: Answer | null, id: string,
   };
 }
 
+// Coverage divides pipeline closing in the quota period, not every open deal (the dashboard's "Open pipeline" tile), so
+// every graph of coverage rows names its numerator the same way, with the period, and the ratio's detail keeps the period.
+const closingLabel = (period?: string) => (period ? `Pipeline closing in ${period}` : 'Pipeline closing in the period');
+const quotaLabel = (period?: string, word = 'Quota') => (period ? `${word} for ${period}` : word);
+const coverageDetail = (r: Answer['rows'][number], v: number | null, period?: string) =>
+  `${format(r.numerator, 'currency')} closing in ${period ?? 'the period'} vs ${format(r.denominator, 'currency')} quota${v === null ? ' (no quota, so not available)' : ''}`;
+
 /** Coverage by region two ways: the ratio against the 1.00x line, and each region's pipeline next to its quota. */
 export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix: string): ChartData[] {
   const regions = byRegion.rows.map((r) => String(r.region));
@@ -96,7 +103,7 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
   const ratio: ChartDatum[] = regions.map((k) => {
     const r = row(k);
     const v = num(r.value);
-    return { category: k, series: 0, value: v, display: format(v, 'ratio'), detail: `${format(r.numerator, 'currency')} closing in ${period} vs ${format(r.denominator, 'currency')} quota${v === null ? ' (no quota, so not available)' : ''}` };
+    return { category: k, series: 0, value: v, display: format(v, 'ratio'), detail: coverageDetail(r, v, period) };
   });
   const money: ChartDatum[] = regions.flatMap((k) => {
     const r = row(k);
@@ -133,10 +140,10 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
       form: 'columns',
       categoryName: 'Region',
       categories: cats,
-      series: [`Pipeline closing in ${period}`, `Quota for ${period}`],
+      series: [closingLabel(period), quotaLabel(period)],
       data: money,
       compare: true,
-      summary: `Open pipeline closing in ${period} and quota for ${period}, by region: ${regions
+      summary: `${closingLabel(period)} and ${quotaLabel(period, 'quota')}, by region: ${regions
         .map((k) => `${label(k)} ${format(row(k).numerator, 'currency')} vs ${format(row(k).denominator, 'currency')}`)
         .join(', ')}.`,
     },
@@ -161,10 +168,9 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
         { category: 'pipeline', series: 0, value: p, display: format(p, 'currency') },
         { category: 'quota', series: 0, value: q, display: q === null ? 'No quota' : format(q, 'currency') },
       ];
-      // Only pipeline closing in the period counts toward coverage, so it is labelled that way, not "Open pipeline".
       const cats = [
-        { key: 'pipeline', label: period ? `Pipeline closing in ${period}` : 'Pipeline closing in the period' },
-        { key: 'quota', label: period ? `Quota for ${period}` : 'Quota' },
+        { key: 'pipeline', label: closingLabel(period) },
+        { key: 'quota', label: quotaLabel(period) },
       ];
       const title = `${a.metric.name}${period ? ` · ${period}` : ''}: pipeline vs quota`;
       return [{ id, title, unit: 'currency', form: 'columns', categoryName: 'Measure', categories: cats, series: ['Amount'], data, summary: `${sentence(title, data, (d) => cats.find((c) => c.key === d.category)!.label)} Coverage is ${format(v, 'ratio')}.` }];
@@ -184,7 +190,7 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
     const data: ChartDatum[] = ordered.map((k) => {
       const r = row(k);
       const v = num(r.value);
-      const detail = unit === 'ratio' && 'numerator' in r ? `${format(r.numerator, 'currency')} pipeline vs ${format(r.denominator, 'currency')} quota${v === null ? ' (no quota, so not available)' : ''}` : undefined;
+      const detail = unit === 'ratio' && 'numerator' in r ? coverageDetail(r, v, period) : undefined;
       return { category: k, series: 0, value: v, display: format(v, unit), ...(detail ? { detail } : {}) };
     });
     const base: ChartData = {
@@ -220,11 +226,11 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
         tab: 'Pipeline vs quota',
         title: `Pipeline vs quota by ${dim}`,
         unit: 'currency',
-        series: ['Open pipeline', 'Quota'],
+        series: [closingLabel(period), quotaLabel(period)],
         data: money,
         parts: false,
         compare: true,
-        summary: `Open pipeline and quota by ${dim}: ${ordered.map((k) => `${dimLabel(a, dim, row(k)[dim])} ${format(row(k).numerator, 'currency')} vs ${format(row(k).denominator, 'currency')}`).join(', ')}.`,
+        summary: `${closingLabel(period)} and ${quotaLabel(period, 'quota')}, by ${dim}: ${ordered.map((k) => `${dimLabel(a, dim, row(k)[dim])} ${format(row(k).numerator, 'currency')} vs ${format(row(k).denominator, 'currency')}`).join(', ')}.`,
       },
     ];
   }

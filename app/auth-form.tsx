@@ -5,6 +5,15 @@ import type { FormEventHandler, Ref } from 'react';
 /** The invite code box: required on the sign-up page, optional on the log-in page (filled in, it creates the account). */
 export type InviteField = 'required' | 'optional' | 'off';
 
+/**
+ * Which action the form posts. On the sign-up page, and on the log-in page once the invite code box has text, it is the
+ * sign-up action, so the code gets its rate limit, auth audit, and server-side password and invite checks. The log-in
+ * action would ignore the code.
+ */
+export function formAction<A>(mode: 'login' | 'signup', inviteCode: string, actions: { logIn: A; signUp: A }): A {
+  return mode === 'signup' || inviteCode.trim() !== '' ? actions.signUp : actions.logIn;
+}
+
 // The fields themselves. State lives in AuthStage, which also lets the name card submit this form.
 export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset }: {
   ref: Ref<HTMLFormElement>;

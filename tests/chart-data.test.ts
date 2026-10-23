@@ -112,6 +112,29 @@ describe('copilot answers as graphs', () => {
     expect(dash[0]!.data[0]!.detail).toBe('$762,599 closing in FY27-Q1 vs $1,003,000 quota');
   });
 
+  it('coverage names its numerator one way everywhere: pipeline closing in the quota period, never "Open pipeline"', () => {
+    const rows = [
+      { region: 'central', numerator: 762599, denominator: 1003000, value: 0.76 },
+      { region: 'east', numerator: 394634, denominator: null, value: null },
+    ];
+    const metric = { id: 'pipeline_coverage', name: 'Pipeline coverage', unit: 'ratio' };
+    const period = { label: 'FY27-Q1' };
+    const byRegion = { metric, filters: { groupBy: ['region'], period }, rows, narrative: 'n', ownerNames: null } as unknown as Answer;
+    const single = { metric, filters: { groupBy: [], period }, rows: [{ numerator: 762599, denominator: 1003000, value: 0.76 }], narrative: 'n', ownerNames: null } as unknown as Answer;
+    const [ratio, money] = answerCharts(byRegion, 'x')!;
+    const dash = coverageRegionCharts(byRegion, 'FY27-Q1', 'c');
+    const [one] = answerCharts(single, 'y')!;
+    const names = ['Pipeline closing in FY27-Q1', 'Quota for FY27-Q1'];
+    expect(money!.series).toEqual(names);
+    expect(dash[1]!.series).toEqual(names);
+    expect(one!.categories.map((c) => c.label)).toEqual(names);
+    for (const s of [money!.summary, dash[1]!.summary]) expect(s).toMatch(/^Pipeline closing in FY27-Q1 and quota for FY27-Q1, by region: Central \$762,599 vs \$1,003,000/);
+    // The ratio's detail keeps the period, in the answer as on the dashboard.
+    expect(ratio!.data.map((d) => d.detail)).toEqual(dash[0]!.data.map((d) => d.detail));
+    expect(ratio!.data[0]!.detail).toBe('$762,599 closing in FY27-Q1 vs $1,003,000 quota');
+    expect(JSON.stringify([ratio, money, one, ...dash])).not.toMatch(/Open pipeline/);
+  });
+
   it('two breakdowns: the smaller one (at most three values) becomes the series; missing pairs stay missing', () => {
     const a = {
       metric: { id: 'open_pipeline', name: 'Open pipeline', unit: 'currency' },
@@ -188,8 +211,11 @@ describe('dashboard tiles split by stage', () => {
 });
 
 describe('shared files', () => {
-  it('both apps carry byte-identical copies of the graph and view-switch files', () => {
-    for (const f of ['chart3d-math.ts', 'chart3d-draw.ts', 'chart3d.tsx', 'chart3d.css', 'view-mode.ts', 'view-actions.ts', 'view-switch.tsx']) {
+  it('both apps carry byte-identical copies of the graph, view-switch and sign-in files', () => {
+    const graphs = ['chart3d-math.ts', 'chart3d-draw.ts', 'chart3d.tsx', 'chart3d.css', 'view-mode.ts', 'view-actions.ts', 'view-switch.tsx'];
+    // auth-info.ts is not shared: each app describes itself (registry metrics or alert rules) before sign-in.
+    const signIn = ['auth-stage.tsx', 'auth-stage.css', 'auth-form.tsx', 'tile-floor.tsx'];
+    for (const f of [...graphs, ...signIn]) {
       expect(readFileSync(`alerts/app/${f}`, 'utf8'), f).toBe(readFileSync(`app/${f}`, 'utf8'));
     }
   });

@@ -6,7 +6,7 @@
 // and nothing else: no lookup, so it rises for any name and never tells anyone whether an account exists.
 import { useActionState, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { logInAction, signUpAction, type AuthState } from './auth-actions';
-import { AuthForm, type InviteField } from './auth-form';
+import { AuthForm, formAction, type InviteField } from './auth-form';
 import { TILE_ASPECT, TileFloor, newFloorSignal, type CardLabel, type FloorPhase, type ScreenRect } from './tile-floor';
 import './auth-stage.css';
 
@@ -98,7 +98,8 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   const [attempt, setAttempt] = useState(0);
   const [still, setStill] = useState(false);
   const hasInvite = inviteCode.trim() !== '';
-  const creating = mode === 'signup' || hasInvite;
+  const action = formAction(mode, inviteCode, { logIn: loginAction, signUp: signupAction });
+  const creating = action === signupAction; // the button, the card and the password rules follow the action posted
   const pending = loginPending || signupPending;
 
   const signal = useRef(newFloorSignal());
@@ -359,7 +360,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
               id={FORM_ID}
               invite={invite}
               creating={creating}
-              action={creating ? signupAction : loginAction}
+              action={action}
               pending={pending}
               error={error}
               errorKey={attempt}
