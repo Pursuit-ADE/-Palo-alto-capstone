@@ -69,6 +69,7 @@ The PRD's security scenarios (S1, S2) and what the app does with each. Every row
 Also covered elsewhere:
 - A compromised intent model proposing West, extra SQL, unknown metrics or thousands of values is refused (`tests/conversation-and-redteam.test.ts`).
 - A tampered conversation state sent back by the browser is re-validated and re-scoped (same file).
+- "Why does marketing say coverage is 3x?" is answered with the asker's own figure only: the reply contains no figure, region or team outside their scope, the quoted "3x" is never repeated, and the audit row lists only the asker's regions. Naming West in the question, or adding an override, is still refused (`tests/discrepancy-explanation.test.ts`).
 - Three flagged questions in ten minutes lock that user id out of asking for ten minutes (S3). The server stores that lock in `session_guard`. In the demo the id comes from the identity switch, so picking another demo person is a different lock. See `SECURITY.md` before any shared deployment.
 - Sign-in: 10 attempts a minute per username and 30 per address, common passwords refused, one audit row per attempt (`tests/security-review.test.ts`, F5).
 - Flagged questions and session locks post to a security Slack channel when `SECURITY_SLACK_WEBHOOK_URL` is set: reason codes, who and the audit row, never the question text (same file, F6).

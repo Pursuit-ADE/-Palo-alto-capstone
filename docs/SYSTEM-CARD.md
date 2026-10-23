@@ -66,6 +66,7 @@ Findings are tracked in `docs/RED-TEAM.md` (F1–F25). The ones a reviewer shoul
 
 - Not built yet: backups and disaster recovery, SSO with MFA, health checks and error reporting, a DPIA and processor agreements for Anthropic, Slack and email.
 - Pattern-based prompt flags are a speed bump; scope enforcement in the database is the real control.
+- "Why is my number different?" explanations cover pipeline coverage only. They can't check a figure from outside the asker's scope, and say so instead of guessing which reason applies.
 - This is a self-assessment by the team that built it. The client's own red team should test it before any rollout.
 
 ## Retention
