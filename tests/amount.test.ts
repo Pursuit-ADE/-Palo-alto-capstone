@@ -6,17 +6,26 @@ import { AMOUNT_CLARIFY, MAX_AMOUNT, parseAmount } from '@/semantic/amount';
 const LOWER: [string, boolean][] = [
   ['over', false], ['above', false], ['more than', false], ['greater than', false], ['bigger than', false],
   ['larger than', false], ['exceeding', false], ['>', false], ['at least', true], ['no less than', true],
-  ['not less than', true], ['>=', true],
+  ['not less than', true], ['>=', true], ['greater than or equal to', true], ['more than or equal to', true],
+  ['equal to or greater than', true], ['no fewer than', true],
 ];
 const UPPER: [string, boolean][] = [
   ['under', false], ['below', false], ['less than', false], ['smaller than', false], ['<', false],
   ['at most', true], ['up to', true], ['no more than', true], ['not more than', true], ['<=', true],
+  ['less than or equal to', true], ['equal to or less than', true], ['no greater than', true], ['not greater than', true],
 ];
 const SCALES: [string, bigint][] = [
   ['', 1n], ['k', 1_000n], [' thousand', 1_000n], ['m', 1_000_000n], ['M', 1_000_000n], [' million', 1_000_000n],
-  ['mm', 1_000_000n], ['bn', 1_000_000_000n], [' billion', 1_000_000_000n],
+  ['mm', 1_000_000n], ['bn', 1_000_000_000n], ['b', 1_000_000_000n], ['B', 1_000_000_000n], [' billion', 1_000_000_000n],
 ];
 const CONTEXT = ['', ' in the east', ' this quarter', ' for FY27-Q2', ' by stage', ' in West and Central'];
+
+/** A filter the compiler can use: at least one bound, each finite and in range, and not backwards. */
+function expectValidFilter({ min, max }: { min?: number; max?: number }) {
+  expect(min != null || max != null).toBe(true);
+  for (const v of [min, max]) if (v != null) expect(Number.isFinite(v) && v >= 0 && v <= MAX_AMOUNT).toBe(true);
+  if (min != null && max != null) expect(min <= max).toBe(true);
+}
 
 const withCommas = (n: number) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
@@ -50,6 +59,29 @@ describe('amount parser: the cases from the PR #42 review', () => {
     ['open pipeline for deals between 4,000 and 5,000', { min: 4000, max: 5000, minInclusive: true, maxInclusive: true }],
   ])('%s', (phrase, amount) => {
     expect(parseAmount(phrase)).toEqual({ amount });
+  });
+});
+
+describe('amount parser: bugs found Oct 23', () => {
+  it.each([
+    ['open pipeline less than or equal to 5000', { max: 5000, maxInclusive: true }],
+    ['open pipeline greater than or equal to $1m', { min: 1_000_000, minInclusive: true }],
+    ['open pipeline equal to or less than 2,500', { max: 2500, maxInclusive: true }],
+    ['open pipeline over 1b', { min: 1_000_000_000, minInclusive: false }],
+    ['open pipeline under $2.5B', { max: 2_500_000_000, maxInclusive: false }],
+  ])('%s', (phrase, amount) => {
+    expect(parseAmount(phrase)).toEqual({ amount });
+  });
+
+  it.each([
+    'open pipeline over fifty thousand',
+    'open pipeline under a hundred grand',
+    'deals worth about twenty million',
+    'open pipeline at least one hundred',
+    'open pipeline for million dollar deals',
+    'open pipeline over 5q',
+  ])('asks instead of dropping the filter: "%s"', (phrase) => {
+    expect(parseAmount(phrase)).toEqual({ clarify: AMOUNT_CLARIFY });
   });
 });
 
@@ -128,7 +160,7 @@ describe('amount parser: properties (fast-check)', () => {
   it('reads a range in order, and asks about one written backwards', () => {
     fc.assert(
       fc.property(fc.constantFrom('between', 'from'), money, money, fc.constantFrom(...CONTEXT), (word, a, b, context) => {
-        fc.pre(!(a.plainYear && b.plainYear) && !(a.text.match(/^\$?[\d,.]+$/) && /^\$?[\d,.]+\s?(k|m|mm|bn|thousand|million|billion)$/i.test(b.text)));
+        fc.pre(!(a.plainYear && b.plainYear) && !(a.text.match(/^\$?[\d,.]+$/) && /^\$?[\d,.]+\s?(k|m|mm|bn|b|thousand|million|billion)$/i.test(b.text)));
         const r = parseAmount(`open pipeline ${word} ${a.text} ${word === 'between' ? 'and' : 'to'} ${b.text}${context}`);
         if (a.value <= b.value) expect(r).toEqual({ amount: { min: a.value, max: b.value, minInclusive: true, maxInclusive: true } });
         else expect(r).toEqual({ clarify: AMOUNT_CLARIFY });
@@ -173,11 +205,7 @@ describe('amount parser: properties (fast-check)', () => {
       fc.property(typed, (phrase) => {
         const r = parseAmount(phrase);
         expect(r.amount && r.clarify).toBeFalsy();
-        if (!r.amount) return;
-        const { min, max } = r.amount;
-        expect(min != null || max != null).toBe(true);
-        for (const v of [min, max]) if (v != null) expect(Number.isFinite(v) && v >= 0 && v <= MAX_AMOUNT).toBe(true);
-        if (min != null && max != null) expect(min <= max).toBe(true);
+        if (r.amount) expectValidFilter(r.amount);
       }),
       { numRuns: 2000 },
     );
