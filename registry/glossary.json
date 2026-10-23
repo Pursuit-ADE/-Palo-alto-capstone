@@ -102,6 +102,11 @@
       "id": "follow_up",
       "rule": "A follow-up keeps the earlier filters and breakdown only when it names no metric (\"what about West?\") or names the same metric with a follow-up word (\"and the open pipeline by stage?\"). Naming a different metric starts a new question.",
       "appliesIn": "src/semantic/normalize.ts"
+    },
+    {
+      "id": "extra_filters",
+      "rule": "Open pipeline and open opportunity count can be filtered by deal size, product or series, account, sector, and the sales rep who owns the deal. A sector counts only when the question says sector, industry, or vertical beside the name. A manager named with their team means that manager's reps. A product series is labeled as a series. Commas and decimals in a deal size are kept. Pipeline coverage can be filtered by that rep or team, because quota is per rep. It cannot be filtered by deal size, product, account or sector, because quota is not split that way. An unknown name is asked about, not dropped.",
+      "appliesIn": "src/semantic/compile.ts"
     }
   ]
 }

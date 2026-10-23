@@ -2,7 +2,7 @@
 .c3d { margin: 0; display: grid; gap: 8px; min-width: 0; container-type: inline-size; }
 .c3d-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
 .c3d-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
-.c3d-tabs { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #f3f4f6; }
+.c3d-tabs { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #f3f4f6; margin: 0; min-inline-size: 0; }
 .c3d-tabs button { font: 600 12px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 5px 12px; min-height: 28px; cursor: pointer; }
 .c3d-tabs button[aria-pressed="true"] { color: #fff; background: #1b1d21; }
 .c3d-tabs button:focus-visible, .c3d-btn:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
@@ -97,7 +97,7 @@ html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important
 /* The Numbers / Graphs switch (view-switch.tsx). */
 .view-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; }
 .view-switch > span { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
-.view-switch-buttons { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #fff; }
+.view-switch-buttons { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #fff; margin: 0; min-inline-size: 0; }
 .view-switch-buttons button { font: 700 13px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 6px 16px; min-height: 32px; cursor: pointer; }
 .view-switch-buttons button:hover { color: #c23b16; }
 .view-switch-buttons button[aria-pressed="true"] { color: #fff; background: #c23b16; }
@@ -105,7 +105,7 @@ html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important
 .view-switch-hint { flex-basis: 100%; margin: 0; font-size: 13px; color: #5d6470; }
 
 /* The chart type picker. */
-.c3d-kinds { display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid #e2e5ea; border-radius: 8px; padding: 2px; background: #f3f4f6; }
+.c3d-kinds { display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid #e2e5ea; border-radius: 8px; padding: 2px; background: #f3f4f6; margin: 0; min-inline-size: 0; }
 .c3d-kind {
   display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--font); color: #5d6470; background: none; border: 0;
   border-radius: 6px; padding: 4px 8px; min-height: 28px; min-width: 28px; cursor: pointer;

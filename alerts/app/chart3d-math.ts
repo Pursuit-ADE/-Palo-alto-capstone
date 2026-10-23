@@ -490,7 +490,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
     const vh = Math.max(64, n * rowH + 8);
     const barW = vw - ROW_LABEL_W - 90;
     const axisMax = max || 1;
-    const X = (v: number) => (v / axisMax) * barW;
+    const xAt = (v: number) => (v / axisMax) * barW;
     const ticks = niceTicks(axisMax, chart.unit)
       .filter((v) => v <= axisMax * (1 + 1e-9))
       .map((v) => ({ value: v, text: compact(v, chart.unit), pos: ROW_LABEL_W + (v / axisMax) * barW }));
@@ -510,7 +510,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
           ghosts.push({ datum: k, cat, series: d.series, x: ROW_LABEL_W, y, w: h, text: 'n/a', tx: ROW_LABEL_W + 6, ty: y + h / 2 + 4, anchor: 'start' });
           return;
         }
-        const w = X(v);
+        const w = xAt(v);
         bars.push({ datum: k, cat, series: d.series, x: ROW_LABEL_W, y, w, h, value: v, text: d.display, tx: ROW_LABEL_W + Math.max(w, 1) + 6, ty: y + h / 2 + 4, anchor: 'start' });
       });
     } else {
@@ -524,8 +524,8 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
             const k = at(cat, s);
             const v = k < 0 ? null : values[k];
             if (v === null || v === undefined || v <= 0) continue;
-            const x0 = ROW_LABEL_W + X(acc);
-            const w0 = X(v);
+            const x0 = ROW_LABEL_W + xAt(acc);
+            const w0 = xAt(v);
             acc += v;
             const gap = parts.length && w0 > 2.5 ? 2 : 0;
             const w = w0 - gap;
@@ -542,7 +542,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
             ghosts.push({ datum: k, cat, series: 0, x: ROW_LABEL_W, y, w: 18, text: 'n/a', tx: ROW_LABEL_W + 6, ty: y + 13, anchor: 'start' });
             continue;
           }
-          const w = X(v);
+          const w = xAt(v);
           bars.push({ datum: k, cat, series: 0, x: ROW_LABEL_W, y: y + 8, w, h: 2, value: v, text: chart.data[k]!.display, tx: ROW_LABEL_W + w + 11, ty: y + 13, anchor: 'start', dot: { x: ROW_LABEL_W + w, y: y + 9, r: 5 } });
         } else if (kind === 'bullet') {
           // The target (series 1) is a case the full band high; the bar it holds (series 0) is a thinner bar inside it.
@@ -550,8 +550,8 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
           const kf = at(cat, 0);
           const vc = kc < 0 ? null : values[kc];
           const vf = kf < 0 ? null : values[kf];
-          const wc = vc === null || vc === undefined ? 0 : X(vc);
-          const wf = vf === null || vf === undefined ? 0 : X(vf);
+          const wc = vc === null || vc === undefined ? 0 : xAt(vc);
+          const wf = vf === null || vf === undefined ? 0 : xAt(vf);
           if (vc !== null && vc !== undefined) bars.push({ datum: kc, cat, series: 1, x: ROW_LABEL_W, y, w: wc, h: 18, value: vc, text: '', tx: 0, ty: 0, anchor: 'start', role: 'case' });
           else if (kc >= 0) ghosts.push({ datum: kc, cat, series: 1, x: ROW_LABEL_W, y, w: 18, text: '', tx: 0, ty: 0, anchor: 'start' });
           // One label after the longer bar: "pipeline of quota" (both exactly as the Numbers view writes them).
@@ -574,7 +574,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
   const plotH = plot.y1 - plot.y0;
   const ticksV = niceTicks(max, chart.unit);
   const axisMax = ticksV[ticksV.length - 1]!;
-  const H = (v: number) => (v / axisMax) * plotH;
+  const hAt = (v: number) => (v / axisMax) * plotH;
   const ticks = ticksV.map((v) => ({ value: v, text: compact(v, chart.unit), pos: plot.y1 - (v / axisMax) * plotH }));
   const slot = (plot.x1 - plot.x0) / n;
   const gw = Math.min(slot * 0.64, 56 + 26 * (lanes - 1));
@@ -595,7 +595,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
         ghosts.push({ datum: k, cat, series: d.series, x, y: plot.y1, w, text: 'n/a', tx: x + w / 2, ty: plot.y1 - 6, anchor: 'middle' });
         return;
       }
-      const h = H(v);
+      const h = hAt(v);
       // Full value when it fits over its bar, else the short form; the tooltip and table keep the exact value.
       const room = (S > 1 ? sw : slot) - 4;
       const text = d.display.length * CHAR_W <= room ? d.display : compact(v, chart.unit);
@@ -612,8 +612,8 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
           const k = at(cat, s);
           const v = k < 0 ? null : values[k];
           if (v === null || v === undefined || v <= 0) continue;
-          const bottom = plot.y1 - H(acc);
-          const top = plot.y1 - H(acc + v);
+          const bottom = plot.y1 - hAt(acc);
+          const top = plot.y1 - hAt(acc + v);
           acc += v;
           const gap = parts.length && bottom - top > 2.5 ? 2 : 0;
           const h = bottom - top - gap;
@@ -630,7 +630,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
           ghosts.push({ datum: k, cat, series: 0, x: cx - 5, y: plot.y1, w: 10, text: 'n/a', tx: cx, ty: plot.y1 - 6, anchor: 'middle' });
           continue;
         }
-        const h = H(v);
+        const h = hAt(v);
         const text = chart.data[k]!.display.length * CHAR_W <= slot - 4 ? chart.data[k]!.display : compact(v, chart.unit);
         bars.push({ datum: k, cat, series: 0, x: cx - 1, y: plot.y1 - h, w: 2, h, value: v, text, tx: cx, ty: plot.y1 - h - 11, anchor: 'middle', dot: { x: cx, y: plot.y1 - h, r: 5 } });
       } else if (kind === 'bullet') {
@@ -641,8 +641,8 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
         const kf = at(cat, 0);
         const vc = kc < 0 ? null : values[kc];
         const vf = kf < 0 ? null : values[kf];
-        const caseTop = vc === null || vc === undefined ? null : plot.y1 - H(vc);
-        const fillTop = vf === null || vf === undefined ? null : plot.y1 - H(vf);
+        const caseTop = vc === null || vc === undefined ? null : plot.y1 - hAt(vc);
+        const fillTop = vf === null || vf === undefined ? null : plot.y1 - hAt(vf);
         // The bar's label goes above it, or above the case when the bar ends just under the case's top.
         let fy = (fillTop ?? plot.y1) - 6;
         if (caseTop !== null && fillTop !== null && fillTop - caseTop > 0 && fillTop - caseTop < 18) fy = caseTop - 6;
@@ -1141,14 +1141,18 @@ export function buildScene(L: Layout, m: Morph): Scene {
         const box = outline.length ? boundsOf(outline, zc - d / 2, zc + d / 2) : { x0: xy[0]![0], x1: xy[0]![0], y0: yb, y1: xy[0]![1], z0: zc - d / 2, z1: zc + d / 2 };
         prisms.push({ datum: -1, series: s, tone, look: 'area', pts: outline, smooth: outline.map(() => false), ...box, part: 'whole', dots: pts.map((p, i) => ({ datum: p.datum, c: [xy[i]![0], xy[i]![1], zc + d / 2], r: 4 + 1.5 * m.e })), curtain: null, edge: xy, out: null });
         keep(zc - d / 2, zc + d / 2);
-        pts.forEach((p, i) => p.text && labels.push({ p: [xy[i]![0], xy[i]![1], zc + d / 2], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum }));
+        pts.forEach((p, i) => {
+          if (p.text) labels.push({ p: [xy[i]![0], xy[i]![1], zc + d / 2], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum });
+        });
       } else {
         const d = 12 * m.e;
         const outline = strokeOutline(xy, 1);
         const box = outline.length ? boundsOf([...outline, ...floorPts], zc - d / 2, zc + d / 2) : { x0: xy[0]![0] - 4, x1: xy[0]![0] + 4, y0: yb, y1: xy[0]![1] + 4, z0: zc - d / 2, z1: zc + d / 2 };
         prisms.push({ datum: -1, series: s, tone, look: 'ribbon', pts: outline, smooth: outline.map(() => false), ...box, part: 'whole', dots: pts.map((p, i) => ({ datum: p.datum, c: [xy[i]![0], xy[i]![1], zc], r: 4 + 1.5 * m.e })), curtain: xy.length > 1 ? floorPts : null, edge: null, out: null });
         keep(zc - d / 2, zc + d / 2);
-        pts.forEach((p, i) => p.text && labels.push({ p: [xy[i]![0], xy[i]![1], zc], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum }));
+        pts.forEach((p, i) => {
+          if (p.text) labels.push({ p: [xy[i]![0], xy[i]![1], zc], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum });
+        });
       }
     }
     for (const g of L.ghosts) {

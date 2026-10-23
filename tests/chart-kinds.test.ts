@@ -105,13 +105,13 @@ const pipelineVsQuota = regions({
 const twoDims = (() => {
   const cats = ['central', 'east', 'west', 'north'];
   const data: ChartData['data'] = [];
-  cats.forEach((c, i) =>
+  cats.forEach((c, i) => {
     [0, 1, 2].forEach((s) => {
       if (c === 'north' && s === 2) return; // no row for this pair
       const value = c === 'east' && s === 1 ? null : (i + 1) * 100000 + s * 250000 + 1234;
       data.push({ category: c, series: s, value, display: value === null ? 'n/a' : `$${value.toLocaleString('en-US')}` });
-    }),
-  );
+    });
+  });
   return regions({ id: 'answer-2', categories: cats.map((k) => ({ key: k, label: k[0]!.toUpperCase() + k.slice(1) })), series: ['Prospecting', 'Engaging', 'Won'], data, grid: true });
 })();
 
@@ -305,12 +305,12 @@ describe('every type lays out inside its box', () => {
 
   it('a stack reaches exactly its parts, and a missing part leaves no gap', () => {
     const L = layout2D(twoDims, 'stacked');
-    const H = (v: number) => (v / L.axisMax) * (L.plot.y1 - L.plot.y0);
+    const barHeight = (v: number) => (v / L.axisMax) * (L.plot.y1 - L.plot.y0);
     for (let cat = 0; cat < twoDims.categories.length; cat++) {
       const parts = L.bars.filter((b) => b.cat === cat);
       const sum = parts.reduce((s, b) => s + b.value, 0);
       const top = Math.min(...parts.map((b) => b.y));
-      expect(near(top, L.plot.y1 - H(sum), 1e-6)).toBe(true);
+      expect(near(top, L.plot.y1 - barHeight(sum), 1e-6)).toBe(true);
     }
   });
 

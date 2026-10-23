@@ -5,6 +5,7 @@ import { openDatabase, type Database } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
 import { ask, type Reply } from '@/semantic/answer';
+import { ScopeViolation } from '@/semantic/scope';
 import { deterministicModel, toResult, type IntentModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
 import { FlagGuard } from '@/server/limits';
@@ -20,20 +21,24 @@ afterAll(async () => {
   await database.close();
 });
 
-describe('filters the registry cannot express are not dropped', () => {
-  for (const q of [
-    'open pipeline for deals over 1000000',
-    'open pipeline over $1M',
-    'open pipeline for GTX Pro',
-    'open pipeline for Vehement Capital Partners',
-    'open pipeline in the retail sector',
-    'open pipeline for Darcel Schlecht',
-  ]) {
-    it(`asks instead of answering for everything: "${q}"`, async () => {
+describe('filters by deal size, product, account, sector and person are applied', () => {
+  for (const [q, filters] of [
+    ['open pipeline for deals over 1000000', { amount: { min: 1000000, minInclusive: false } }],
+    ['open pipeline over $1M', { amount: { min: 1000000, minInclusive: false } }],
+    ['open pipeline for GTX Pro', { products: ['GTX Pro'] }],
+    ['open pipeline for Vehement Capital Partners', { accounts: ['Vehement Capital Partners'] }],
+    ['open pipeline in the retail sector', { sectors: ['retail'] }],
+  ] as const) {
+    it(`answers "${q}" with that filter`, async () => {
       const r = await ask(database, reg, USER, q);
-      expect(r.kind).toBe('clarify');
+      expect(r.kind).toBe('answer');
+      if (r.kind === 'answer') expect(r.intent).toMatchObject({ metric: 'open_pipeline', filters });
     });
   }
+
+  it('refuses a person outside the signed-in team instead of answering for the whole team', async () => {
+    await expect(ask(database, reg, USER, 'open pipeline for Darcel Schlecht')).rejects.toBeInstanceOf(ScopeViolation);
+  });
 
   it('still answers the supported question', async () => {
     expect((await ask(database, reg, USER, 'open pipeline by owner')).kind).toBe('answer');

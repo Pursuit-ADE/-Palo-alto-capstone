@@ -86,7 +86,9 @@ function setFlat(o: Orbit) {
   const flat = o.mode === 'rest' && o.pose.yaw === 0 && o.pose.tilt === 0;
   if (flat !== o.flat) {
     o.flat = flat;
-    o.listeners.forEach((l) => l());
+    o.listeners.forEach((l) => {
+      l();
+    });
   }
 }
 
@@ -351,6 +353,7 @@ function FlatChart({ chart, L, variant, enter }: { chart: ChartData; L: Layout; 
           if (pts.length < 2) return null;
           const d = pts.map((p, k) => `${k ? 'L' : 'M'}${p.x} ${p.y}`).join('');
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: one answer's series runs stay in order and have no id.
             <g key={`r${i}`}>
               {L.kind === 'area' && <path className={`c3d-area s${r.series}`} d={`${d}L${pts[pts.length - 1]!.x} ${L.base}L${pts[0]!.x} ${L.base}Z`} />}
               <path className={`c3d-line s${r.series}`} d={d} pathLength={1} />
@@ -401,6 +404,7 @@ function FlatChart({ chart, L, variant, enter }: { chart: ChartData; L: Layout; 
       )}
       {H &&
         H.rows.map((r, i) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: heatmap row labels follow this answer's category order.
           <text key={`h${i}`} x={r.x} y={r.y} textAnchor="end" className="c3d-cat">
             <title>{r.full}</title>
             {r.text}
@@ -420,6 +424,7 @@ function FlatChart({ chart, L, variant, enter }: { chart: ChartData; L: Layout; 
         </g>
       )}
       {L.cats.map((c, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: category labels follow this answer's category order.
         <text key={i} x={c.x} y={c.y} textAnchor={c.anchor} className="c3d-cat">
           <title>{c.full}</title>
           {c.text}
@@ -594,6 +599,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
     return () => q.removeEventListener('change', on);
   }, []);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: installs the canvas once; hideTip and layoutAt read refs.
   useLayoutEffect(() => {
     const el = stage.current;
     const cv = canvas.current;
@@ -756,6 +762,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
   }, []);
 
   // A different chart in the same card (tabs) or a new key: draw again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: L, N and key are why the canvas redraws; the body only marks it dirty.
   useEffect(() => {
     if (liveRef.current) {
       liveRef.current.dirty = true;
@@ -920,14 +927,14 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
       {(charts.length > 1 || legend || offered.length > 1) && (
         <div className="c3d-head">
           {charts.length > 1 && (
-            <div className="c3d-tabs" role="group" aria-label="Chart">
+            <fieldset className="c3d-tabs" aria-label="Chart">
               {charts.map((c, i) => (
                 <button key={c.id} type="button" aria-pressed={i === which} onClick={() => setWhich(i)}>{c.tab ?? c.title}</button>
               ))}
-            </div>
+            </fieldset>
           )}
           {offered.length > 1 && (
-            <div className="c3d-kinds" role="group" aria-label="Chart type">
+            <fieldset className="c3d-kinds" aria-label="Chart type">
               {offered.map((k) => {
                 const info = KINDS.find((x) => x.kind === k)!;
                 return (
@@ -937,7 +944,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
                   </button>
                 );
               })}
-            </div>
+            </fieldset>
           )}
           {legend && (
             <ul className="c3d-legend" aria-hidden="true">
@@ -948,10 +955,12 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
           )}
         </div>
       )}
+      {/* biome-ignore lint/a11y/useSemanticElements: a rotatable drawing, not a set of form controls; group keeps the screen reader's reading mode. */}
       <div
         ref={stage}
         className="c3d-stage"
         style={{ '--c3d-ar': `${L.vw} / ${L.vh}`, '--c3d-ar-narrow': N ? `${N.vw} / ${N.vh}` : undefined, maxWidth: chart.size === 'answer' || !chart.size ? 760 : undefined } as CSSProperties}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: arrow keys turn this chart, so the drawing itself is in the tab order.
         tabIndex={0}
         role="group"
         aria-roledescription="rotatable chart"
@@ -978,6 +987,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
       >
         <FlatChart key={`w-${kind}`} chart={chart} L={L} variant={N ? 'wide' : undefined} enter={enter} />
         {N && <FlatChart key={`n-${kind}`} chart={chart} L={N} variant="narrow" enter={enter} />}
+        {/* biome-ignore lint/a11y/noAriaHiddenOnFocusable: the canvas only draws the chart; the stage and the numbers table carry the meaning. */}
         <canvas ref={canvas} className="c3d-canvas" aria-hidden="true" />
         <div ref={tip} className="c3d-tip" hidden aria-hidden="true" />
       </div>
