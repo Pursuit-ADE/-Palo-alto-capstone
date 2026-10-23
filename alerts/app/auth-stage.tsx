@@ -134,9 +134,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
     setStill(next);
     if (!next) return;
     // A stand-up under way jumps to its end, and a lie-down under way ends hidden, as if they had happened without motion.
-    rising.current.forEach((a) => {
-      if (a.playState === 'running') a.finish();
-    });
+    rising.current.forEach((a) => a.playState === 'running' && a.finish());
     setSinking(false);
   };
   const togglePause = () => {
@@ -145,7 +143,6 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
       localStorage.setItem(STILL_KEY, stillRef.current ? '1' : '0');
     } catch {}
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the helpers it calls are recreated every render and only read refs; listing them would restart the animation on every render
   useEffect(() => {
     try {
       if (localStorage.getItem(STILL_KEY) === '1') pause(true);
@@ -153,7 +150,6 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   }, []);
 
   // The floor says where the chosen card lies; the name card lifts out of exactly that spot.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the helpers it calls are recreated every render and only read refs; listing them would restart the animation on every render
   useEffect(() => {
     signal.current.onPicked = (rect) => {
       if (phaseRef.current !== 'pick') return;
@@ -185,16 +181,13 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
 
   // Rise: the card lies flat in the floor card's place, then stands up around its bottom edge, slowly at first, swinging a
   // little past upright before it settles, while the name fades in.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the helpers it calls are recreated every render and only read refs; listing them would restart the animation on every render
   useLayoutEffect(() => {
     const el = card.current;
     const rect = from.current;
     if (phase !== 'up' || !el) return;
     from.current = null;
     standing.current = true;
-    rising.current.forEach((a) => {
-      a.cancel();
-    });
+    rising.current.forEach((a) => a.cancel());
     rising.current = [];
     if (!rect || calm()) {
       el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 200, easing: 'ease-out' });
@@ -216,15 +209,12 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   }, [phase]);
 
   // Sink: editing the username after the card is up lays it back down in the floor card's place, and the floor searches again.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the helpers it calls are recreated every render and only read refs; listing them would restart the animation on every render
   useLayoutEffect(() => {
     const el = card.current;
     if (!sinking || !el) return;
     const stand = rising.current.filter((a) => a.playState === 'running');
     if (calm()) {
-      stand.forEach((a) => {
-        a.cancel();
-      });
+      stand.forEach((a) => a.cancel());
       setSinking(false);
       return;
     }
@@ -253,23 +243,17 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
     const at = typeof t === 'number' ? t : 0;
     if (stand.length && at < STAND_MS * SWING) {
       // Edited while it was still standing up: it lies back down the way it came, faster, and fades out.
-      stand.forEach((a) => {
-        a.updatePlaybackRate(-2.5);
-      });
+      stand.forEach((a) => a.updatePlaybackRate(-2.5));
       play([...stand, el.animate([{ opacity: 1 }, { opacity: 1, offset: 0.6 }, { opacity: 0 }], { duration: at / 2.5, fill: 'forwards' })], () => setSinking(false));
     } else if (stand.length) {
       // Past its swing it already looks upright: it settles, quickly, then lies down from there.
-      stand.forEach((a) => {
-        a.updatePlaybackRate(4);
-      });
+      stand.forEach((a) => a.updatePlaybackRate(4));
       play(stand, lieDown);
     } else lieDown();
     // Let go of the held poses in the same commit that hides the card, so it never shows upright for a frame.
     return () => {
       over = true;
-      anims.forEach((a) => {
-        a.cancel();
-      });
+      anims.forEach((a) => a.cancel());
     };
   }, [sinking]);
 
@@ -285,9 +269,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
     setDenied((n) => n + 1);
     setAttempt((n) => n + 1);
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reacts only to a new form result; refuse is recreated every render
   useEffect(() => refuse(loginState), [loginState]);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reacts only to a new form result; refuse is recreated every render
   useEffect(() => refuse(signupState), [signupState]);
   useEffect(() => {
     if (!denied) return;
@@ -303,7 +285,6 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   // Whether the form would pass the browser's checks, so the card can say what is still missing. Rechecked after
   // render too, because filling in the invite code raises the password's minimum length.
   const recheck = () => setReady(Boolean(form.current?.checkValidity()));
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hasInvite is the trigger: the layout changes when the invite field appears or goes
   useLayoutEffect(recheck, [hasInvite]);
 
   const onUsername = (value: string) => {
@@ -327,7 +308,6 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
     const el = form.current?.elements.namedItem(name);
     return el instanceof HTMLInputElement ? el : undefined;
   };
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the helpers it calls are recreated every render and only read refs; listing them would restart the animation on every render
   useEffect(() => {
     const value = field('username')?.value;
     if (value) onUsername(value);

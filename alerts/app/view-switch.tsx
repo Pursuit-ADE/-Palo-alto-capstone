@@ -12,7 +12,6 @@ function Choices({ view }: { view: View }) {
   const shown = asked === 'numbers' || asked === 'graphs' ? asked : view;
   return (
     <>
-      {/* biome-ignore lint/a11y/useSemanticElements: a button group, not a form section; fieldset would bring its own border and legend rules */}
       <div className="view-switch-buttons" role="group" aria-labelledby="view-switch-label">
         <button type="submit" name="view" value="numbers" aria-pressed={shown === 'numbers'}>Numbers</button>
         <button type="submit" name="view" value="graphs" aria-pressed={shown === 'graphs'}>Graphs</button>

@@ -22,9 +22,9 @@ export function dimLabel(a: Answer, dim: string, v: unknown): string {
   return dim === 'owner' ? (a.ownerNames?.[String(v)] ?? String(v)) : cell(dim, v, '');
 }
 
-function orderCategories(dim: string, keys: string[], valueFor: (k: string) => number) {
+function orderCategories(dim: string, keys: string[], valueOf: (k: string) => number) {
   if (dim === 'stage') return [...keys].sort((a, b) => (STAGE_ORDER.indexOf(a) + 99) % 99 - ((STAGE_ORDER.indexOf(b) + 99) % 99));
-  if (dim === 'owner') return [...keys].sort((a, b) => valueFor(b) - valueFor(a)); // largest first, as the bar chart spec says
+  if (dim === 'owner') return [...keys].sort((a, b) => valueOf(b) - valueOf(a)); // largest first, as the bar chart spec says
   return keys; // regions keep the query's order
 }
 
@@ -183,8 +183,8 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
     const dim = dims[0]!;
     const keys = a.rows.map((r) => String(r[dim]));
     if (keys.length > MAX_CATEGORIES) return null;
-    const valueFor = (k: string) => num(a.rows.find((r) => String(r[dim]) === k)?.value) ?? -1;
-    const ordered = orderCategories(dim, keys, valueFor);
+    const valueOf = (k: string) => num(a.rows.find((r) => String(r[dim]) === k)?.value) ?? -1;
+    const ordered = orderCategories(dim, keys, valueOf);
     const row = (k: string) => a.rows.find((r) => String(r[dim]) === k)!;
     const cats = ordered.map((k) => ({ key: k, label: dimLabel(a, dim, row(k)[dim]) }));
     const data: ChartDatum[] = ordered.map((k) => {

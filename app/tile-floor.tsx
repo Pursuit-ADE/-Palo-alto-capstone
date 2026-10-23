@@ -491,6 +491,5 @@ export function TileFloor({ labels, signal, anchor }: { labels: CardLabel[]; sig
     };
   }, [key, signal, anchor]);
 
-  // biome-ignore lint/a11y/noAriaHiddenOnFocusable: decorative background canvas; it never takes focus
   return <canvas ref={ref} className="tile-floor" aria-hidden="true" />;
 }
