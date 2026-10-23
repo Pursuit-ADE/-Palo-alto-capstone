@@ -1,0 +1,255 @@
+/* Interactive sign-in: a dark PANW stage (charcoal, signature orange, cool greys). Colors only, no logos.
+   Text colors are checked against the darkest panel color (#18191d): all reach WCAG AA. */
+.auth-stage {
+  --stage-text: #f5f6f7;
+  --stage-muted: #a9b0b9;
+  --stage-line: rgba(255, 255, 255, 0.12);
+  --stage-link: #ff7a52;
+  --stage-error: #ff8f7a;
+  position: relative;
+  isolation: isolate;
+  display: block;
+  max-width: none;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--stage-text);
+  background: #15171a;
+}
+.tile-floor { position: absolute; inset: 0; z-index: -1; display: block; width: 100%; height: 100%; }
+.auth-stage-inner {
+  position: relative;
+  max-width: 1280px;
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0 auto;
+  padding: 22px 32px 32px;
+  display: grid;
+  grid-template-columns: minmax(320px, 410px) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  gap: 28px 56px;
+}
+.auth-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; min-width: 0; }
+.auth-brand { margin-right: auto; min-width: 0; }
+.auth-brand strong { display: block; font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
+.auth-brand span { display: block; font-size: 12px; color: var(--stage-muted); }
+.motion-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  font: 600 12.5px var(--font);
+  color: var(--stage-text);
+  background: rgba(27, 29, 33, 0.72);
+  cursor: pointer;
+}
+.motion-toggle:hover { border-color: rgba(255, 255, 255, 0.4); }
+.motion-toggle:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.icon-pause, .icon-play { width: 10px; height: 10px; flex: none; }
+.icon-pause { border-inline: 3px solid currentColor; }
+.icon-play { background: currentColor; clip-path: polygon(10% 0, 100% 50%, 10% 100%); }
+.auth-stage .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The form panel: frosted charcoal glass with the orange top rule the app's top bar uses. */
+.auth-panel {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  display: grid;
+  gap: 16px;
+  margin-top: 4vh;
+  padding: 26px 26px 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-top: 3px solid var(--orange);
+  border-radius: 16px;
+  background: linear-gradient(155deg, rgba(48, 51, 58, 0.62), rgba(20, 21, 25, 0.72));
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 30px 80px rgba(0, 0, 0, 0.5);
+}
+.auth-panel .page-head h1 { color: #fff; font-size: 30px; }
+.auth-panel .page-head p { color: var(--stage-muted); }
+.auth-panel .auth-form { padding: 0; background: none; border: 0; border-radius: 0; }
+.auth-panel .auth-form label { color: var(--stage-text); }
+.auth-panel .auth-form label .optional { font-weight: 500; color: var(--stage-muted); }
+.auth-panel .auth-form input { color: var(--stage-text); background: rgba(10, 11, 13, 0.62); border-color: #6c737e; }
+.auth-panel .auth-form input::placeholder { color: #8b929c; }
+.auth-panel .auth-form input:focus-visible { border-color: var(--orange); outline-color: var(--orange); }
+.auth-panel .auth-form input:-webkit-autofill { -webkit-text-fill-color: var(--stage-text); box-shadow: 0 0 0 40px #101114 inset; caret-color: var(--stage-text); }
+.auth-panel .auth-form .hint { font-size: 13px; }
+.auth-panel .auth-form button { padding: 12px 16px; }
+.auth-panel .auth-form button:hover:not(:disabled) { background: var(--orange-deep); }
+.auth-panel .auth-form button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.auth-panel .hint { color: var(--stage-muted); }
+.auth-panel a { color: var(--stage-link); font-weight: 700; }
+.auth-panel a:focus-visible { outline: 2px solid var(--stage-link); outline-offset: 2px; border-radius: 2px; }
+.auth-panel .auth-error { color: var(--stage-error); }
+
+/* Right side: where the data comes from, flowing into the governed layer, and the name card's slot. */
+.auth-side { grid-column: 2; grid-row: 2; display: grid; grid-template-rows: auto 1fr; justify-items: center; min-width: 0; }
+.auth-hub { width: min(500px, 100%); margin: 0; display: grid; justify-items: center; gap: 4px; text-align: center; }
+.auth-hub svg { display: block; width: 100%; height: auto; overflow: visible; }
+.hub-track { fill: none; stroke: rgba(255, 255, 255, 0.12); stroke-width: 1.5; }
+.hub-flow { fill: none; stroke: var(--orange); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 2 26; animation: hub-flow 1.8s linear infinite; }
+.auth-stage.is-active .hub-flow { animation-duration: .5s; }
+.hub-source rect { fill: rgba(38, 41, 47, 0.94); stroke: rgba(255, 255, 255, 0.16); }
+.hub-source text { fill: var(--stage-text); font: 600 12.5px var(--font); text-anchor: middle; }
+.hub-halo { fill: rgba(250, 88, 45, 0.16); transform-box: fill-box; transform-origin: center; animation: hub-pulse 2.6s ease-in-out infinite; }
+.auth-stage.is-active .hub-halo { animation-duration: .9s; }
+.hub-core { fill: #1b1d21; stroke: var(--orange); stroke-width: 2; }
+.hub-count { fill: #fff; font: 800 36px var(--font); text-anchor: middle; }
+/* The caption sits on a plate of dark glass, so its text stays readable over lit floor cards at any window height. */
+.auth-hub figcaption {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 10px 18px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  background: rgba(21, 23, 26, 0.82);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+.auth-hub figcaption > strong { font-size: 15px; font-weight: 800; }
+.hub-title { margin-top: -6px; font-size: 13px; color: var(--stage-muted); }
+.hub-items, .hub-promises { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 10px; }
+.hub-items li { font-size: 12.5px; padding: 3px 10px; border-radius: 999px; color: #ffd3c4; background: rgba(250, 88, 45, 0.1); border: 1px solid rgba(250, 88, 45, 0.55); }
+.hub-promises li { font-size: 12.5px; color: var(--stage-muted); }
+.hub-promises li::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--orange); vertical-align: middle; }
+@keyframes hub-flow { to { stroke-dashoffset: -28; } }
+@keyframes hub-pulse { 50% { transform: scale(1.12); opacity: .55; } }
+
+/* The name card: hidden in the floor until the typing pauses, then lifted out of one floor card (auth-stage.tsx
+   animates it from that card's footprint). Frosted glass: the floor and its light show through, blurred. */
+/* Above the hub caption, so the card passes over its plate while it stands up (they touch on phones). */
+.hero-slot { align-self: end; position: relative; z-index: 1; width: min(370px, 100%); margin-bottom: 8vh; }
+.hero-card {
+  position: relative;
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: var(--stage-text);
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 20px;
+  transform-origin: 50% 100%; /* it stands up from, and lies back down on, its bottom edge */
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.18) 0%, rgba(255, 255, 255, 0.06) 48%, rgba(250, 88, 45, 0.1) 100%);
+  -webkit-backdrop-filter: blur(16px) saturate(170%);
+  backdrop-filter: blur(16px) saturate(170%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 0 30px rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(250, 88, 45, 0.6),
+    0 0 44px rgba(250, 88, 45, 0.35),
+    0 30px 60px rgba(0, 0, 0, 0.45);
+  transition: box-shadow .3s ease;
+}
+/* Light catching the glass: a soft diagonal sheen across the top. */
+.hero-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(118deg, rgba(255, 255, 255, 0.24) 0%, rgba(255, 255, 255, 0.06) 34%, rgba(255, 255, 255, 0) 35%);
+  pointer-events: none;
+}
+.hero-card.is-hidden { visibility: hidden; opacity: 0; }
+.hero-card:hover:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), inset 0 0 30px rgba(255, 255, 255, 0.07), 0 0 0 2px var(--orange), 0 0 56px rgba(250, 88, 45, 0.55), 0 30px 60px rgba(0, 0, 0, 0.45);
+}
+.hero-card:disabled { cursor: default; }
+.hero-card.is-busy { cursor: progress; }
+.hero-content {
+  position: relative;
+  min-height: 202px;
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr);
+  grid-template-rows: auto auto 1fr;
+  grid-template-areas: "avatar id" "pills pills" "cta cta";
+  gap: 12px 14px;
+  padding: 18px 20px 16px;
+}
+.hero-avatar {
+  grid-area: avatar;
+  position: relative;
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 800 22px var(--font);
+  color: #fff;
+  background: radial-gradient(circle at 30% 25%, #ff7a52, #c23b16 70%);
+  box-shadow: 0 0 0 3px rgba(27, 29, 33, 0.8), 0 0 0 5px rgba(250, 88, 45, 0.75), 0 0 22px rgba(250, 88, 45, 0.5);
+}
+.hero-card.is-busy .hero-avatar::after { content: ""; position: absolute; inset: -9px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--orange); border-right-color: var(--orange); animation: hero-spin .8s linear infinite; }
+.hero-id { grid-area: id; display: grid; min-width: 0; align-self: center; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.45); }
+.hero-name { font-size: 21px; font-weight: 800; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-handle { font: 500 13px var(--mono); color: #d3d7dd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hero-pills { grid-area: pills; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; }
+.hero-pills span { font-size: 12px; font-weight: 700; padding: 3px 10px; border-radius: 999px; color: #eef0f2; background: rgba(27, 29, 33, 0.72); border: 1px solid rgba(255, 255, 255, 0.14); }
+.hero-pills span:first-child { color: #1b1d21; background: rgba(245, 246, 247, 0.95); }
+.hero-cta {
+  grid-area: cta;
+  align-self: end;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #e3e6ea;
+  background: rgba(15, 16, 19, 0.55);
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+}
+.hero-card.is-ready .hero-cta { color: #fff; background: var(--orange-dark); border: 1px solid rgba(255, 255, 255, 0.22); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25); }
+.hero-card.is-ready:hover .hero-cta { background: var(--orange-deep); }
+.hero-card.is-typing .hero-name {
+  color: transparent;
+  background: linear-gradient(90deg, #f5f6f7 0 35%, #ff9b7a 50%, #f5f6f7 65% 100%) 0 0 / 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: hero-shimmer 1s linear infinite;
+}
+.hero-card.is-denied { animation: hero-shake .45s; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 0 1px var(--stage-error), 0 0 32px rgba(255, 143, 122, 0.45), 0 30px 60px rgba(0, 0, 0, 0.45); }
+@keyframes hero-spin { to { transform: rotate(1turn); } }
+@keyframes hero-shimmer { to { background-position: -220% 0; } }
+@keyframes hero-shake { 20%, 60% { translate: -8px 0; } 40%, 80% { translate: 8px 0; } }
+
+/* Short laptop windows: a smaller diagram, so the name card still fits under the caption. */
+@media (min-width: 900px) and (max-height: 800px) {
+  .auth-hub svg { width: auto; max-width: 100%; height: clamp(184px, calc(100vh - 516px), 225px); }
+}
+
+@media (max-width: 899px) {
+  .auth-stage-inner { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; padding: 16px 16px 28px; gap: 18px; }
+  .auth-panel, .auth-side { grid-column: 1; grid-row: auto; }
+  .auth-panel { margin-top: 0; padding: 22px 18px 18px; }
+  .auth-hub { order: 1; }
+  .auth-hub svg { display: none; }
+  .hero-slot { margin: 4px 0 120px; } /* room below it for the floor card it stands up from */
+  .hero-content { min-height: 188px; }
+}
+@media (max-width: 599px) {
+  .motion-toggle { padding: 10px; }
+  .motion-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
+
+/* Still: the OS asks for reduced motion, or the person pressed Pause motion. */
+.auth-stage.is-still .hub-flow, .auth-stage.is-still .hub-halo, .auth-stage.is-still .hero-card.is-busy .hero-avatar::after, .auth-stage.is-still .hero-card.is-denied { animation: none; }
+.auth-stage.is-still .hero-card.is-typing .hero-name { color: inherit; background: none; animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .hub-flow, .hub-halo, .hero-card.is-busy .hero-avatar::after, .hero-card.is-denied { animation: none; }
+  .hero-card.is-typing .hero-name { color: inherit; background: none; animation: none; }
+  .motion-toggle { display: none; }
+}
