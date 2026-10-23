@@ -62,9 +62,19 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
 // Fail fast instead of hanging when the database is unreachable, and keep the number of connections bounded.
 const POOL = { connectionTimeoutMillis: 5000, idleTimeoutMillis: 30_000 };
 
+/**
+ * A pooled connection that Postgres drops (a restart, an admin kill) is reported here instead of reaching Node as an
+ * unhandled 'error' event; the pool opens a fresh connection on the next query.
+ */
+function pool(config: pg.PoolConfig): pg.Pool {
+  const p = new pg.Pool(config);
+  p.on('error', (e) => console.error('database connection dropped; the next query reconnects', (e as { code?: string }).code ?? e.name));
+  return p;
+}
+
 /** Migrations, data load and grants, as the owner login. Run by `npm run db:setup`, or at start when the owner URL is set. */
 export async function setupDatabase(ownerUrl: string, seed: string = DEFAULT_SEED) {
-  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1, ...POOL });
+  const owner = pool({ connectionString: ownerUrl, max: 1, ...POOL });
   try {
     const ownerDb = drizzlePg(owner, { schema });
     await migratePg(ownerDb, { migrationsFolder: MIGRATIONS });
@@ -77,7 +87,7 @@ export async function setupDatabase(ownerUrl: string, seed: string = DEFAULT_SEE
 
 async function openPostgres(appUrl: string, ownerUrl: string | undefined, seed: string): Promise<Database> {
   if (ownerUrl) await setupDatabase(ownerUrl, seed);
-  const app = new pg.Pool({ connectionString: appUrl, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
+  const app = pool({ connectionString: appUrl, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
   return { db: drizzlePg(app, { schema }) as unknown as Db, mode: 'postgres', close: () => app.end() };
 }
 
