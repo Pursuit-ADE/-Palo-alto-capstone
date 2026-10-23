@@ -158,9 +158,14 @@ function boundOk(n: number | undefined): boolean {
   return n == null || (Number.isFinite(n) && n >= 0 && n <= 1e12);
 }
 
-/** A model-proposed amount is kept only when it is a real bound. The phrase's own parse still wins. */
+/**
+ * A model-proposed amount is kept only when it is a real bound. An empty range (min above max, or the same
+ * number with an exclusive side) is refused, the same rule the amount parser uses.
+ */
 function checkedAmount(amount: Intent['filters']['amount']): Intent['filters']['amount'] | undefined {
   if (!amount || !boundOk(amount.min) || !boundOk(amount.max) || (amount.min == null && amount.max == null)) return undefined;
+  const { min, max } = amount;
+  if (min != null && max != null && (min > max || (min === max && (amount.minInclusive === false || amount.maxInclusive === false)))) return undefined;
   return amount;
 }
 
@@ -226,10 +231,14 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
   return [...new Set(out)];
 }
 
-/** The phrase's selectors win. A checked model value fills a gap. On a follow-up, an unnamed selector stays from the previous intent. */
+/**
+ * The phrase's selectors win. A checked model amount fills a gap only when the question has no digits, so a
+ * spelled-out amount the parser cannot read can still be used. A question with digits keeps the parser's
+ * answer, including a refusal. On a follow-up, an unnamed selector stays from the previous intent.
+ */
 export function assignSelectors(intent: Intent, phrase: string, inherited?: Intent): Intent | { kind: 'clarify'; question: string } {
   const read = readSelectors(phrase);
-  const modelAmount = checkedAmount(intent.filters.amount);
+  const modelAmount = /\d/.test(phrase) ? undefined : checkedAmount(intent.filters.amount);
   if (read.clarify && !(read.clarify === AMOUNT_CLARIFY && modelAmount)) return { kind: 'clarify', question: read.clarify };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;

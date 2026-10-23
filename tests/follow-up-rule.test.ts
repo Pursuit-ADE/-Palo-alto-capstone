@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
+import { AMOUNT_CLARIFY } from '@/semantic/amount';
 import { CLARIFY_TEXT, followUpRule } from '@/semantic/model';
 import { continuesPrevious, normalize } from '@/semantic/normalize';
 
@@ -50,11 +51,25 @@ describe('follow-up rule', () => {
     expect(r).toMatchObject({ kind: 'clarify', question: CLARIFY_TEXT.period });
   });
 
-  it('reads "a million" itself, and keeps a checked model amount only when the phrase still needs a comparison', () => {
+  it('reads "a million" itself, and keeps a spelled-out model amount only when the question has no digits', () => {
     const read = normalize('open pipeline for deals bigger than a million', reg, AS_OF);
     expect(read).toMatchObject({ kind: 'intent', intent: { filters: { amount: { min: 1_000_000, minInclusive: false } } } });
-    const proposal: Intent = { metric: 'open_pipeline', filters: { amount: { min: 2_000_000, minInclusive: false } }, groupBy: [] };
-    expect(followUpRule({ kind: 'intent', intent: proposal }, 'open pipeline around $2M', reg, undefined)).toEqual({ kind: 'intent', intent: proposal });
-    expect(normalize('open pipeline around $2M', reg, AS_OF).kind).toBe('clarify');
+    const spelled: Intent = { metric: 'open_pipeline', filters: { amount: { min: 100_000, minInclusive: false } }, groupBy: [] };
+    expect(followUpRule({ kind: 'intent', intent: spelled }, 'open pipeline over a hundred grand', reg, undefined)).toEqual({ kind: 'intent', intent: spelled });
+  });
+
+  it('keeps the parser refusal when a model amount would be an empty range or a pair of years', () => {
+    const rows: [string, Intent['filters']['amount']][] = [
+      ['open pipeline over 5,000 and under 1,000', { min: 5000, max: 1000 }],
+      ['open pipeline between 2025 and 2026', { min: 2025, max: 2026 }],
+    ];
+    for (const [phrase, amount] of rows) {
+      const proposal: Intent = { metric: 'open_pipeline', filters: { amount }, groupBy: [] };
+      expect(followUpRule({ kind: 'intent', intent: proposal }, phrase, reg, undefined), phrase).toMatchObject({ kind: 'clarify', question: AMOUNT_CLARIFY });
+      expect(normalize(phrase, reg, AS_OF).kind, phrase).toBe('clarify');
+    }
+    const backwards: Intent = { metric: 'open_pipeline', filters: { amount: { min: 5000, max: 1000, minInclusive: false, maxInclusive: false } }, groupBy: [] };
+    const dropped = followUpRule({ kind: 'intent', intent: backwards }, 'open pipeline over a hundred grand', reg, undefined);
+    expect(dropped).toMatchObject({ kind: 'intent', intent: { metric: 'open_pipeline', filters: {}, groupBy: [] } });
   });
 });
