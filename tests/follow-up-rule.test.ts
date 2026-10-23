@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
+import { AMOUNT_CLARIFY } from '@/semantic/amount';
 import { CLARIFY_TEXT, followUpRule } from '@/semantic/model';
 import { continuesPrevious, normalize } from '@/semantic/normalize';
 
@@ -48,5 +49,32 @@ describe('follow-up rule', () => {
     const prev: Intent = { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] };
     const r = followUpRule({ kind: 'intent', intent: { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] } }, 'what is pipeline coverage?', reg, prev);
     expect(r).toMatchObject({ kind: 'clarify', question: CLARIFY_TEXT.period });
+  });
+
+  it('reads "a million" itself, and keeps a spelled-out model amount only when the question has no digits', () => {
+    const read = normalize('open pipeline for deals bigger than a million', reg, AS_OF);
+    expect(read).toMatchObject({ kind: 'intent', intent: { filters: { amount: { min: 1_000_000, minInclusive: false } } } });
+    const spelled: Intent = { metric: 'open_pipeline', filters: { amount: { min: 100_000, minInclusive: false } }, groupBy: [] };
+    expect(followUpRule({ kind: 'intent', intent: spelled }, 'open pipeline over a hundred grand', reg, undefined)).toEqual({ kind: 'intent', intent: spelled });
+  });
+
+  it('keeps the parser refusal when a model amount would be an empty range or a pair of years', () => {
+    const rows: [string, Intent['filters']['amount']][] = [
+      ['open pipeline over 5,000 and under 1,000', { min: 5000, max: 1000 }],
+      ['open pipeline between 2025 and 2026', { min: 2025, max: 2026 }],
+    ];
+    for (const [phrase, amount] of rows) {
+      const proposal: Intent = { metric: 'open_pipeline', filters: { amount }, groupBy: [] };
+      expect(followUpRule({ kind: 'intent', intent: proposal }, phrase, reg, undefined), phrase).toMatchObject({ kind: 'clarify', question: AMOUNT_CLARIFY });
+      expect(normalize(phrase, reg, AS_OF).kind, phrase).toBe('clarify');
+    }
+    const backwards: Intent = { metric: 'open_pipeline', filters: { amount: { min: 5000, max: 1000, minInclusive: false, maxInclusive: false } }, groupBy: [] };
+    // A spelled-out amount the parser can't read is a question; a backwards model amount can't answer it.
+    const asked = followUpRule({ kind: 'intent', intent: backwards }, 'open pipeline over a hundred grand', reg, undefined);
+    expect(asked).toMatchObject({ kind: 'clarify', question: AMOUNT_CLARIFY });
+    // A valid model amount still fills it in, because the question has no digits.
+    const valid: Intent = { metric: 'open_pipeline', filters: { amount: { min: 100000, minInclusive: false } }, groupBy: [] };
+    const filled = followUpRule({ kind: 'intent', intent: valid }, 'open pipeline over a hundred grand', reg, undefined);
+    expect(filled).toMatchObject({ kind: 'intent', intent: { filters: { amount: { min: 100000, minInclusive: false } } } });
   });
 });

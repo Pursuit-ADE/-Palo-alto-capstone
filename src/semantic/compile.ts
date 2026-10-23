@@ -1,9 +1,10 @@
 // Compiles a validated Intent into parameterized SQL. Table and column names come only from the
 // registry allowlist; every user-influenced value travels as a bound parameter, never as SQL text.
+import { catalog } from '../db/seed';
 import type { Registry } from '../registry/load';
 import { Intent, type Dimension, type MetricDefinition, type Source } from '../registry/types';
 import { findPeriod } from './periods';
-import { effectiveRegions, type Principal } from './scope';
+import { effectiveRegions, ScopeViolation, type Principal } from './scope';
 
 export interface CompiledQuery {
   text: string;
@@ -37,6 +38,14 @@ export function validateIntent(raw: unknown, registry: Registry): { intent: Inte
   // Coverage divides by quota, which has no stage, so a stage filter can't be applied consistently.
   // Refuse it rather than return an answer that silently ignores the filter.
   if (metric.kind === 'ratio' && intent.filters.stages) throw new IntentError(`${metric.name} can't be filtered by stage.`);
+  // Quota is per rep and quarter. Deal size, product, account and sector exist only on opportunities,
+  // so applying them to coverage would change the numerator and leave the denominator as the whole quota.
+  if (
+    metric.kind === 'ratio' &&
+    (intent.filters.amount || intent.filters.products?.length || intent.filters.accounts?.length || intent.filters.sectors?.length)
+  ) {
+    throw new IntentError(`${metric.name} can't be filtered by deal size, product, account or sector, because quota isn't split that way.`);
+  }
   if (metric.kind === 'ratio' && metric.requiresPeriod && !intent.filters.period) {
 
     throw new IntentError(`${metric.name} needs a period.`);
@@ -71,15 +80,108 @@ function measureSql(source: Source, alias: string): string {
   return source.measure.fn === 'sum' ? `COALESCE(SUM(${alias}.${source.measure.column}), 0)` : 'COUNT(*)';
 }
 
+function resolveProducts(names: string[] | undefined): string[] | undefined {
+  if (!names?.length) return undefined;
+  const products = catalog().products;
+  const ids = new Set<string>();
+  for (const name of names) {
+    const exact = products.filter((p) => p.id.toLowerCase() === name.toLowerCase());
+    const series = products.filter((p) => p.series.toLowerCase() === name.toLowerCase());
+    const hits = exact.length ? exact : series;
+    if (!hits.length) throw new IntentError(`Unknown product: ${name}`);
+    for (const hit of hits) ids.add(hit.id);
+  }
+  return [...ids];
+}
+
+function resolveAccounts(names: string[] | undefined, sectors: string[] | undefined): string[] | undefined {
+  if (!names?.length && !sectors?.length) return undefined;
+  const accounts = catalog().accounts;
+  let rows = accounts;
+  if (names?.length) {
+    const wanted = new Set(names.map((n) => n.toLowerCase()));
+    rows = rows.filter((a) => wanted.has(a.name.toLowerCase()));
+    const known = new Set(rows.map((a) => a.name.toLowerCase()));
+    const missing = names.filter((n) => !known.has(n.toLowerCase()));
+    if (missing.length) throw new IntentError(`Unknown account: ${missing.join(', ')}`);
+  }
+  if (sectors?.length) {
+    const known = new Set(accounts.map((a) => a.sector.toLowerCase()));
+    const missing = sectors.filter((s) => !known.has(s.toLowerCase()));
+    if (missing.length) throw new IntentError(`Unknown sector: ${missing.join(', ')}`);
+    const wanted = new Set(sectors.map((s) => s.toLowerCase()));
+    rows = rows.filter((a) => wanted.has(a.sector.toLowerCase()));
+  }
+  return rows.map((a) => a.id);
+}
+
+/** Rep ids for a person filter. A rep outside this principal's team is a scope refusal, not an empty answer. */
+function resolvePeople(names: string[] | undefined, principal: Principal): string[] | undefined {
+  if (!names?.length) return undefined;
+  const owners = catalog().owners;
+  const ids: string[] = [];
+  const outside: string[] = [];
+  for (const name of names) {
+    const owner = owners.find((o) => o.name.toLowerCase() === name.toLowerCase());
+    if (!owner) throw new IntentError(`Unknown person: ${name}`);
+    if (principal.ownerIds && !principal.ownerIds.includes(owner.id)) outside.push(owner.name);
+    ids.push(owner.id);
+  }
+  if (outside.length) throw new ScopeViolation(`You do not have access to ${outside.join(', ')}.`);
+  return ids;
+}
+
+/** Reps who report to the named manager. A team outside this principal's scope is a refusal, not a partial number. */
+function resolveTeams(names: string[] | undefined, principal: Principal): string[] | undefined {
+  if (!names?.length) return undefined;
+  const cat = catalog();
+  const ids: string[] = [];
+  const outside: string[] = [];
+  for (const name of names) {
+    const manager = cat.managers.find((m) => m.name.toLowerCase() === name.toLowerCase());
+    if (!manager) throw new IntentError(`Unknown team: ${name}`);
+    const reps = cat.owners.filter((o) => o.managerId === manager.id);
+    if (!reps.length) throw new IntentError(`Unknown team: ${name}`);
+    if (principal.ownerIds && reps.some((r) => !principal.ownerIds!.includes(r.id))) outside.push(manager.name);
+    else for (const rep of reps) ids.push(rep.id);
+  }
+  if (outside.length) throw new ScopeViolation(`You do not have access to ${[...new Set(outside)].join(', ')}'s team.`);
+  return [...new Set(ids)];
+}
+
+function limitPeople(personIds: string[] | undefined, teamIds: string[] | undefined): string[] | undefined {
+  if (personIds && teamIds) return personIds.filter((id) => teamIds.includes(id));
+  return personIds ?? teamIds;
+}
+
+function extraFilters(intent: Intent, alias: string, table: Source['table'], p: Params, people: string[] | undefined): string {
+  const parts: string[] = [];
+  if (people) {
+    const column = table === 'opportunities' ? 'owner_user_id' : 'user_id';
+    parts.push(people.length ? `${alias}.${column} = ANY(${p.add(people)}::text[])` : 'FALSE');
+  }
+  if (table !== 'opportunities') return parts.length ? ` AND ${parts.join(' AND ')}` : '';
+  const amount = intent.filters.amount;
+  if (amount?.min != null) parts.push(`${alias}.amount ${amount.minInclusive === false ? '>' : '>='} ${p.add(amount.min)}`);
+  if (amount?.max != null) parts.push(`${alias}.amount ${amount.maxInclusive === false ? '<' : '<='} ${p.add(amount.max)}`);
+  const products = resolveProducts(intent.filters.products);
+  if (products) parts.push(`${alias}.product_id = ANY(${p.add(products)}::text[])`);
+  const accounts = resolveAccounts(intent.filters.accounts, intent.filters.sectors);
+  if (accounts) parts.push(`${alias}.account_id = ANY(${p.add(accounts)}::text[])`);
+  return parts.length ? ` AND ${parts.join(' AND ')}` : '';
+}
+
 export function compile(intent: Intent, registry: Registry, principal: Principal, snapshotId: string): CompiledQuery {
   const metric = registry.metrics.get(intent.metric)!;
   const regions = effectiveRegions(principal, intent.filters.regions);
   const p = new Params();
   const period = intent.filters.period;
+  const people = limitPeople(resolvePeople(intent.filters.people, principal), resolveTeams(intent.filters.teams, principal));
 
   if (metric.kind === 'aggregate') {
     const s = metric.source;
     let where = whereFor(s, 't', p, snapshotId, regions, principal, period);
+    where += extraFilters(intent, 't', s.table, p, people);
     if (intent.filters.stages) where += ` AND t.stage = ANY(${p.add(intent.filters.stages)}::text[])`;
     const dims = intent.groupBy.map((d) => `t.${DIMENSION_COLUMN[d]} AS ${d}`);
     const groupCols = intent.groupBy.map((d) => `t.${DIMENSION_COLUMN[d]}`);
@@ -94,8 +196,8 @@ export function compile(intent: Intent, registry: Registry, principal: Principal
 
   // Ratio: numerator metric and denominator source, both per region, then joined.
   const num = registry.metrics.get(metric.numerator) as Extract<MetricDefinition, { kind: 'aggregate' }>;
-  const numWhere = whereFor(num.source, 'n', p, snapshotId, regions, principal, period);
-  const denWhere = whereFor(metric.denominator, 'd', p, snapshotId, regions, principal, period);
+  const numWhere = whereFor(num.source, 'n', p, snapshotId, regions, principal, period) + extraFilters(intent, 'n', num.source.table, p, people);
+  const denWhere = whereFor(metric.denominator, 'd', p, snapshotId, regions, principal, period) + extraFilters(intent, 'd', metric.denominator.table, p, people);
   const byRegion = intent.groupBy.includes('region');
   const text = [
     `WITH num AS (SELECT n.region_id, ${measureSql(num.source, 'n')} AS v FROM ${num.source.table} n WHERE ${numWhere} GROUP BY n.region_id),`,

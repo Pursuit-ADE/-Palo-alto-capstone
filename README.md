@@ -25,7 +25,7 @@ For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm
 
 **Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
-Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused.
+Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused. Open pipeline and open opportunity count can also be filtered by deal size, product, account, sector, or the sales rep who owns the deal. A sector counts when the question says sector, industry, or vertical beside the name. A manager named with their team means that manager's reps. Pipeline coverage can be filtered by that rep or team. A filter quota is not split by, or a name that is not in the data, gets a clarifying question instead of a number for the whole scope.
 
 ## How it works
 
@@ -96,7 +96,6 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
 - Alerts (in `alerts/`): per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
-- Filters by deal size, product, account, sector or person: the copilot asks a clarifying question instead of answering.
 - Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the database URLs (see the runbook).
 - The test identity picker is not authentication.
 
