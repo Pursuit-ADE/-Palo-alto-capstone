@@ -40,8 +40,7 @@ jobs:
         run: |
           for port in 3000 3001; do
             # Signed out, the home page sends you to /login; the login page must render from the production build.
-            curl -s -o /dev/null -w "port $port home: HTTP %{http_code} -> %{redirect_url}
-" "http://127.0.0.1:$port/"
+            curl -s -o /dev/null -w "port $port home: HTTP %{http_code} -> %{redirect_url}\n" "http://127.0.0.1:$port/"
             status=$(curl -s -o /tmp/login-$port.html -w '%{http_code}' "http://127.0.0.1:$port/login")
             echo "port $port /login: HTTP $status"; test "$status" = 200
             grep -qi 'password' /tmp/login-$port.html
