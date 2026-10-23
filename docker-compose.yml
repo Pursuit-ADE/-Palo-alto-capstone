@@ -1,5 +1,10 @@
 # Postgres mode: owner (migrations and loading), app_readonly (answers questions), app_audit (writes the audit log).
 # Local development credentials only. See .env.example for the matching URLs.
+#
+#   docker compose up -d                       Postgres only, for `npm run dev` on the host.
+#   docker compose --profile app up -d --build Postgres, a one-shot database setup, the copilot on :3000 and
+#                                              alerts on :3001, all as production servers. The copilot refuses to start without AUDIT_HASH_KEY;
+#                                              set it and DEMO_INVITE_SECRET in a .env file next to this one (runbook).
 services:
   postgres:
     image: postgres:16-alpine
@@ -14,6 +19,72 @@ services:
       # `docker compose down -v` deletes it on purpose.
       - pgdata:/var/lib/postgresql/data
       - ./docker/init-roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U copilot_owner -d copilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Runs migrations, the data load and grants as the owner, then exits. The servers below never get the owner URL.
+  copilot-setup:
+    profiles: [app]
+    build: { context: ., target: setup }
+    environment:
+      MIGRATION_DATABASE_URL: postgres://copilot_owner:local_dev_only@postgres:5432/copilot
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  copilot:
+    profiles: [app]
+    build: { context: ., target: runner }
+    environment:
+      DATABASE_URL: postgres://app_readonly:readonly_local_dev@postgres:5432/copilot
+      AUDIT_DATABASE_URL: postgres://app_audit:audit_local_dev@postgres:5432/copilot
+      AUTH_DATABASE_URL: postgres://app_auth:auth_local_dev@postgres:5432/copilot
+      AUDIT_HASH_KEY: ${AUDIT_HASH_KEY:-}
+      DEMO_INVITE_SECRET: ${DEMO_INVITE_SECRET:-}
+      DEMO_INVITE_EXPIRES: ${DEMO_INVITE_EXPIRES:-}
+      # Plain http on this machine. Behind a real HTTPS proxy, set both to true and TRUSTED_PROXY_HOPS to 1.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      INTENT_MODEL: ${INTENT_MODEL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      SECURITY_SLACK_WEBHOOK_URL: ${SECURITY_SLACK_WEBHOOK_URL:-}
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      copilot-setup: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  alerts-setup:
+    profiles: [app]
+    build: { context: ., target: setup, args: { APP_DIR: alerts } }
+    environment:
+      MIGRATION_DATABASE_URL: postgres://copilot_owner:local_dev_only@postgres:5432/alerts
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  alerts:
+    profiles: [app]
+    build: { context: ., target: runner, args: { APP_DIR: alerts } }
+    environment:
+      ALERTS_DATABASE_URL: postgres://alerts_app:alerts_local_dev@postgres:5432/alerts
+      ALERTS_SCHEDULER: "true"
+      COPILOT_URL: ${COPILOT_URL:-http://localhost:3000}
+      DEMO_INVITE_SECRET: ${DEMO_INVITE_SECRET:-}
+      DEMO_INVITE_EXPIRES: ${DEMO_INVITE_EXPIRES:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ENABLE_HSTS: ${ENABLE_HSTS:-false}
+      TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
+      SLACK_USER_WEBHOOKS: ${SLACK_USER_WEBHOOKS:-}
+    ports:
+      - "127.0.0.1:3001:3000"
+    depends_on:
+      alerts-setup: { condition: service_completed_successfully }
+    restart: unless-stopped
 
 volumes:
   pgdata:

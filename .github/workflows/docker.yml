@@ -1,0 +1,56 @@
+# Builds both container images and runs the whole stack the way a server would (docker compose --profile app):
+# Postgres, the one-shot database setups, then the copilot and alerts as production servers. Passes when both
+# servers answer over HTTP and the copilot's sign-in page renders.
+name: docker
+
+on:
+  push:
+    branches: [main, week5]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Write throwaway secrets for this run
+        run: |
+          {
+            echo "AUDIT_HASH_KEY=$(openssl rand -hex 32)"
+            echo "DEMO_INVITE_SECRET=$(openssl rand -hex 24)"
+          } > .env
+
+      - name: Build and start the stack
+        run: docker compose --profile app up -d --build --wait --wait-timeout 300
+
+      - name: Both setups finished cleanly
+        run: |
+          for s in copilot-setup alerts-setup; do
+            code=$(docker inspect -f '{{.State.ExitCode}}' "$(docker compose ps -a -q $s)")
+            echo "$s exited with $code"; test "$code" = 0
+          done
+
+      - name: Copilot and alerts answer over HTTP
+        run: |
+          for port in 3000 3001; do
+            status=$(curl -s -o /tmp/page-$port.html -w '%{http_code}' "http://127.0.0.1:$port/")
+            echo "port $port: HTTP $status"; test "$status" -lt 500
+          done
+          curl -sI http://127.0.0.1:3000/ | grep -i -E 'content-security-policy|x-frame-options'
+
+      - name: Invite codes work against the running database
+        run: docker compose run --rm -e DEMO_INVITE_SECRET="$(grep DEMO_INVITE_SECRET .env | cut -d= -f2)" copilot-setup npx tsx scripts/invites.ts | head -3
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose --profile app logs --no-color --tail 200
+
+      - name: Stop
+        if: always()
+        run: docker compose --profile app down -v
