@@ -69,7 +69,12 @@ describe('follow-up rule', () => {
       expect(normalize(phrase, reg, AS_OF).kind, phrase).toBe('clarify');
     }
     const backwards: Intent = { metric: 'open_pipeline', filters: { amount: { min: 5000, max: 1000, minInclusive: false, maxInclusive: false } }, groupBy: [] };
-    const dropped = followUpRule({ kind: 'intent', intent: backwards }, 'open pipeline over a hundred grand', reg, undefined);
-    expect(dropped).toMatchObject({ kind: 'intent', intent: { metric: 'open_pipeline', filters: {}, groupBy: [] } });
+    // A spelled-out amount the parser can't read is a question; a backwards model amount can't answer it.
+    const asked = followUpRule({ kind: 'intent', intent: backwards }, 'open pipeline over a hundred grand', reg, undefined);
+    expect(asked).toMatchObject({ kind: 'clarify', question: AMOUNT_CLARIFY });
+    // A valid model amount still fills it in, because the question has no digits.
+    const valid: Intent = { metric: 'open_pipeline', filters: { amount: { min: 100000, minInclusive: false } }, groupBy: [] };
+    const filled = followUpRule({ kind: 'intent', intent: valid }, 'open pipeline over a hundred grand', reg, undefined);
+    expect(filled).toMatchObject({ kind: 'intent', intent: { filters: { amount: { min: 100000, minInclusive: false } } } });
   });
 });
