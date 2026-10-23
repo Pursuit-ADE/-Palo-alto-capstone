@@ -36,8 +36,8 @@ const EXACT = ['exactly', 'equal to', 'equals', 'worth', 'valued at'];
 const SCALE: Record<string, number> = { thousand: 1e3, million: 1e6, billion: 1e9, mm: 1e6, bn: 1e9, k: 1e3, m: 1e6 };
 const SCALE_WORDS = Object.keys(SCALE).join('|');
 
-const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const alternation = (words: string[]) => [...words].sort((a, b) => b.length - a.length).map(escape).join('|');
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const alternation = (words: string[]) => [...words].sort((a, b) => b.length - a.length).map(escapeRegExp).join('|');
 
 // A number: "$5,000", "1.5m", "$2 million", or "a/one million". Not part of a word ("fy27", "q3") or a longer number.
 const NUM = String.raw`(?:(\$\s?)?(?<![\w.,])(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d+))?(?!\d|,\d|\.\d)(?:\s?(${SCALE_WORDS})\b)?|\b(?:a|one)\s(${SCALE_WORDS})\b)`;
@@ -76,7 +76,7 @@ function blank(text: string, start: number, end: number): string {
 export function parseAmount(phrase: string, opts: { ignore?: string[] } = {}): AmountResult {
   let text = ` ${phrase.toLowerCase()} `;
   for (const name of opts.ignore ?? []) {
-    if (name.trim()) text = text.replace(new RegExp(escape(name.toLowerCase()), 'g'), (m) => ' '.repeat(m.length));
+    if (name.trim()) text = text.replace(new RegExp(escapeRegExp(name.toLowerCase()), 'g'), (m) => ' '.repeat(m.length));
   }
 
   const lower: { value: number; inclusive: boolean }[] = [];
