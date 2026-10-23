@@ -38,8 +38,19 @@ const DIFFERENCE =
 const THIS_NUMBER = / (this|that|my|our|the) (number|figure|ratio|result) /;
 /** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
 const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*x\b/gi;
+/** The same pattern without the g flag, so .test() keeps no state between calls. */
+const HAS_QUOTED_RATIO = new RegExp(QUOTED_RATIO.source, 'i');
 const SECTOR_CUE = /\b(sector|sectors|industry|industries|vertical|verticals)\b/i;
 const STAGE_WORDS = / (prospecting|engaging|won|lost) /;
+/**
+ * Words that point at a figure someone else holds ("marketing says…", "the company number"). With one of these,
+ * a single named quarter is the asker's own figure for that quarter, not a request to compare two quarters.
+ */
+const OTHER_FIGURE =
+  / (marketing|sales|finance|leadership|company|companys|everyone|everybody|whole|overall|total|dashboard|report|spreadsheet|someone|somebody|they|their|them|he|she|his|her|manager|boss|say|says|said) /;
+
+/** The question is about a figure someone else holds: it names one (OTHER_FIGURE) or quotes a ratio. */
+const pointsElsewhere = (phrase: string) => OTHER_FIGURE.test(clean(phrase)) || HAS_QUOTED_RATIO.test(phrase);
 
 function clean(phrase: string): string {
   return ` ${phrase.replace(QUOTED_RATIO, ' ').toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
@@ -78,7 +89,8 @@ function namedSlice(phrase: string): Intent['filters'] | Clarify {
   const blocked = quotaBlocked(read.filters);
   if (blocked) return { kind: 'clarify', question: blocked };
   const filters: Intent['filters'] = {};
-  const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `));
+  // In the order the question names them, so "east than west" compares East with West, in that order.
+  const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `)).sort((a, b) => text.indexOf(` ${a} `) - text.indexOf(` ${b} `));
   if (regions.length) filters.regions = regions;
   if (read.filters.people?.length) filters.people = read.filters.people;
   if (read.filters.teams?.length) filters.teams = read.filters.teams;
@@ -101,8 +113,19 @@ function plan(phrase: string, registry: Registry, asOfDate: string, previous?: I
   const coverage = (filters: Intent['filters']): Intent => ({ metric: EXPLAINED_METRIC, filters, groupBy: [] });
   const [p1, p2] = [...periods.labels].sort();
   if (p1 && p2) return { first: coverage({ ...base, period: p1 }), second: coverage({ ...base, period: p2 }) };
-  const period = p1 ?? base.period ?? resolvePeriod('current', asOfDate);
+  const current = resolvePeriod('current', asOfDate);
+  const period = p1 ?? base.period ?? current;
   if (!period) return { kind: 'clarify', question: 'Pipeline coverage needs a period. Which quarter do you mean?' };
+  // "Why is coverage different next quarter?" compares the current quarter with the named one, inside the same slice.
+  // Not when the question points at someone else's figure: then the named quarter is just the asker's own figure.
+  if (p1 && current && p1 !== current && !named && !pointsElsewhere(phrase)) {
+    return { first: coverage({ ...base, period: current }), second: coverage({ ...base, period: p1 }) };
+  }
+  // Two named regions are compared with each other ("east than west"), not combined into one slice.
+  const [r1, r2] = slice.regions ?? [];
+  if (r1 && r2 && !slice.regions?.[2] && !slice.people && !slice.teams) {
+    return { first: coverage({ regions: [r1], period }), second: coverage({ regions: [r2], period }) };
+  }
   // A named slice is compared with the asker's whole scope; both are figures the asker may already see.
   return { first: coverage({ ...base, period }), second: named ? coverage({ period }) : null };
 }
@@ -117,6 +140,8 @@ async function numeratorMatches(database: Database, registry: Registry, principa
   const check = await run(database, registry, principal, { metric: metric.numerator, filters, groupBy: [] }, {});
   return Number(check.rows[0]?.value ?? 0) === Number(row.numerator ?? 0);
 }
+
+const sameQuarter = (a: Answer, b: Answer) => a.filters.period?.label === b.filters.period?.label;
 
 /** Answers a discrepancy question (see isDiscrepancyQuestion). Called inside the audited request in ask(). */
 export async function explainDiscrepancy(
@@ -133,7 +158,12 @@ export async function explainDiscrepancy(
   if (isClarify(p)) return p;
   const answer = await run(database, registry, principal, p.first, fields);
   const second: AuditFields = {};
-  const other = p.second ? await run(database, registry, principal, p.second, second) : null;
+  const run2 = p.second ? await run(database, registry, principal, p.second, second) : null;
+  // A named slice that is the asker's whole scope ("Cara Losch's team" for someone who sees only that team), compared
+  // with someone else's figure ("the whole company"), means that figure is outside the scope: explain the asker's own
+  // figure instead of comparing the slice with itself. Compared with "mine", the same figure is the right answer.
+  const sameSlice = run2 && run2.scope === answer.scope && JSON.stringify(run2.rows) === JSON.stringify(answer.rows) && sameQuarter(answer, run2);
+  const other = run2 && !(sameSlice && pointsElsewhere(phrase)) ? run2 : null;
   const sides = other ? [answer, other] : [answer];
   const numerators = await Promise.all(sides.map((a) => numeratorMatches(database, registry, principal, a)));
   const verdict = other ? classify(answer, other, numerators) : null;

@@ -191,3 +191,54 @@ describe('classifier (pure)', () => {
     expect(reconciles({ ...a, rows: [{ numerator: 100, denominator: null, value: 0 }] })).toBe(false);
   });
 });
+
+// Review fixes on PR #50: a comparison is only drawn between the figures the question means.
+describe('what each comparison compares', () => {
+  const regionsOf = (a: Answer) => (a.intent as { filters: { regions?: string[] } }).filters.regions ?? null;
+  const periodOf = (a: Answer) => a.filters.period?.label;
+  const OUT_OF_SCOPE = /1,963,909|3,001,000|0\.65|central|west/i;
+
+  it("the seller's whole team against the whole company explains their own figure, not the team against itself", async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "why is Cara Losch's team coverage different from the whole company?"));
+    expect(e.other).toBeNull();
+    expect(e.verdict).toBeNull();
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+    expect(e.summary).toContain('0.52x');
+    expect(JSON.stringify(e)).not.toMatch(OUT_OF_SCOPE);
+  });
+
+  it('"east than west" compares East with West, in that order, not the two combined', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'explain why coverage is higher in east than west'));
+    expect(regionsOf(e.answer)).toEqual(['east']);
+    expect(regionsOf(e.other!)).toEqual(['west']);
+    expect(e.verdict).toBe('same_definition_different_scope');
+    expect(e.summary).toContain('East region is');
+    expect(e.summary).toContain('West region is');
+    expect(e.summary).not.toContain('East and West');
+  });
+
+  it('naming a region the seller cannot see is still refused', async () => {
+    await expect(ask(database, reg, 'u_ts_east', 'why is coverage higher in east than west?')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it('"different next quarter" compares this quarter with next for the analyst and for the seller', async () => {
+    for (const user of ['u_analyst', 'u_ts_east']) {
+      const e = explained(await ask(database, reg, user, 'why is coverage different next quarter?'));
+      expect(e.verdict).toBe('different_period');
+      expect([periodOf(e.answer), periodOf(e.other!)]).toEqual(['FY27-Q1', 'FY27-Q2']);
+      expect(e.answer.scope).toBe(e.other!.scope);
+    }
+    const seller = explained(await ask(database, reg, 'u_ts_east', 'why is my coverage different next quarter?'));
+    expect(JSON.stringify(seller)).not.toMatch(OUT_OF_SCOPE);
+  });
+
+  it("a quarter in a question about someone else's figure stays the asker's own figure for that quarter", async () => {
+    for (const q of ["why does marketing say next quarter's coverage is 3x?", 'why is my coverage next quarter different from the company number?']) {
+      const e = explained(await ask(database, reg, 'u_ts_east', q));
+      expect(e.other).toBeNull();
+      expect(periodOf(e.answer)).toBe('FY27-Q2');
+      expect(JSON.stringify(e)).not.toMatch(/\b3x\b/);
+      expect(JSON.stringify(e)).not.toMatch(OUT_OF_SCOPE);
+    }
+  });
+});
