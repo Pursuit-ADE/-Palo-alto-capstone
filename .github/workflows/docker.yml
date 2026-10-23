@@ -68,7 +68,8 @@ jobs:
         run: |
           # The script derives codes from DEMO_INVITE_SECRET and the demo user list; it does not open the database.
           # Written to a file, not piped to head, so a failing script fails the step.
-          docker compose run --rm -e DEMO_INVITE_SECRET="$(grep DEMO_INVITE_SECRET .env | cut -d= -f2)" copilot-setup npx tsx scripts/invites.ts > /tmp/invites.txt
+          # The runbook's command exactly: compose passes DEMO_INVITE_SECRET from .env to copilot-setup.
+          docker compose run --rm copilot-setup npx tsx scripts/invites.ts > /tmp/invites.txt
           count=$(grep -cE '^[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4} ' /tmp/invites.txt)
           echo "$count invite codes"; test "$count" -gt 0
 

@@ -75,9 +75,19 @@ export async function openDatabase(seed?: string, options: { dataDir?: string } 
 // Fail fast instead of hanging when the database is unreachable, and keep the number of connections bounded.
 const POOL = { connectionTimeoutMillis: 5000, idleTimeoutMillis: 30_000 };
 
+/**
+ * A pooled connection that Postgres drops (a restart, an admin kill) is reported here instead of reaching Node as an
+ * unhandled 'error' event; the pool opens a fresh connection on the next query.
+ */
+function pool(config: pg.PoolConfig): pg.Pool {
+  const p = new pg.Pool(config);
+  p.on('error', (e) => console.error('database connection dropped; the next query reconnects', (e as { code?: string }).code ?? e.name));
+  return p;
+}
+
 /** Migrations, data load and grants, as the owner login. Run by `npm run db:setup`, or at start when the owner URL is set. */
 export async function setupDatabase(ownerUrl: string, seed?: string, options: { dataDir?: string } = {}) {
-  const owner = new pg.Pool({ connectionString: ownerUrl, max: 1, ...POOL });
+  const owner = pool({ connectionString: ownerUrl, max: 1, ...POOL });
   try {
     const ownerDb = drizzlePg(owner, { schema });
     await migratePg(ownerDb, { migrationsFolder: MIGRATIONS });
@@ -90,9 +100,9 @@ export async function setupDatabase(ownerUrl: string, seed?: string, options: { 
 
 async function openPostgres(urls: { app: string; audit: string; auth: string; owner?: string }, seed: string | undefined, options: { dataDir?: string } = {}): Promise<Database> {
   if (urls.owner) await setupDatabase(urls.owner, seed, options);
-  const app = new pg.Pool({ connectionString: urls.app, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
-  const audit = new pg.Pool({ connectionString: urls.audit, max: 4, ...POOL });
-  const auth = new pg.Pool({ connectionString: urls.auth, max: 4, ...POOL });
+  const app = pool({ connectionString: urls.app, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
+  const audit = pool({ connectionString: urls.audit, max: 4, ...POOL });
+  const auth = pool({ connectionString: urls.auth, max: 4, ...POOL });
   return {
     db: drizzlePg(app, { schema }) as unknown as Db,
     client: { query: async (text, params) => app.query(text, params as unknown[]) as never },

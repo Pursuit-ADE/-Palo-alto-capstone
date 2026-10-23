@@ -53,6 +53,8 @@ docker compose --profile app up -d --build --wait
 docker compose run --rm copilot-setup npx tsx scripts/invites.ts   # invite codes for this DEMO_INVITE_SECRET
 ```
 
+For email alerts, also put `EMAIL_USER_ADDRESSES` and an HTTPS `EMAIL_WEBHOOK_URL` in `.env`: this stack runs in production mode, which refuses a localhost mail catcher.
+
 This starts Postgres, runs `copilot-setup` and `alerts-setup` once as the owner login, and then starts the copilot on http://localhost:3000 and alerts on http://localhost:3001. The two servers only get their least-privilege logins. Both listen on 127.0.0.1 only and use plain http, so cookies are not `Secure` here. Behind a real HTTPS proxy, set `COOKIE_SECURE=true`, `ENABLE_HSTS=true` and `TRUSTED_PROXY_HOPS=1` in `.env`. The `docker` workflow in CI runs this same stack on every pull request. `docker compose --profile app down` stops it.
 
 Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compose down -v` deletes it. A volume created before Oct 18 lacks the `app_auth` login: recreate it, or run the `CREATE ROLE app_auth` lines from `docker/init-roles.sql`.
