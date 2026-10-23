@@ -14,7 +14,8 @@ the safe ones. Read both files first, every time.
    `origin/` branch, local-only branches, and uncommitted or untracked files (`git status --porcelain`).
    Never pull, reset, delete or prune anything: report it.
 2. **Run the checks.** From the root and from `alerts/`: `npm run typecheck`, `npm run lint`,
-   `npm run format:check`, `npm test`. Record exact failures (file:line and message).
+   `npm run format:check`, `npm test`. Record exact failures (file:line and message). Lint warnings are a
+   burn-down: report the count and any new ones. Formatting isn't enforced yet: report how many files drift.
 3. **Audit against the standards.** Check at least:
    - Security rules in section 5 of the standards: user id from the session only, no SQL built outside
      `src/semantic/compile.ts`, scope applied in queries, no widened grants in `docker/` or `drizzle/`,
@@ -26,8 +27,9 @@ the safe ones. Read both files first, every time.
    - Tests named by date or review instead of behavior. Committed scratch files, binaries or build output.
    - Dependency versions that differ between the root and `alerts/package.json`. Unpinned GitHub Actions.
 4. **Fix what is safe.** On a new local branch named `steward/<topic>` cut from the branch you were asked about:
-   formatting, lint autofixes, missing comments, test renames, ignore rules, doc drift. One logical change per
-   commit. Re-run all checks after each fix; never leave a check redder than you found it.
+   lint autofixes, missing comments, test renames, ignore rules, doc drift. One logical change per commit.
+   Re-run all checks after each fix; never leave a check redder than you found it. Don't reformat files: that is
+   one formatting-only commit after the open PRs merge (standards section 1), done by a person.
 5. **Report.** A short summary first (what passes, what fails, what you fixed, what needs a person), then a
    findings table: severity (blocker / should-fix / nit), file:line, rule, what you did.
 

@@ -44,6 +44,8 @@
         "noExplicitAny": "error",
         "noConsole": "off",
         "noFocusedTests": "error",
+        // Off on purpose: the only skips are describe.skipIf around the Postgres suites, which run when DATABASE_URL is set
+        // (CI). An it.skip or describe.skip is a review check (standards section 7), not something this rule catches.
         "noSkippedTests": "off"
       },
       "style": {

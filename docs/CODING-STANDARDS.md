@@ -6,23 +6,24 @@ makes it the rule, so a reviewer can point to a line here instead of arguing tas
 
 ## 1. Checks every change must pass
 
-Run these from the repo root (and from `alerts/` when you touch it) before you open a pull request. CI runs the
-same commands and a red CI blocks merge.
+Run these from the repo root (and from `alerts/` when you touch it) before you open a pull request. CI runs
+every one except the format check (see that row), and a red CI blocks merge.
 
 | Check | Command | Rule |
 |---|---|---|
 | Types | `npm run typecheck` | No errors. `strict` and `noUncheckedIndexedAccess` stay on. |
 | Tests | `npm test` | All pass. Never skip, `.only` or delete a test to get green. |
-| Lint | `npm run lint` | No errors (Biome, `biome.json`). Warnings are fixed in the PR that adds them. |
-| Format | `npm run format:check` | Biome formatter output, see section 2. |
+| Lint | `npm run lint` | No errors (Biome, `biome.jsonc`); CI fails on any error. Warnings are a burn-down: don't add new ones, and fix the existing ones in a function when you change that function (section 9). |
+| Format | `npm run format:check` | Not enforced yet. Most files predate the formatter, so this stays local until one formatting-only commit after the open PRs merge; then it joins CI. Until then, don't reformat files you aren't otherwise changing. |
 | Build | `npm run build` | Succeeds. |
 | Docs in sync | `npm run docs:dictionary` | Re-run after any registry change; `tests/docs.test.ts` fails otherwise. |
 
 ## 2. Formatting
 
-Biome decides formatting (`biome.json`), so nobody hand-formats or argues about it in review. Run
-`npm run format` to apply it. (Biome rather than ESLint and Prettier because typescript-eslint doesn't support
-TypeScript 7 yet; one tool, no TypeScript dependency.)
+Biome decides formatting (`biome.jsonc`), so nobody hand-formats or argues about it in review. Run
+`npm run format` to apply it, but not over the whole repo until the formatting-only commit in section 1 lands.
+(Biome rather than ESLint and Prettier because typescript-eslint doesn't support TypeScript 7 yet; one tool, no
+TypeScript dependency.)
 
 - 2-space indent, LF line endings (`.gitattributes`), UTF-8, final newline (`.editorconfig`).
 - Single quotes in TS/TSX, double quotes in JSX attributes, semicolons, trailing commas.
@@ -83,6 +84,8 @@ These come from the security reviews and the PRD; each has tests. Breaking one i
   the bug (`oct17-fixes.test.ts`). Put the audit or finding ID in the `describe` name instead.
 - Tests use the embedded database (PGlite) and are deterministic: no network, no real model calls, no sleeps.
   Model behavior is tested through the golden set and the red-team eval scripts.
+- The only allowed skip is `describe.skipIf` around the Postgres-only suites, which run when `DATABASE_URL` is set
+  (CI). Biome's `noSkippedTests` is off because of it, so a reviewer checks for `it.skip` and `describe.skip`.
 - Scratch or probe tests are never committed. `tests/tmp/` is git-ignored for that.
 
 ## 8. Git and pull requests
@@ -113,10 +116,12 @@ is brought in line when it is next touched.
 | 7 | Never ignore a result: await or return every promise, no empty `catch`, no `.catch(() => undefined)` in app code. | Biome (warning), review |
 | 8 | No code built at runtime: no `eval`, `new Function` or dynamic `require`. | Biome, CodeQL |
 | 9 | No unchecked access: avoid non-null `!` and `as unknown as`. Use a checked helper that throws a clear error, or a comment saying why it is safe. | Review |
-| 10 | Zero warnings from the strictest settings, and static analysis on every change: `strict`, `noUncheckedIndexedAccess`, Biome, CodeQL and gitleaks in CI. | CI |
+| 10 | The strictest settings and static analysis on every change: `strict`, `noUncheckedIndexedAccess`, Biome, CodeQL and gitleaks in CI. CI fails on errors; Biome's warnings (22 on Oct 22) are a burn-down that only goes down. | CI |
 
 Security commitments from Palo Alto Networks' public posture (the CISA Secure by Design pledge and NIST SSDF) are in
-section 5. MFA, branch protection on `main` and an SBOM are tracked as open items in `SECURITY.md`.
+section 5. Branch protection on `main` and SSO with MFA are open items in `SECURITY.md` (item 17). The repo's
+dependency graph is on, so GitHub can export an SBOM (Insights → Dependency graph → Export SBOM); producing one in CI
+is not set up yet.
 
 ## 10. Definition of done
 

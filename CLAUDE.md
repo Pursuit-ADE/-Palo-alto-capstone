@@ -8,13 +8,16 @@ change you make here.
 ## Commands
 
 ```bash
-npm run typecheck && npm run lint && npm run format:check && npm test   # before every commit
+npm run typecheck && npm run lint && npm test   # before every commit
 npm run build
 npm run docs:dictionary      # after any change under registry/
 (cd alerts && npm run typecheck && npm test)   # when alerts/ changes
 ```
 
 Node 22.12+ (CI uses 24). Tests use embedded Postgres (PGlite): no Docker, no network.
+
+Don't run `npm run format` over the repo or reformat files you aren't changing. Formatting becomes one separate
+commit after the open PRs merge (standards section 1). Don't add lint warnings; fix the ones in a function you change.
 
 ## Map
 
