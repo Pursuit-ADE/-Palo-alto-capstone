@@ -1,5 +1,7 @@
 # Governed Analytics Copilot
 
+[![CI](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/ci.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/ci.yml) [![Alerts CI](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/alerts-ci.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/alerts-ci.yml) [![CodeQL](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/codeql.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/codeql.yml)
+
 Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026).
 
 A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts are in `alerts/` (since Week 2); Week 4 adds the scheduler, editable preferences and weekly or monthly digests.
@@ -101,9 +103,15 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Project documents
 
-- [PRD v1 (PDF)](ALTO-PALS_PRD_v1.docx.pdf)
-- [Roadmap v1 (PDF)](ALTO-PALS_Roadmap_v1.docx.pdf)
+- [PRD v1 (PDF)](docs/product/ALTO-PALS_PRD_v1.docx.pdf)
+- [Roadmap v1 (PDF)](docs/product/ALTO-PALS_Roadmap_v1.docx.pdf)
 
-## Branches
+## Branches and releases
 
-Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on.
+Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on. Work merges into the current week branch through a reviewed pull request, and each finished week is promoted to `main`.
+
+Stable points on `main` are tagged with [semantic versions](https://semver.org/) (`v0.1.0` is Week 1, `v0.2.0` Week 2, `v0.3.0` Week 3). [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable; `week*` branches are work in progress.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch flow, the checks every pull request must pass and how reviews work. The rules themselves are in [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md). Security issues go through [SECURITY.md](SECURITY.md), not public issues.

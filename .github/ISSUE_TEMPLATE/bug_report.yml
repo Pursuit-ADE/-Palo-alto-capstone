@@ -1,0 +1,34 @@
+name: Bug report
+description: Something in the copilot or the alerts service does not work as described.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Security problems go through SECURITY.md (private reporting), not a public issue.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Copilot (root app), Alerts service, Registry or metrics, CI or tooling, Docs]
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Branch or commit
+      placeholder: week5 at 391993e
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The question you asked, the role or demo person you used, and what you clicked.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected and what happened
+    validations:
+      required: true
