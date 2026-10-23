@@ -50,9 +50,11 @@ describe('follow-up rule', () => {
     expect(r).toMatchObject({ kind: 'clarify', question: CLARIFY_TEXT.period });
   });
 
-  it('keeps a checked amount from the model when the phrase has no digits', () => {
-    const proposal: Intent = { metric: 'open_pipeline', filters: { amount: { min: 1_000_000, minInclusive: false } }, groupBy: [] };
-    expect(followUpRule({ kind: 'intent', intent: proposal }, 'open pipeline for deals bigger than a million', reg, undefined)).toEqual({ kind: 'intent', intent: proposal });
-    expect(normalize('open pipeline for deals bigger than a million', reg, AS_OF).kind).toBe('clarify');
+  it('reads "a million" itself, and keeps a checked model amount only when the phrase still needs a comparison', () => {
+    const read = normalize('open pipeline for deals bigger than a million', reg, AS_OF);
+    expect(read).toMatchObject({ kind: 'intent', intent: { filters: { amount: { min: 1_000_000, minInclusive: false } } } });
+    const proposal: Intent = { metric: 'open_pipeline', filters: { amount: { min: 2_000_000, minInclusive: false } }, groupBy: [] };
+    expect(followUpRule({ kind: 'intent', intent: proposal }, 'open pipeline around $2M', reg, undefined)).toEqual({ kind: 'intent', intent: proposal });
+    expect(normalize('open pipeline around $2M', reg, AS_OF).kind).toBe('clarify');
   });
 });

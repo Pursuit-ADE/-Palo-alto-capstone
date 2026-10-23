@@ -5,6 +5,7 @@ import type { Registry } from '../registry/load';
 import type { Dimension, Intent } from '../registry/types';
 import { catalog, QUOTA_PERIODS } from '../db/seed';
 import type { Glossary } from '../registry/types';
+import { AMOUNT_CLARIFY, parseAmount } from './amount';
 import { findPeriod, resolvePeriod } from './periods';
 
 const EXCLUSION = / (excluding|exclude|except|without|other than|apart from|besides|minus|outside of|not) /;
@@ -18,23 +19,11 @@ const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all t
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
-// Deal-size words. A year on its own (2025) is a period, not an amount. A number with no comparison is asked
-// about, because guessing "exactly" would answer a different question.
-const AMOUNT_CUE = / (over|above|under|below|more than|less than|greater than|at least|at most|bigger than|larger than|smaller than|exceeding|between|exactly|equal to|equals|worth|valued at|up to) | (deal size|deal sizes|size of deal|size of deals) | \d+ (and|to) \d+ | \d+(?:\.\d+)?\s?(?:k|m|mm|million|thousand|bn|billion)\b /;
-const BARE_NUMBER = / (?!(?:19|20)\d\d )\d{3,} /;
-const NUM = String.raw`(\d+(?:\.\d+)?)(?:\s*(mm|million|thousand|bn|billion|k|m))?`;
-const LOWER_WORDS = 'over|above|more than|greater than|bigger than|larger than|exceeding|at least';
-const UPPER_WORDS = 'under|below|less than|smaller than|at most|up to';
-const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]+(?:\s+[A-Z][A-Za-z0-9&'.-]+)*)/g;
+// A capitalized name, including a product id whose last token is a number ("GTK 500").
+const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
 
 type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people' | 'teams'>;
-
-function scale(raw: string, suffix?: string): number {
-  const n = Number(raw);
-  const mult = suffix === 'k' || suffix === 'thousand' ? 1_000 : suffix === 'bn' || suffix === 'billion' ? 1_000_000_000 : suffix ? 1_000_000 : 1;
-  return n * mult;
-}
 
 const SECTOR_CUES = ['sector', 'sectors', 'industry', 'industries', 'vertical', 'verticals'];
 
@@ -56,51 +45,6 @@ function sectorBeside(text: string, name: string): boolean {
 function managerWithTeam(text: string, name: string): boolean {
   const n = words(name);
   return text.includes(` ${n} s team `) || text.includes(` ${n} team `) || text.includes(` team of ${n} `);
-}
-
-/**
- * Amounts keep commas between digits and the decimal point. clean() would turn $5,000 into "5 000"
- * and $1.5M into "1 5m", which then parse as $5 and $1.
- */
-function amountText(phrase: string): string {
-  let s = phrase.toLowerCase();
-  while (/\d,\d/.test(s)) s = s.replace(/(\d),(?=\d)/g, '$1');
-  s = s.replace(/(\d)\.(\d)/g, '$1dpt$2');
-  return ` ${s.replace(/[^a-z0-9-]+/g, ' ').replace(/\s+/g, ' ').trim()} `;
-}
-
-function parseAmount(text: string): { amount?: Intent['filters']['amount']; clarify?: string } {
-  const t = text.replace(/dpt/g, '.').replace(/\s+/g, ' ');
-  const between = t.match(new RegExp(` (?:between|from) ${NUM} (?:and|to) ${NUM} `));
-  if (between) {
-    return { amount: { min: scale(between[1]!, between[2]), max: scale(between[3]!, between[4]), minInclusive: true, maxInclusive: true } };
-  }
-  const lower = t.match(new RegExp(` (${LOWER_WORDS}) ${NUM} `));
-  const upper = t.match(new RegExp(` (${UPPER_WORDS}) ${NUM} `));
-  const exact = t.match(new RegExp(` (exactly|equal to|equals|worth|valued at) ${NUM} `));
-  if (lower || upper || exact) {
-    const amount: NonNullable<Intent['filters']['amount']> = {};
-    if (exact && !lower && !upper) {
-      const n = scale(exact[2]!, exact[3]);
-      amount.min = n;
-      amount.max = n;
-      amount.minInclusive = true;
-      amount.maxInclusive = true;
-    }
-    if (lower) {
-      amount.min = scale(lower[2]!, lower[3]);
-      amount.minInclusive = lower[1] === 'at least';
-    }
-    if (upper) {
-      amount.max = scale(upper[2]!, upper[3]);
-      amount.maxInclusive = upper[1] === 'at most' || upper[1] === 'up to';
-    }
-    return { amount };
-  }
-  if (AMOUNT_CUE.test(t) || BARE_NUMBER.test(t) || /[$<>]\s*\d/.test(text)) {
-    return { clarify: 'I can filter by deal size, but I need the comparison: for example over $1M, under $5,000, or between 4000 and 5000.' };
-  }
-  return {};
 }
 
 interface Hit { kind: 'product' | 'account' | 'sector' | 'owner' | 'manager'; name: string; at: number; len: number }
@@ -185,9 +129,9 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
     return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
   }
-  let rest = amountText(phrase);
-  for (const name of [...covered].sort((a, b) => words(b).length - words(a).length)) rest = rest.replaceAll(` ${words(name)} `, ' ');
-  const amount = parseAmount(rest);
+  // "open deal value" is a name for the metric. The amount parser also treats "deal value" as a deal size,
+  // so the synonym is blanked and a real comparison in the same question still counts.
+  const amount = parseAmount(phrase, { ignore: [...covered, 'open deal value'] });
   if (amount.clarify) return { filters: {}, clarify: amount.clarify };
   const filters: SelectorFilters = {};
   if (amount.amount) filters.amount = amount.amount;
@@ -286,7 +230,7 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
 export function assignSelectors(intent: Intent, phrase: string, inherited?: Intent): Intent | { kind: 'clarify'; question: string } {
   const read = readSelectors(phrase);
   const modelAmount = checkedAmount(intent.filters.amount);
-  if (read.clarify && !(read.clarify.startsWith('I can filter by deal size') && modelAmount)) return { kind: 'clarify', question: read.clarify };
+  if (read.clarify && !(read.clarify === AMOUNT_CLARIFY && modelAmount)) return { kind: 'clarify', question: read.clarify };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;

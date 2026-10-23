@@ -152,6 +152,35 @@ describe('governed metrics against the loaded CRM data', () => {
     await expect(ask(database, reg, 'u_ts_west', "open pipeline for Cara Losch's team")).rejects.toBeInstanceOf(ScopeViolation);
   });
 
+  it('reads the comparison that was being missed, and asks when the range cannot be a deal size', async () => {
+    const noMore = await answer('u_analyst', 'open pipeline no more than 10k');
+    expect(noMore.filters.amount).toEqual({ max: 10_000, maxInclusive: true });
+    expect(noMore.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => Number(o.amount) <= 10_000)), 2);
+
+    const range = await answer('u_analyst', 'open pipeline between 1 and 2 million');
+    expect(range.filters.amount).toEqual({ min: 1_000_000, max: 2_000_000, minInclusive: true, maxInclusive: true });
+    expect(range.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => { const n = Number(o.amount); return n >= 1_000_000 && n <= 2_000_000; })), 2);
+
+    const gtk = await answer('u_analyst', 'open pipeline for GTK 500');
+    expect(gtk.filters.products).toEqual(['GTK 500']);
+    expect(gtk.filters.amount).toBeNull();
+    const gtkOver = await answer('u_analyst', 'open pipeline for GTK 500 over $10k');
+    expect(gtkOver.filters.products).toEqual(['GTK 500']);
+    expect(gtkOver.filters.amount).toEqual({ min: 10_000, minInclusive: false });
+
+    const named = await answer('u_analyst', 'open deal value over $1M');
+    expect(named.filters.amount).toEqual({ min: 1_000_000, minInclusive: false });
+
+    for (const phrase of ['open pipeline over 5,000 and under 1,000', 'open pipeline between 2025 and 2026']) {
+      const r = await ask(database, reg, 'u_analyst', phrase);
+      expect(r.kind, phrase).toBe('clarify');
+      if (r.kind === 'clarify') expect(r.question).toMatch(/deal size/);
+    }
+    const lastQuarter = await ask(database, reg, 'u_analyst', 'open pipeline over the last quarter');
+    expect(lastQuarter.kind).toBe('clarify');
+    if (lastQuarter.kind === 'clarify') expect(lastQuarter.question).not.toMatch(/deal size/);
+  });
+
   it('this-quarter coverage phrasings match the hand-computed ratio', async () => {
     const phrases = [
       'What is our pipeline coverage this quarter?',
