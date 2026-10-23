@@ -165,6 +165,7 @@ function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
             <thead><tr>{cols.map((k) => (<th key={k}>{k}</th>))}</tr></thead>
             <tbody>
               {a.rows.map((r, i) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: result rows have no id and never reorder within an answer.
                 <tr key={i}>{cols.map((k) => (<td key={k}>{cell(k, k === 'owner' ? (a.ownerNames?.[String(r[k])] ?? r[k]) : r[k], a.metric.unit)}</td>))}</tr>
               ))}
             </tbody>
@@ -196,6 +197,7 @@ function BarChart({ values: rows, dim, unit }: { values: { [k: string]: string |
           const w = (Number(v.value) / max) * barW;
           const y = i * rowH + 4;
           return (
+            // biome-ignore lint/suspicious/noArrayIndexKey: chart bars follow the fixed row order of one answer.
             <g key={i}>
               {/* The spec already holds the display label (src/semantic/narrative.ts chartSpec). */}
               <text x={labelW - 8} y={y + 15} textAnchor="end" className="chart-label">

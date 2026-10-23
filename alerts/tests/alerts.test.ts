@@ -49,7 +49,7 @@ describe('rule catalog (L1)', () => {
     expect([...rules.keys()].sort()).toEqual(['cxo_engagement', 'high_severity_case']);
   });
 
-  const loadBad = (file: string, change: (r: Record<string, any>) => void) => {
+  const loadBad = (file: string, change: (r: { explain?: string; conditions: Record<string, unknown> }) => void) => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rules-'));
     const r = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'rules', file), 'utf8'));
     change(r);

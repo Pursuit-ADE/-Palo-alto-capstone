@@ -12,7 +12,6 @@ import { answerIntent, ask } from '@/semantic/answer';
 import { inviteCode, userForInvite } from '@/server/auth';
 
 const NORTHSTAR = path.join(process.cwd(), 'data', 'northstar-crm');
-const MAVEN = path.join(process.cwd(), 'data', 'maven-crm');
 
 describe('A7 dataset onboarding', () => {
   it('profiles the second CRM folder as Maven-shaped', () => {

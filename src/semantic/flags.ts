@@ -50,6 +50,7 @@ const HOMOGLYPHS: Record<string, string> = {
   ɡ: 'g', ɩ: 'i', '。': '.', '｡': '.', '︒': '.',
 };
 const HOMOGLYPH = new RegExp(`[${Object.keys(HOMOGLYPHS).join('')}]`, 'gu');
+// biome-ignore lint/suspicious/noMisleadingCharacterClass: each invisible code point (U+034F is a combining joiner) is stripped on its own.
 const INVISIBLE = /[\p{Cf}\u00AD\u034F\u115F\u1160\u17B4\u17B5\u3164\uFFA0]/gu;
 
 function fold(text: string, invisibleAs: '' | ' '): string {
