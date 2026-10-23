@@ -2,9 +2,9 @@
 // account they can see, access is checked again right before anything is sent, and the database's
 // unique key (rule, user, event) guarantees each alert is created once.
 import { randomUUID } from 'node:crypto';
-import { and, eq, gte, inArray, lt, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, contacts, engagements, supportCases } from '../db/schema';
+import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appAccounts, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
 import { render, type AlertRule } from './rules';
 import { digestDue, lastSlot, normalizeFrequency } from './schedule';
@@ -77,6 +77,15 @@ export async function matchingEvents(db: Db, rule: AlertRule, since: Date, until
     }));
 }
 
+/** A user whose sign-in account was disabled gets no new alerts and no further deliveries (offboarding). */
+export async function isDisabled(db: Db, userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ u: appAccounts.userId })
+    .from(appAccounts)
+    .where(and(eq(appAccounts.userId, userId), isNotNull(appAccounts.disabledAt)));
+  return rows.length > 0;
+}
+
 /** Account access comes from the account-team mapping in the database, read fresh every time. */
 export async function canSeeAccount(db: Db, userId: string, accountId: string): Promise<boolean> {
   const rows = await db
@@ -111,6 +120,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
     const events = await matchingEvents(db, rule, since, now);
     for (const ev of events) {
       for (const { s: sub } of audience) {
+        if (await isDisabled(db, sub.userId)) continue;
         if (!(await canSeeAccount(db, sub.userId, ev.accountId))) continue;
         const id = `alert_${rule.id}_${sub.userId}_${ev.id}`;
         const inserted = await db
@@ -154,7 +164,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
 }
 
 /**
- * Whether this alert may still go to this user right now: the user still exists and has a role in the rule's
+ * Whether this alert may still go to this user right now: the user still exists, is not disabled, has a role in the rule's
  * audience, is still subscribed to the rule, and can still see the account. Read fresh from the database.
  */
 export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: { userId: string; ruleId: string; accountId: string }): Promise<boolean> {
@@ -162,6 +172,7 @@ export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: 
   if (!rule) return false;
   const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, row.userId));
   if (!user || !(rule.audience as string[]).includes(user.role)) return false;
+  if (await isDisabled(db, row.userId)) return false;
   const [sub] = await db
     .select({ u: alertSubscriptions.userId })
     .from(alertSubscriptions)
