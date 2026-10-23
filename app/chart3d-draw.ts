@@ -102,13 +102,19 @@ function roundedPath(c: CanvasRenderingContext2D, pts: Pt[], radii: number[]) {
 
 function poly(c: CanvasRenderingContext2D, pts: Pt[]) {
   c.beginPath();
-  pts.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
+  pts.forEach((p, i) => {
+    if (i) c.lineTo(p[0], p[1]);
+    else c.moveTo(p[0], p[1]);
+  });
   c.closePath();
 }
 
 function line(c: CanvasRenderingContext2D, pts: Pt[]) {
   c.beginPath();
-  pts.forEach((p, i) => (i ? c.lineTo(p[0], p[1]) : c.moveTo(p[0], p[1])));
+  pts.forEach((p, i) => {
+    if (i) c.lineTo(p[0], p[1]);
+    else c.moveTo(p[0], p[1]);
+  });
 }
 
 /** A side face's fill: tops catch the light like a cap, the rest are shaded by how they face the light. */
@@ -378,7 +384,9 @@ function drawPrism(c: CanvasRenderingContext2D, pr: Prism, cam: Camera, m: Morph
           const a = mid(run[0]!);
           const b = mid(run[run.length - 1]!);
           const grad = c.createLinearGradient(a[0], a[1], b[0], b[1]);
-          run.forEach((i, k) => grad.addColorStop(k / (run.length - 1), sideFill(edges[i]!.nn, tone, flat, g, hot)));
+          run.forEach((i, k) => {
+            grad.addColorStop(k / (run.length - 1), sideFill(edges[i]!.nn, tone, flat, g, hot));
+          });
           c.fillStyle = grad;
         }
         c.fill();

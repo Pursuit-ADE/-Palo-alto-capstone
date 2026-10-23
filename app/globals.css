@@ -68,7 +68,7 @@ form.ask input::placeholder { color: var(--muted); }
 form.ask input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 form.ask button { font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 20px; cursor: pointer; }
 form.ask button:hover { background: var(--orange-deep); }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; border: 0; padding: 0; min-inline-size: 0; }
 .chips button { cursor: pointer; font: 13px var(--font); font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; text-decoration: none; }
 .chips button:hover:not([disabled]) { border-color: var(--orange); color: var(--orange-dark); }
 

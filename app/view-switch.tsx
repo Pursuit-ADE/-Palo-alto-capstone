@@ -12,10 +12,10 @@ function Choices({ view }: { view: View }) {
   const shown = asked === 'numbers' || asked === 'graphs' ? asked : view;
   return (
     <>
-      <div className="view-switch-buttons" role="group" aria-labelledby="view-switch-label">
+      <fieldset className="view-switch-buttons" aria-labelledby="view-switch-label">
         <button type="submit" name="view" value="numbers" aria-pressed={shown === 'numbers'}>Numbers</button>
         <button type="submit" name="view" value="graphs" aria-pressed={shown === 'graphs'}>Graphs</button>
-      </div>
+      </fieldset>
       {shown === 'graphs' && <p className="view-switch-hint">Drag a graph, or the page around it, to turn the graphs into 3D. Double-click or press Esc to flatten.</p>}
     </>
   );

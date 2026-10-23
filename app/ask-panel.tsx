@@ -148,11 +148,11 @@ function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
         <div className="answer-graph" aria-live="off">
           <Chart3D charts={charts} />
           {breakdowns.length > 0 && (
-            <div className="chips" role="group" aria-label="Break this number down">
+            <fieldset className="chips" aria-label="Break this number down">
               {breakdowns.map((b) => (
                 <button key={b.question} type="button" disabled={graphs?.busy} onClick={() => graphs?.ask?.(b.question, true)}>{b.label}</button>
               ))}
-            </div>
+            </fieldset>
           )}
         </div>
       )}

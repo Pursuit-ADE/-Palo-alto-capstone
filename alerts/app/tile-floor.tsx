@@ -491,5 +491,8 @@ export function TileFloor({ labels, signal, anchor }: { labels: CardLabel[]; sig
     };
   }, [key, signal, anchor]);
 
-  return <canvas ref={ref} className="tile-floor" aria-hidden="true" />;
+    return (
+      // biome-ignore lint/a11y/noAriaHiddenOnFocusable: the floor is decoration behind the sign-in card.
+      <canvas ref={ref} className="tile-floor" aria-hidden="true" />
+    );
 }
