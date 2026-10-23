@@ -49,7 +49,7 @@ jobs:
         run: |
           for port in 3000 3001; do
             # Signed out, the home page must redirect to /login, and the login page must render from the production build.
-            read -r code location < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n'"http://127.0.0.1:$port/")
+            read -r code location < <(curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' "http://127.0.0.1:$port/")
             echo "port $port home: HTTP $code -> $location"
             test "$code" = 307
             test "$location" = "http://127.0.0.1:$port/login"
