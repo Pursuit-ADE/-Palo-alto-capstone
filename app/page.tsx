@@ -10,6 +10,10 @@ import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
 import { FactChips, scopeText } from './fact-chips';
 import { format, cell, dateRange } from './format';
+import { Chart3D } from './chart3d';
+import { coverageRegionCharts, kpiStageChart } from './chart-data';
+import { readChartKinds, readView } from './view-mode';
+import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,17 +34,28 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   const database = await getDatabase();
   const me = USERS.find((u) => u.id === user)!;
   const period = resolvePeriod('current', AS_OF_DATE)!;
+  const view = await readView();
+  const graphs = view === 'graphs';
+  const kinds = graphs ? await readChartKinds() : undefined;
 
   // Dashboard tiles: the same governed path as any typed question, so they obey the same scope.
-  const [pipeline, coverage, count, byRegion] = await Promise.all([
+  // The Graphs view also splits the two tiles by stage: two more governed (scoped, audited) calls, made only then.
+  // A split that fails or doesn't add up never breaks the page; the graph shows the tile's total instead.
+  const split = (metric: string) =>
+    graphs ? answerIntent(database, registry, user, { metric, filters: {}, groupBy: ['stage'] }, 'dashboard_graph', actor).catch(() => null) : Promise.resolve(null);
+  const [pipeline, coverage, count, byRegion, pipelineByStage, countByStage] = await Promise.all([
     answerIntent(database, registry, user, { metric: 'open_pipeline', filters: {}, groupBy: [] }, 'dashboard', actor),
     answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: [] }, 'dashboard', actor),
     answerIntent(database, registry, user, { metric: 'open_opportunity_count', filters: {}, groupBy: [] }, 'dashboard', actor),
     answerIntent(database, registry, user, { metric: 'pipeline_coverage', filters: { period }, groupBy: ['region'] }, 'dashboard', actor),
+    split('open_pipeline'),
+    split('open_opportunity_count'),
   ]);
   // Coverage with no quota is NULL: shown as not available, never as 0.00x.
   const covRaw = coverage.rows[0]?.value;
   const cov = covRaw === null || covRaw === undefined ? null : Number(covRaw);
+  // In the Graphs view, a mouse drag on the page around the graphs turns them too.
+  const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const quarter = coverage.filters.period ? `${period} (${dateRange(coverage.filters.period.start, coverage.filters.period.end)})` : period;
 
   return (
@@ -74,7 +89,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
         </div>
       </header>
 
-      <main>
+      <main {...surface}>
         <div className="page-head">
           <h1>Pipeline overview</h1>
           <FactChips
@@ -82,19 +97,22 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             items={[['Scope', scopeText(pipeline.scope)], ['Fiscal quarter', quarter], ['Data as of', dateRange(pipeline.provenance.asOfDate)]]}
           />
           <p>{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          <ViewSwitch view={view} />
         </div>
 
-        <div className="overview">
-          <section className="kpis stack" aria-label="All open deals">
+        <div className="overview" {...surface}>
+          <section className="kpis stack" aria-label="All open deals" {...surface}>
             <div className="kpi">
               <span className="label">Open pipeline · all open deals</span>
               <span className="value">{format(pipeline.rows[0]?.value, 'currency')}</span>
               <span className="note">Any expected close date (not limited to {period})</span>
+              {graphs && <Chart3D charts={[kpiStageChart(pipeline, pipelineByStage, 'kpi-pipeline', 'Open pipeline by stage')]} kinds={kinds} />}
             </div>
             <div className="kpi">
               <span className="label">Open opportunities · all open deals</span>
               <span className="value">{format(count.rows[0]?.value, 'count')}</span>
               <span className="note">deals not yet won or lost</span>
+              {graphs && <Chart3D charts={[kpiStageChart(count, countByStage, 'kpi-count', 'Open opportunities by stage')]} kinds={kinds} />}
             </div>
           </section>
 
@@ -102,6 +120,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
             <span className="cov-value">{format(cov, 'ratio')}</span>
             <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : '1.00x means pipeline equals quota.'}</p>
+            {graphs ? (
+              <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} kinds={kinds} />
+            ) : (
+            <>
             <h2>By region</h2>
             <div className="bars">
               {byRegion.rows.map((r) => {
@@ -122,11 +144,20 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
                 );
               })}
             </div>
+            </>
+            )}
             <p className="bars-note">The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.</p>
           </section>
         </div>
 
-        <AskPanel user={user} name={me.displayName.split(' (')[0]!} examples={EXAMPLES} initialQuestion={promptFor(params.prompt)} />
+        <AskPanel
+          user={user}
+          name={me.displayName.split(' (')[0]!}
+          examples={EXAMPLES}
+          initialQuestion={promptFor(params.prompt)}
+          view={view}
+          metricDims={Object.fromEntries([...registry.metrics.values()].map((m) => [m.id, m.dimensions]))}
+        />
 
         <section className="card" aria-labelledby="metrics-title">
           <h2 id="metrics-title">Governed metrics</h2>
