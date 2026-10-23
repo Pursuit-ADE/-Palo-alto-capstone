@@ -72,7 +72,7 @@ export function AskPanel({
       <div className="chat-head">
         <div>
           <h2 id="ask-title">Ask the copilot</h2>
-          <p className="sub">Answers come only from the governed metrics below, scoped to {name}. Ask follow-ups like “what about by stage?”.</p>
+          <p className="sub">Answers come only from the governed metrics below, scoped to {name}. Ask follow-ups like “and next quarter?”.</p>
         </div>
         {turns.length > 0 && (
           <button type="button" className="link-button" onClick={() => { setTurns([]); setPrevious(null); }} disabled={pending}>
