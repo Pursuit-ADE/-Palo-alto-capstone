@@ -1,0 +1,22 @@
+name: Feature request
+description: A new metric, alert rule or capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Who needs it and why
+      description: The person (rep, manager, executive, CSM) and the question or decision it helps with.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What it should do
+    validations:
+      required: true
+  - type: input
+    id: prd
+    attributes:
+      label: PRD or roadmap reference
+      placeholder: PRD S7
