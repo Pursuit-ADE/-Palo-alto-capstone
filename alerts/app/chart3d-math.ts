@@ -490,6 +490,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
     const vh = Math.max(64, n * rowH + 8);
     const barW = vw - ROW_LABEL_W - 90;
     const axisMax = max || 1;
+    // biome-ignore lint/correctness/noComponentHookFactories: a one-letter scale function, not a React component
     const X = (v: number) => (v / axisMax) * barW;
     const ticks = niceTicks(axisMax, chart.unit)
       .filter((v) => v <= axisMax * (1 + 1e-9))
@@ -574,6 +575,7 @@ function barLayout(chart: ChartData, kind: ChartKind, form: Form, narrow: boolea
   const plotH = plot.y1 - plot.y0;
   const ticksV = niceTicks(max, chart.unit);
   const axisMax = ticksV[ticksV.length - 1]!;
+  // biome-ignore lint/correctness/noComponentHookFactories: a one-letter scale function, not a React component
   const H = (v: number) => (v / axisMax) * plotH;
   const ticks = ticksV.map((v) => ({ value: v, text: compact(v, chart.unit), pos: plot.y1 - (v / axisMax) * plotH }));
   const slot = (plot.x1 - plot.x0) / n;
@@ -1141,14 +1143,18 @@ export function buildScene(L: Layout, m: Morph): Scene {
         const box = outline.length ? boundsOf(outline, zc - d / 2, zc + d / 2) : { x0: xy[0]![0], x1: xy[0]![0], y0: yb, y1: xy[0]![1], z0: zc - d / 2, z1: zc + d / 2 };
         prisms.push({ datum: -1, series: s, tone, look: 'area', pts: outline, smooth: outline.map(() => false), ...box, part: 'whole', dots: pts.map((p, i) => ({ datum: p.datum, c: [xy[i]![0], xy[i]![1], zc + d / 2], r: 4 + 1.5 * m.e })), curtain: null, edge: xy, out: null });
         keep(zc - d / 2, zc + d / 2);
-        pts.forEach((p, i) => p.text && labels.push({ p: [xy[i]![0], xy[i]![1], zc + d / 2], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum }));
+        pts.forEach((p, i) => {
+          if (p.text) labels.push({ p: [xy[i]![0], xy[i]![1], zc + d / 2], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum });
+        });
       } else {
         const d = 12 * m.e;
         const outline = strokeOutline(xy, 1);
         const box = outline.length ? boundsOf([...outline, ...floorPts], zc - d / 2, zc + d / 2) : { x0: xy[0]![0] - 4, x1: xy[0]![0] + 4, y0: yb, y1: xy[0]![1] + 4, z0: zc - d / 2, z1: zc + d / 2 };
         prisms.push({ datum: -1, series: s, tone, look: 'ribbon', pts: outline, smooth: outline.map(() => false), ...box, part: 'whole', dots: pts.map((p, i) => ({ datum: p.datum, c: [xy[i]![0], xy[i]![1], zc], r: 4 + 1.5 * m.e })), curtain: xy.length > 1 ? floorPts : null, edge: null, out: null });
         keep(zc - d / 2, zc + d / 2);
-        pts.forEach((p, i) => p.text && labels.push({ p: [xy[i]![0], xy[i]![1], zc], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum }));
+        pts.forEach((p, i) => {
+          if (p.text) labels.push({ p: [xy[i]![0], xy[i]![1], zc], dx: 0, dy: p.ty - p.y, text: p.text, anchor: p.anchor, kind: 'value', datum: p.datum });
+        });
       }
     }
     for (const g of L.ghosts) {

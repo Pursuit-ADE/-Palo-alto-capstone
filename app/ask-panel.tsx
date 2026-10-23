@@ -148,6 +148,7 @@ function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
         <div className="answer-graph" aria-live="off">
           <Chart3D charts={charts} />
           {breakdowns.length > 0 && (
+            // biome-ignore lint/a11y/useSemanticElements: a button group, not a form section; fieldset would bring its own border and legend rules
             <div className="chips" role="group" aria-label="Break this number down">
               {breakdowns.map((b) => (
                 <button key={b.question} type="button" disabled={graphs?.busy} onClick={() => graphs?.ask?.(b.question, true)}>{b.label}</button>
