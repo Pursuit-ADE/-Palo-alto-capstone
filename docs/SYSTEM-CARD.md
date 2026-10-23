@@ -64,7 +64,7 @@ Details and definitions are in `docs/RED-TEAM.md` (metrics).
 
 Findings are tracked in `docs/RED-TEAM.md` (F1–F25). The ones a reviewer should know first:
 
-- Not built yet: backups and disaster recovery, SSO with MFA, health checks and error reporting, a DPIA and processor agreements for Anthropic and Slack.
+- Not built yet: backups and disaster recovery, SSO with MFA, health checks and error reporting, a DPIA and processor agreements for Anthropic, Slack and email.
 - Pattern-based prompt flags are a speed bump; scope enforcement in the database is the real control.
 - This is a self-assessment by the team that built it. The client's own red team should test it before any rollout.
 

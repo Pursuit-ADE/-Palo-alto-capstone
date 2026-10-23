@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { createChannels, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
+import { createChannels, EMAIL_WEBHOOK_WARNING, emailHtml, emailSubject, emailText, isEmailWebhook, parseEmails, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
 import { flushDigests, inbox, inQuietHours, MAX_ATTEMPTS, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
@@ -467,6 +467,96 @@ describe('Slack channel (L5)', () => {
     expect(signals[0]).toBeInstanceOf(AbortSignal); // every Slack call has a timeout
     const bad = createChannels({ slackWebhooks: { u_ts_east: 'https://attacker.example/hook' }, fetch: fake });
     expect(await bad.deliver('slack', 'u_ts_east', [item], false)).toBe(false);
+    expect(posted).toHaveLength(1);
+  });
+});
+
+describe('Email channel (L5)', () => {
+  const item = { id: 'a1', title: 'P1 support case at X', explanation: 'why', link: 'http://localhost:3000/?prompt=high_severity_case' } as never;
+
+  it('fails closed when the user has no address of their own (no shared fallback)', async () => {
+    const sent: string[] = [];
+    const ch = createChannels({ emails: {}, sendMail: async (msg) => { sent.push(msg.to); return true; } });
+    expect(await ch.deliver('email', 'u_ts_east', [item], false)).toBe(false);
+    expect(sent).toHaveLength(0);
+  });
+
+  it("sends only to that user's own address, with a timeout", async () => {
+    expect(parseEmails({ a: 42, b: 'not-an-email', c: 'jordan@example.test\nbcc:evil@x.test', d: 'Name <jordan@example.test>' })).toEqual({});
+    expect(parseEmails('not json')).toEqual({});
+    const sent: { to: string; subject: string; html: string; signal?: AbortSignal }[] = [];
+    const ch = createChannels({
+      emails: { u_ts_east: 'jordan@example.test', u_ts_west: 'sam@example.test' },
+      sendMail: async (msg, init) => {
+        sent.push({ ...msg, signal: init.signal });
+        return true;
+      },
+    });
+    expect(await ch.deliver('email', 'u_ts_east', [item], false)).toBe(true);
+    expect(sent).toHaveLength(1);
+    expect(sent[0]!.to).toBe('jordan@example.test');
+    expect(sent[0]!.subject).toBe('P1 support case at X');
+    expect(sent[0]!.html).toContain('Ask the copilot');
+    expect(sent[0]!.html).toContain('http://localhost:3000/?prompt=high_severity_case');
+    expect(sent[0]!.signal).toBeInstanceOf(AbortSignal);
+    expect(await ch.deliver('email', 'u_analyst', [item], false)).toBe(false);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('escapes HTML and strips header breaks in a planted title', () => {
+    const planted = { id: 'p', title: 'P1 at X\nBcc: evil@x.test', explanation: 'Subject: <script>alert(1)</script> & more', link: 'javascript:alert(1)' } as never;
+    expect(emailSubject([planted], false)).toBe('P1 at X Bcc: evil@x[.]test');
+    expect(emailSubject([planted], false)).not.toMatch(/[\r\n]/);
+    const html = emailHtml([planted], false);
+    expect(html).not.toContain('<script>');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('href="javascript:');
+    expect(html).toContain('Ask the copilot');
+  });
+
+  it('defangs planted links in the subject, plain text and HTML, same as Slack', () => {
+    const planted = { id: 'p', title: 'P1', explanation: 'Case: reset your SSO at evil.example/login now', link: 'http://localhost:3000/?prompt=high_severity_case' } as never;
+    expect(slackText([planted], false)).toContain('evil[.]example/login');
+    expect(emailSubject([planted], false)).not.toContain('evil.example');
+    expect(emailText([planted], false)).toContain('evil[.]example/login');
+    expect(emailText([planted], false)).not.toContain('evil.example/login');
+    expect(emailHtml([planted], false)).toContain('evil[.]example/login');
+    expect(emailHtml([planted], false)).not.toContain('evil.example/login');
+    expect(emailText([planted], false)).toContain('http://localhost:3000/?prompt=high_severity_case');
+  });
+
+  it('warns at start when addresses are set but the webhook is missing or invalid', () => {
+    const warned: string[] = [];
+    const warn = (m: string) => { warned.push(m); };
+    createChannels({ emails: { u_ts_east: 'jordan@example.test' }, warn });
+    expect(warned).toEqual([EMAIL_WEBHOOK_WARNING]);
+    warned.length = 0;
+    createChannels({ emails: { u_ts_east: 'jordan@example.test' }, emailWebhook: 'http://127.0.0.1:8025/send', env: { NODE_ENV: 'development' }, warn });
+    expect(warned).toEqual([]);
+  });
+
+  it('rejects a localhost email webhook in production', () => {
+    expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'production' })).toBe(false);
+    expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'development' })).toBe(true);
+    expect(isEmailWebhook('https://mail.example/send', { NODE_ENV: 'production' })).toBe(true);
+  });
+
+  it('posts the message to a laptop email webhook, never to a shared inbox URL as the recipient', async () => {
+    const posted: { url: string; body: string }[] = [];
+    const ch = createChannels({
+      emails: { u_ts_east: 'jordan@example.test' },
+      emailWebhook: 'http://127.0.0.1:8025/api/v1/send',
+      fetch: async (url, init) => { posted.push({ url, body: init.body }); return { ok: true }; },
+    });
+    expect(await ch.deliver('email', 'u_ts_east', [item], false)).toBe(true);
+    expect(posted[0]!.url).toBe('http://127.0.0.1:8025/api/v1/send');
+    expect(JSON.parse(posted[0]!.body)).toMatchObject({ to: 'jordan@example.test' });
+    const remote = createChannels({
+      emails: { u_ts_east: 'jordan@example.test' },
+      emailWebhook: 'http://evil.example/inbox',
+      fetch: async (url, init) => { posted.push({ url, body: init.body }); return { ok: true }; },
+    });
+    expect(await remote.deliver('email', 'u_ts_east', [item], false)).toBe(false);
     expect(posted).toHaveLength(1);
   });
 });
