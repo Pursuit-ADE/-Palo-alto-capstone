@@ -955,13 +955,14 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
           )}
         </div>
       )}
+      {/* biome-ignore lint/a11y/useSemanticElements: a rotatable drawing, not a set of form controls; group keeps the screen reader's reading mode. */}
       <div
         ref={stage}
         className="c3d-stage"
         style={{ '--c3d-ar': `${L.vw} / ${L.vh}`, '--c3d-ar-narrow': N ? `${N.vw} / ${N.vh}` : undefined, maxWidth: chart.size === 'answer' || !chart.size ? 760 : undefined } as CSSProperties}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: arrow keys turn this chart, so the drawing itself is in the tab order.
         tabIndex={0}
-        role="application"
+        role="group"
         aria-roledescription="rotatable chart"
         aria-labelledby={capId}
         aria-describedby={descId}
