@@ -9,7 +9,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Registry } from '../registry/load';
 import { Intent } from '../registry/types';
-import { asResult, assignSelectors, comparedRegions, continuesPrevious, normalize, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
+import { asResult, assignSelectors, comparedRegions, continuesPrevious, normalize, proposalQuestion, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
 
 export interface IntentModel {
   readonly name: string;
@@ -118,17 +118,23 @@ export function claudeModel(client: Anthropic = new Anthropic({ timeout: CLAUDE_
  */
 export function followUpRule(result: NormalizeResult, question: string, registry: Registry, previous: Intent | undefined): NormalizeResult {
   if (result.kind !== 'intent') return result;
+  // Two named metrics, or measure words that contradict the model's metric, are asked about, as normalize() does.
+  const asked = proposalQuestion(question, result.intent.metric, registry);
+  if (asked) return { kind: 'clarify', question: asked };
   const continuing = Boolean(previous && continuesPrevious(question, registry, previous, result.intent.metric));
   const base = continuing || !previous ? result.intent : withoutCarryOver(result.intent, question, registry, previous);
   const assigned = assignSelectors(base, question, continuing ? previous : undefined);
   if ('kind' in assigned) return assigned;
-  const metric = registry.metrics.get(assigned.metric);
-  const blocked = metric?.kind === 'ratio' ? quotaBlocked(assigned.filters) : undefined;
+  return ratioQuestion(assigned, registry) ?? asResult(comparedRegions(assigned, question, registry));
+}
+
+/** Coverage can't be split the way quota isn't, and needs a quarter: both are asked about (the second resumes the request). */
+function ratioQuestion(intent: Intent, registry: Registry): NormalizeResult | undefined {
+  const metric = registry.metrics.get(intent.metric);
+  if (metric?.kind !== 'ratio') return undefined;
+  const blocked = quotaBlocked(intent.filters);
   if (blocked) return { kind: 'clarify', question: blocked };
-  if (metric?.kind === 'ratio' && metric.requiresPeriod && !assigned.filters.period) {
-    return { kind: 'clarify', question: CLARIFY_TEXT.period, resume: assigned };
-  }
-  return asResult(comparedRegions(assigned, question, registry));
+  return metric.requiresPeriod && !intent.filters.period ? { kind: 'clarify', question: CLARIFY_TEXT.period, resume: intent } : undefined;
 }
 
 function baseFilters(out: z.infer<typeof ModelOutput>): Record<string, unknown> {

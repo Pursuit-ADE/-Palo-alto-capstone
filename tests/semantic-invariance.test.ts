@@ -170,3 +170,42 @@ describe('a comparison of named regions is answered region by region (PR #51 rev
     expect(r.rows.map((row) => row.region)).toEqual(['east', 'west']);
   });
 });
+
+// PR #51 review: the measure-word and two-metric checks run on the model path too, so Claude asks where the
+// deterministic model asks. Proposals go through followUpRule exactly as a Claude response would.
+describe('the model path asks where the deterministic model asks', () => {
+  const intent = (metric: string, filters: Intent['filters'] = {}, groupBy: Intent['groupBy'] = []): Intent => ({ metric, filters, groupBy });
+  const viaModel = (phrase: string, proposal: Intent) => followUpRule({ kind: 'intent', intent: proposal }, phrase, reg, undefined);
+  const Q1 = { period: 'FY27-Q1' };
+
+  it.each([
+    ['total value of open opportunities', intent('open_opportunity_count')],
+    ['value of open opportunities by region', intent('open_opportunity_count', {}, ['region'])],
+    ['how many open pipeline deals this quarter', intent('open_pipeline', Q1)],
+    ['how does pipeline compare to quota this quarter', intent('open_pipeline', Q1)],
+  ])('a model reading "%s" as the wrong metric is asked about', (phrase, wrong) => {
+    expect(viaModel(phrase, wrong).kind).toBe('clarify');
+  });
+
+  it.each([
+    ['total value of open opportunities', intent('open_pipeline')],
+    ['how does pipeline compare to quota this quarter', intent('pipeline_coverage', Q1)],
+  ])('a model reading "%s" as the right metric is answered', (phrase, right) => {
+    expect(viaModel(phrase, right)).toEqual({ kind: 'intent', intent: right });
+  });
+
+  it.each([
+    ['Compare open pipeline with open opportunity count by region.', intent('open_opportunity_count', {}, ['region'])],
+    ['Show pipeline coverage and open pipeline for this quarter', intent('pipeline_coverage', Q1)],
+  ])('a model answering one metric for "%s", which names two, is asked about', (phrase, one) => {
+    expect(viaModel(phrase, one)).toEqual({ kind: 'clarify', question: expect.stringMatching(/^Do you mean .+ or .+\?$/) });
+  });
+
+  it("the correct reading of every equivalent wording passes through unchanged", () => {
+    for (const group of cases.equivalent) {
+      for (const phrase of group.phrases) {
+        expect(viaModel(phrase, group.intent as Intent), phrase).toEqual({ kind: 'intent', intent: group.intent });
+      }
+    }
+  });
+});

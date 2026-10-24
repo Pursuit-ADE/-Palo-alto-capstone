@@ -365,6 +365,25 @@ export function comparedRegions(intent: Intent, phrase: string, registry: Regist
   return { kind: 'clarify', question: `To compare ${names} I show each region on its own, which leaves room for one other breakdown. Which one do you want?` };
 }
 
+/** The question asked when a phrase names more than one metric. */
+function whichMetric(ids: string[], registry: Registry): string {
+  return `Do you mean ${ids.map((id) => registry.metrics.get(id)?.name).join(' or ')}?`;
+}
+
+/**
+ * The "never a quietly different answer" checks for an intent a model proposed (PR #51 review): the question names
+ * two metrics, or its measure words contradict the proposed metric ("total value of open opportunities" read as the
+ * count). normalize() asks in both cases; followUpRule applies this so the Claude path asks too. The measure check is
+ * against the model's own metric, so "total value of open opportunities" read as open pipeline is still answered.
+ */
+export function proposalQuestion(phrase: string, metricId: string, registry: Registry): string | undefined {
+  const text = clean(phrase);
+  const named = namedMetrics(text, registry);
+  if (named.length > 1) return whichMetric(named, registry);
+  const metric = registry.metrics.get(metricId);
+  return metric ? measureContradiction(text, metric, registry) : undefined;
+}
+
 /** An intent, or the clarifying question a rule returned instead. */
 export const asResult = (x: Intent | { kind: 'clarify'; question: string }): NormalizeResult => ('kind' in x ? x : { kind: 'intent', intent: x });
 
@@ -463,10 +482,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     }
     else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
   }
-  if (matches.length > 1) {
-    const names = matches.map((id) => registry.metrics.get(id)?.name).join(' or ');
-    return { kind: 'clarify', question: `Do you mean ${names}?` };
-  }
+  if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry) };
   const metric = registry.metrics.get(matches[0]!)!;
 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
