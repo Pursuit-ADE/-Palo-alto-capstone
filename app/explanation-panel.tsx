@@ -56,9 +56,10 @@ export function ExplanationView({ e }: { e: Explanation }) {
     <div className="answer explanation">
       {/* One figure means the other number is outside the asker's scope or wasn't named: say so, don't promise a reason. */}
       <h3>{e.other ? 'Why these two coverage figures differ' : 'Your coverage, and what can make another figure differ'}</h3>
+      {/* The client asked for the one-sentence answer first; with one figure it also says the other wasn't checked. */}
+      <p className="narrative">{e.summary}</p>
       {!e.other && <p className="answer-value">{format(part(a, 'value'), 'ratio')}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
-      <p className="narrative">{e.summary}</p>
       {e.reasons.length > 0 && (
         <ul className="reasons">
           {e.reasons.map((r) => <li key={r}>{r}</li>)}

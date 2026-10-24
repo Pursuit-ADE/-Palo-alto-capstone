@@ -65,4 +65,12 @@ describe('one figure', () => {
     expect(html).not.toContain('Second figure');
     expect(html).not.toMatch(/1,963,909|3,001,000|0\.65|3x/);
   });
+
+  it('leads with the one-sentence summary, before the ratio and the chips', async () => {
+    const { html } = await render('u_ts_east', 'why does marketing say coverage is 3x when mine is 0.5x?');
+    const at = (s: string) => html.indexOf(s);
+    expect(at('class="narrative"')).toBeGreaterThan(at('<h3>'));
+    expect(at('class="narrative"')).toBeLessThan(at('class="answer-value"'));
+    expect(at('class="answer-value"')).toBeLessThan(at('Scope and data date'));
+  });
 });
