@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { openDatabase, type Database, type Db } from '../db/client';
 import { alertCursor, alertSubscriptions } from '../db/schema';
 import { createChannels } from '../alerts/channels';
+import { createEmployeeDirectory } from '../alerts/employee-status';
 import { DEMO_NOW, DEMO_SINCE, DEMO_SUBSCRIPTIONS } from '../alerts/demo';
 import { loadRules, type AlertRule } from '../alerts/rules';
 import { startScheduler, tick } from '../alerts/scheduler';
@@ -49,7 +50,7 @@ export function getAlertsRuntime(): Promise<Runtime> {
     const database = await openDatabase();
     const rules = loadRules();
     const channels = createChannels();
-    const opts = { testIdentityInLinks: testIdentitiesEnabled() };
+    const opts = { testIdentityInLinks: testIdentitiesEnabled(), directory: createEmployeeDirectory() };
     if (process.env.ALERTS_SEED_DEMO_SUBSCRIPTIONS !== 'false') await seedDemoSubscriptionsOnce(database.db);
     if (process.env.ALERTS_SCHEDULER === 'true') {
       const seconds = Math.max(10, Number(process.env.ALERTS_TICK_SECONDS ?? 60) || 60);

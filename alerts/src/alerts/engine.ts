@@ -6,6 +6,7 @@ import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm'
 import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appAccounts, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
+import { employeeIsActive, type EmployeeDirectory } from './employee-status';
 import { render, type AlertRule } from './rules';
 import { digestDue, lastSlot, normalizeFrequency } from './schedule';
 
@@ -22,6 +23,8 @@ export interface EngineOptions {
   copilotUrl?: string;
   /** Test mode only: keep the test identity on copilot links so the demo opens as the same person. */
   testIdentityInLinks?: boolean;
+  /** Employee status. When set, only people it reports as active get an alert (client ask, Oct 23). Unset: check off. */
+  directory?: EmployeeDirectory;
 }
 
 export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'failed';
@@ -121,6 +124,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
     for (const ev of events) {
       for (const { s: sub } of audience) {
         if (await isDisabled(db, sub.userId)) continue;
+        if (!(await employeeIsActive(opts.directory, sub.userId))) continue;
         if (!(await canSeeAccount(db, sub.userId, ev.accountId))) continue;
         const id = `alert_${rule.id}_${sub.userId}_${ev.id}`;
         const inserted = await db
@@ -155,7 +159,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
         }
         const critical = (rule.criticalSeverities as string[]).includes(ev.severity);
         const sendNow = (normalizeFrequency(sub.frequency) === 'realtime' && !inQuietHours(sub, now)) || (critical && sub.criticalBypass);
-        if (sendNow) await send(db, rules, channels, [id], now);
+        if (sendNow) await send(db, rules, channels, [id], now, undefined, opts);
         else await db.update(alertDeliveries).set({ status: 'queued_digest' }).where(and(eq(alertDeliveries.id, id), eq(alertDeliveries.status, 'pending')));
       }
     }
@@ -165,14 +169,21 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
 
 /**
  * Whether this alert may still go to this user right now: the user still exists, is not disabled, has a role in the rule's
- * audience, is still subscribed to the rule, and can still see the account. Read fresh from the database.
+ * audience, is still subscribed to the rule, can still see the account, and (when a directory is set) is still an active
+ * employee. Read fresh from the database and the directory.
  */
-export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: { userId: string; ruleId: string; accountId: string }): Promise<boolean> {
+export async function stillEligible(
+  db: Db,
+  rules: Map<string, AlertRule>,
+  row: { userId: string; ruleId: string; accountId: string },
+  directory?: EmployeeDirectory,
+): Promise<boolean> {
   const rule = rules.get(row.ruleId);
   if (!rule) return false;
   const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, row.userId));
   if (!user || !(rule.audience as string[]).includes(user.role)) return false;
   if (await isDisabled(db, row.userId)) return false;
+  if (!(await employeeIsActive(directory, row.userId))) return false;
   const [sub] = await db
     .select({ u: alertSubscriptions.userId })
     .from(alertSubscriptions)
@@ -186,13 +197,13 @@ export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: 
  * - Each alert is first claimed atomically with a unique token (status 'sending'), so two senders never both
  *   deliver it. Every later update requires that same token, so a sender whose claim was taken over can't
  *   overwrite the newer sender's result.
- * - Eligibility (role, subscription, account access) is re-checked for each group immediately before its
+ * - Eligibility (role, subscription, account access, employee status) is re-checked for each group immediately before its
  *   channel call; anything no longer allowed is suppressed instead of sent.
  * - Failed alerts are retried with backoff (2^attempts minutes) up to MAX_ATTEMPTS.
  * Delivery is at-least-once: if a process dies after the channel accepted a message but before it was marked
  * delivered, a later run may send it again once the claim is stale.
  */
-export async function send(db: Db, rules: Map<string, AlertRule>, channels: Channels, ids: string[], now: Date, digestId?: string) {
+export async function send(db: Db, rules: Map<string, AlertRule>, channels: Channels, ids: string[], now: Date, digestId?: string, opts: EngineOptions = {}) {
   if (ids.length === 0) return;
   const token = randomUUID();
   const nowIso = now.toISOString();
@@ -227,7 +238,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const [userId, channel] = k.split('|') as [string, string];
     const items: typeof claimed = [];
     for (const r of group) {
-      if (await stillEligible(db, rules, r)) items.push(r);
+      if (await stillEligible(db, rules, r, opts.directory)) items.push(r);
       else await db.update(alertDeliveries).set({ status: 'suppressed_no_access' }).where(mine([r.id]));
     }
     if (items.length === 0) continue;
@@ -243,7 +254,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
  * Delivers queued digests, retries failed alerts whose backoff has passed, and takes over stale sends, for
  * every user who is not in quiet hours. Runs independently of the events, so a failed alert is never stranded.
  */
-export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date) {
+export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date, opts: EngineOptions = {}) {
   const due = await db
     .select({ d: alertDeliveries, s: alertSubscriptions })
     .from(alertDeliveries)
@@ -267,7 +278,7 @@ export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channe
     }
     byUser.set(q.d.userId, [...(byUser.get(q.d.userId) ?? []), q.d.id]);
   }
-  for (const [userId, ids] of byUser) await send(db, rules, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`);
+  for (const [userId, ids] of byUser) await send(db, rules, channels, ids, now, `digest_${userId}_${now.toISOString().slice(0, 13)}`, opts);
   // The digest slot is used, whatever happened to individual alerts; failures retry on their own backoff.
   for (const { userId, ruleId } of digestSubs.values()) {
     await db
