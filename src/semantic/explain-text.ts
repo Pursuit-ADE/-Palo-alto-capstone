@@ -88,17 +88,33 @@ function contains(outer: Answer, inner: Answer): boolean {
   return outer.scope === inner.scope && within(i.regions, o.regions) && within(i.people, o.people) && within(i.teams, o.teams);
 }
 
-/** Two region-only slices with no region in common. A deal and a quota belong to one region, so these never overlap. */
-function separateRegions(a: Answer, b: Answer): boolean {
+const KINDS = [
+  ['regions', 'regions', 'region'],
+  ['teams', 'teams', 'team'],
+  ['people', 'reps', 'rep'],
+] as const;
+
+/**
+ * Two slices filtered by the same kind only, with no value in common: separate regions, teams or reps. A deal and a
+ * quota belong to one region and one rep, and a rep reports to one manager, so these never overlap. Returns the kind.
+ */
+function separateKind(a: Answer, b: Answer): (typeof KINDS)[number] | null {
   const [x, y] = [sliceOf(a), sliceOf(b)];
-  if (x.people || x.teams || y.people || y.teams || !x.regions || !y.regions) return false;
-  return !x.regions.some((r) => y.regions?.includes(r));
+  for (const kind of KINDS) {
+    const only = (s: SliceFilters) => (s[kind[0]]?.length ?? 0) > 0 && KINDS.every(([k]) => k === kind[0] || !s[k]);
+    if (only(x) && only(y) && !x[kind[0]]?.some((v) => y[kind[0]]?.includes(v))) return kind;
+  }
+  return null;
 }
 
 /** Says how two slices relate only as far as their filters prove it (PR #50 review: East and West are not nested). */
 function scopeReason(a: Answer, b: Answer): string {
   if (contains(a, b) || contains(b, a)) return 'The larger slice includes the smaller one, so both its pipeline and its quota include the smaller slice.';
-  if (separateRegions(a, b)) return "The two regions are separate: each figure is its own region's pipeline over its own region's quota, and neither includes the other.";
+  const separate = separateKind(a, b);
+  if (separate) {
+    const [, plural, one] = separate;
+    return `The two ${plural} are separate: each figure is its own ${one}'s pipeline over its own ${one}'s quota, and neither includes the other.`;
+  }
   return "The two slices cover different deals and quota, and may overlap. Each figure is its own slice's pipeline over its own quota.";
 }
 

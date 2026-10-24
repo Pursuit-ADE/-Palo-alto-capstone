@@ -89,8 +89,7 @@ function namedSlice(phrase: string): Intent['filters'] | Clarify {
   const blocked = quotaBlocked(read.filters);
   if (blocked) return { kind: 'clarify', question: blocked };
   const filters: Intent['filters'] = {};
-  // In the order the question names them, so "east than west" compares East with West, in that order.
-  const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `)).sort((a, b) => text.indexOf(` ${a} `) - text.indexOf(` ${b} `));
+  const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `));
   if (regions.length) filters.regions = regions;
   if (read.filters.people?.length) filters.people = read.filters.people;
   if (read.filters.teams?.length) filters.teams = read.filters.teams;
@@ -98,6 +97,19 @@ function namedSlice(phrase: string): Intent['filters'] | Clarify {
 }
 
 const isClarify = (x: object): x is Clarify => 'kind' in x && x.kind === 'clarify';
+
+type Piece = Pick<Intent['filters'], 'regions' | 'people' | 'teams'>;
+
+/** Each region, rep or team the question names as a slice of its own, in the order the question names them. */
+function namedPieces(slice: Intent['filters'], text: string): Piece[] {
+  const at = (name: string) => text.indexOf(clean(name));
+  const pieces: { at: number; piece: Piece }[] = [
+    ...(slice.regions ?? []).map((r) => ({ at: at(r), piece: { regions: [r] } })),
+    ...(slice.people ?? []).map((p) => ({ at: at(p), piece: { people: [p] } })),
+    ...(slice.teams ?? []).map((t) => ({ at: at(t), piece: { teams: [t] } })),
+  ];
+  return pieces.sort((a, b) => a.at - b.at).map((p) => p.piece);
+}
 
 /** The one or two coverage requests to run. Both are re-scoped by the compiler, so neither can leave the asker's scope. */
 function plan(phrase: string, registry: Registry, asOfDate: string, previous?: Intent): { first: Intent; second: Intent | null } | Clarify {
@@ -121,11 +133,13 @@ function plan(phrase: string, registry: Registry, asOfDate: string, previous?: I
   if (p1 && current && p1 !== current && !named && !pointsElsewhere(phrase)) {
     return { first: coverage({ ...base, period: current }), second: coverage({ ...base, period: p1 }) };
   }
-  // Two named regions are compared with each other ("east than west"), not combined into one slice.
-  const [r1, r2] = slice.regions ?? [];
-  if (r1 && r2 && !slice.regions?.[2] && !slice.people && !slice.teams) {
-    return { first: coverage({ regions: [r1], period }), second: coverage({ regions: [r2], period }) };
-  }
+  // Two named slices ("east than west", two teams, two reps) are compared with each other in the order named, not
+  // combined into one slice and compared with everything (PR #50 review). An explanation compares two figures, so
+  // three or more are asked back.
+  const pieces = namedPieces(slice, clean(phrase));
+  if (pieces.length > 2) return { kind: 'clarify', question: 'I can explain coverage for two slices at a time. Which two do you want to compare?' };
+  const [s1, s2] = pieces;
+  if (s1 && s2) return { first: coverage({ ...s1, period }), second: coverage({ ...s2, period }) };
   // A named slice is compared with the asker's whole scope; both are figures the asker may already see.
   return { first: coverage({ ...base, period }), second: named ? coverage({ period }) : null };
 }

@@ -9,6 +9,7 @@ import { answerIntent, ask, InjectionRefused, type Answer, type Reply } from '@/
 import { isDiscrepancyQuestion, type Explanation } from '@/semantic/explain';
 import { classify, reconciles } from '@/semantic/explain-text';
 import type { IntentModel } from '@/semantic/model';
+import type { Intent } from '@/registry/types';
 import { ScopeViolation } from '@/semantic/scope';
 
 const reg = loadRegistry();
@@ -288,5 +289,36 @@ describe('PR #50 review: scope wording and a replayable comparison', () => {
     const e = await ask2('u_ts_east', CLIENT_QUESTION);
     const [main] = await database.db.select().from(queryAudit).where(eq(queryAudit.id, e.answer.provenance.auditId));
     expect(await rowsOf(main!.requestId)).toHaveLength(1);
+  });
+});
+
+describe('PR #50 review: two named teams or reps are compared with each other', () => {
+  const ask2 = async (user: string, phrase: string) => explained(await ask(database, reg, user, phrase));
+  const sliceOf = (a: Answer) => (a.intent as Intent).filters;
+
+  it("compares Cara Losch's team with Celia Rouche's team, in the order named, not both against everything", async () => {
+    const e = await ask2('u_analyst', "Why is Cara Losch's team's pipeline coverage higher than Celia Rouche's team's?");
+    expect(sliceOf(e.answer).teams).toEqual(['Cara Losch']);
+    expect(sliceOf(e.other!).teams).toEqual(['Celia Rouche']);
+    expect(e.verdict).toBe('same_definition_different_scope');
+    expect(e.reasons[0]).toContain('The two teams are separate');
+    expect(e.checks.every((c) => c.ok)).toBe(true);
+  });
+
+  it('compares two named reps with each other, in the order named, for a seller who may see both', async () => {
+    const e = await ask2('u_ts_east', 'why is coverage for Garret Kinder lower than for Violet Mclelland?');
+    expect(sliceOf(e.answer).people).toEqual(['Garret Kinder']);
+    expect(sliceOf(e.other!).people).toEqual(['Violet Mclelland']);
+    expect(e.reasons[0]).toContain('The two reps are separate');
+  });
+
+  it('refuses when either named team or rep is outside the scope', async () => {
+    await expect(ask(database, reg, 'u_ts_east', "Why is Cara Losch's team's coverage higher than Celia Rouche's team's?")).rejects.toBeInstanceOf(ScopeViolation);
+    await expect(ask(database, reg, 'u_ts_east', 'why is coverage for Garret Kinder lower than for Vicki Laflamme?')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it('asks back instead of combining three or more named slices', async () => {
+    const r = await ask(database, reg, 'u_analyst', 'why is coverage different in east, west and central?');
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('two slices at a time') });
   });
 });
