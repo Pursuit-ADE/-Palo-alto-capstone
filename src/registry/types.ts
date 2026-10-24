@@ -42,6 +42,10 @@ export const RatioMetric = Base.extend({
   numerator: Identifier,
   denominator: Source,
   requiresPeriod: z.boolean().default(false),
+  // Reviewed goal for the ratio, and the color boundary below it. Both are optional so a ratio with no
+  // agreed target stays unlabeled.
+  target: z.number().positive().optional(),
+  caution: z.number().positive().optional(),
 });
 export const MetricDefinition = z.discriminatedUnion('kind', [AggregateMetric, RatioMetric]);
 export type MetricDefinition = z.infer<typeof MetricDefinition>;

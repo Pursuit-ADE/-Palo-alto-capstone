@@ -56,6 +56,15 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 .kpis.stack { grid-template-columns: minmax(0, 1fr); }
 .coverage .label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; }
 .cov-value { display: block; font-size: 32px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 4px 0; }
+.tone-red { color: var(--bad); }
+.tone-amber { color: var(--warn-text); }
+.tone-green { color: var(--ok); }
+.fill.tone-red { background: var(--bad); }
+.fill.tone-amber { background: var(--warn); }
+.fill.tone-green { background: var(--ok); }
+.answer-value.tone-red { color: var(--bad); }
+.answer-value.tone-amber { color: var(--warn-text); }
+.answer-value.tone-green { color: var(--ok); }
 .coverage h2 { font-size: 14px; margin: 4px 0 12px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }

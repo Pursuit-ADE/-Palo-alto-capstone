@@ -2,6 +2,7 @@
 // format()/cell() text, as the Numbers view, so a graph can never show a number the table doesn't. Missing values
 // (no quota) stay missing: drawn as "n/a", never as 0.
 import type { Answer } from '@/semantic/answer';
+import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import type { ChartData, ChartDatum, Unit } from './chart3d-math';
 import { cell, format } from './format';
 
@@ -29,6 +30,30 @@ function orderCategories(dim: string, keys: string[], rankOf: (k: string) => num
 }
 
 const sentence = (title: string, data: ChartDatum[], labelOf: (d: ChartDatum) => string) => `${title}: ${data.map((d) => `${labelOf(d)} ${d.display}`).join(', ')}.`;
+
+/** Actual coverage as a bar inside its target, one category at a time. Opens as a bullet chart. */
+function againstTarget(metric: Answer['metric'], categories: { key: string; label: string }[], values: { value: number | null; display: string }[], id: string, title: string): ChartData | null {
+  const goal = coverageSpec(metric);
+  if (!goal) return null;
+  const data: ChartDatum[] = categories.flatMap((c, i) => {
+    const v = values[i]!;
+    return [
+      { category: c.key, series: 0, value: v.value, display: v.display },
+      { category: c.key, series: 1, value: goal.target, display: `${goal.target.toFixed(2)}x` },
+    ];
+  });
+  const summary = categories.map((c, i) => {
+    const v = values[i]!.value;
+    if (v == null) return `${c.label} is not available`;
+    const standing = coverageStanding(v, goal);
+    return `${c.label} is ${values[i]!.display}, ${standing.standing}, ${standing.words}`;
+  }).join('; ');
+  return {
+    id, tab: 'Against target', title, unit: 'ratio', form: 'columns', prefer: 'bullet',
+    categoryName: 'Coverage', categories, series: ['Coverage', `${goal.target.toFixed(2)}x target`],
+    data, compare: true, summary: `${summary}.`,
+  };
+}
 
 /** True when the parts add up to the total exactly (to the cent for money). */
 export function reconciles(parts: (number | null)[], total: number, unit: Unit): boolean {
@@ -95,8 +120,9 @@ const quotaLabel = (period?: string, word = 'Quota') => (period ? `${word} for $
 const coverageDetail = (r: Answer['rows'][number], v: number | null, period?: string) =>
   `${format(r.numerator, 'currency')} closing in ${period ?? 'the period'} vs ${format(r.denominator, 'currency')} quota${v === null ? ' (no quota, so not available)' : ''}`;
 
-/** Coverage by region two ways: the ratio against the 1.00x line, and each region's pipeline next to its quota. */
+/** Coverage by region: the ratio against its target line when the registry defines one, otherwise the 1.00x line, plus pipeline next to quota. */
 export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix: string): ChartData[] {
+  const goal = coverageSpec(byRegion.metric);
   const regions = byRegion.rows.map((r) => String(r.region));
   const label = (k: string) => cell('region', k, '');
   const row = (k: string) => byRegion.rows.find((r) => String(r.region) === k)!;
@@ -115,7 +141,9 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
     ];
   });
   const cats = regions.map((k) => ({ key: k, label: label(k) }));
+  const bullet = againstTarget(byRegion.metric, cats, regions.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), 'ratio') })), `${idPrefix}-target`, `Coverage against target · ${period}`);
   return [
+    ...(bullet ? [bullet] : []),
     {
       id: `${idPrefix}-ratio`,
       tab: 'Coverage',
@@ -127,9 +155,9 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
       categories: cats,
       series: ['Coverage'],
       data: ratio,
-      target: { value: 1, label: '1.00x = quota' },
-      axisFloor: 1.25,
-      summary: `${sentence(`Pipeline coverage by region, ${period}`, ratio, (d) => label(d.category))} 1.00x means pipeline equals quota.`,
+      target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' },
+      axisFloor: goal ? Math.max(goal.target + 0.25, 1.25) : 1.25,
+      summary: `${sentence(`Pipeline coverage by region, ${period}`, ratio, (d) => label(d.category))} ${goal ? `The target is ${goal.target.toFixed(2)}x.` : '1.00x means pipeline equals quota.'}`,
     },
     {
       id: `${idPrefix}-money`,
@@ -173,7 +201,9 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
         { key: 'quota', label: quotaLabel(period) },
       ];
       const title = `${a.metric.name}${period ? ` · ${period}` : ''}: pipeline vs quota`;
-      return [{ id, title, unit: 'currency', form: 'columns', categoryName: 'Measure', categories: cats, series: ['Amount'], data, summary: `${sentence(title, data, (d) => cats.find((c) => c.key === d.category)!.label)} Coverage is ${format(v, 'ratio')}.` }];
+      const divided = { id, title, unit: 'currency' as const, form: 'columns' as const, categoryName: 'Measure', categories: cats, series: ['Amount'], data, summary: `${sentence(title, data, (d) => cats.find((c) => c.key === d.category)!.label)} Coverage is ${format(v, 'ratio')}.` };
+      const bullet = againstTarget(a.metric, [{ key: 'coverage', label: 'Coverage' }], [{ value: v, display: format(v, 'ratio') }], `${id}-target`, `${a.metric.name}${period ? ` · ${period}` : ''} against target`);
+      return bullet ? [divided, bullet] : [divided];
     }
     const data: ChartDatum[] = [{ category: 'total', series: 0, value: v, display: format(v, unit) }];
     return [{ id, title: a.metric.name, unit, form: 'columns', categoryName: 'Scope', categories: [{ key: 'total', label: 'Your scope' }], series: [a.metric.name], data, summary: a.narrative }];
@@ -207,7 +237,8 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
       parts: unit !== 'ratio', // sums and counts add up; coverage ratios don't
     };
     if (unit !== 'ratio') return [base];
-    const ratioChart: ChartData = { ...base, tab: 'Coverage', target: { value: 1, label: '1.00x = quota' }, axisFloor: 1.25 };
+    const goal = coverageSpec(a.metric);
+    const ratioChart: ChartData = { ...base, tab: 'Coverage', target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' }, axisFloor: goal ? Math.max(goal.target + 0.25, 1.25) : 1.25 };
     if (!a.rows.some((r) => 'numerator' in r)) return [ratioChart];
     const money: ChartDatum[] = ordered.flatMap((k) => {
       const r = row(k);
@@ -218,7 +249,9 @@ export function answerCharts(a: Answer, id: string): ChartData[] | null {
         { category: k, series: 1, value: q, display: q === null ? 'No quota' : format(q, 'currency') },
       ];
     });
+    const bullet = againstTarget(a.metric, cats, ordered.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), unit) })), `${id}-target`, `${a.metric.name} against target`);
     return [
+      ...(bullet ? [bullet] : []),
       ratioChart,
       {
         ...base,

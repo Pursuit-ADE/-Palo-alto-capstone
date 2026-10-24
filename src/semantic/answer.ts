@@ -27,7 +27,7 @@ export interface RatioPart {
 export interface Answer {
   kind: 'answer';
   /** Registry definition, so the panel shows exactly what was counted. */
-  metric: { id: string; name: string; version: number; unit: string; definition: string; notes: string | null; owner: string };
+  metric: { id: string; name: string; version: number; unit: string; definition: string; notes: string | null; owner: string; target: number | null; caution: number | null };
   intent: unknown;
   rows: Record<string, string | number | null>[];
   scope: string;
@@ -185,6 +185,8 @@ async function run(database: Database, registry: Registry, principal: Principal,
       definition: metric.description,
       notes: metric.notes ?? null,
       owner: metric.owner,
+      target: metric.kind === 'ratio' ? metric.target ?? null : null,
+      caution: metric.kind === 'ratio' ? metric.caution ?? null : null,
     },
     intent,
     rows,

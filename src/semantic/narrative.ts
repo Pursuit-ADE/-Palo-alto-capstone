@@ -1,5 +1,6 @@
 // Plain-language summary and chart for an answer (PRD A6). Both are built deterministically from the
 // governed result rows, so the words and the chart can never disagree with the numbers.
+import { coverageSpec, coverageStanding } from './coverage-target';
 
 type Row = Record<string, string | number | null>;
 /** Display names for owner ids ("u_corliss_cosme" -> "Corliss Cosme"). Labels only: rows keep the ids. */
@@ -13,14 +14,21 @@ const hasValue = (r: Row) => r.value !== null && r.value !== undefined;
 const label = (k: string, v: unknown, names?: OwnerNames) =>
   k === 'region' ? String(v).replace(/^./, (c) => c.toUpperCase()) : k === 'owner' && names && Object.hasOwn(names, String(v)) ? names[String(v)]! : String(v);
 
-export function narrate(metric: { name: string; unit: string }, rows: Row[], groupBy: string[], period?: string, names?: OwnerNames): string {
+function standingPhrase(metric: { unit: string; target?: number | null; caution?: number | null }, value: unknown): string {
+  const spec = metric.unit === 'ratio' ? coverageSpec(metric) : null;
+  if (!spec || value == null || typeof value !== 'number') return '';
+  const standing = coverageStanding(value, spec);
+  return `, ${standing.standing}, ${standing.words}`;
+}
+
+export function narrate(metric: { name: string; unit: string; target?: number | null; caution?: number | null }, rows: Row[], groupBy: string[], period?: string, names?: OwnerNames): string {
   const when = period ? ` for ${period}` : '';
   if (rows.length === 0) return `No data matched for ${metric.name.toLowerCase()}${when}.`;
   if (groupBy.length === 0) {
     const r = rows[0]!;
     if (metric.unit === 'ratio') {
       if (!hasValue(r)) return `${metric.name}${when} is not available: there is no quota for this period, so ${usd(Number(r.numerator ?? 0))} of open pipeline has nothing to cover.`;
-      return `${metric.name}${when} is ${fmt(r.value, 'ratio')}: ${usd(Number(r.numerator ?? 0))} of open pipeline closing in the quarter against ${usd(Number(r.denominator ?? 0))} of quota.`;
+      return `${metric.name}${when} is ${fmt(r.value, 'ratio')}${standingPhrase(metric, Number(r.value))}: ${usd(Number(r.numerator ?? 0))} of open pipeline closing in the quarter against ${usd(Number(r.denominator ?? 0))} of quota.`;
     }
     return `${metric.name}${when} is ${fmt(r.value, metric.unit)}.`;
   }
@@ -39,7 +47,7 @@ export function narrate(metric: { name: string; unit: string }, rows: Row[], gro
   const sorted = [...ranked].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
   const top = sorted[0]!;
   const bottom = sorted[sorted.length - 1]!;
-  const parts = [`${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)}`];
+  const parts = [`${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}`];
   if (sorted.length > 1) parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}`);
   return `${parts.join(', and ')} (${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}).${note}`;
 }

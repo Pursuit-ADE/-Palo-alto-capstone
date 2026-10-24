@@ -1,4 +1,5 @@
 import type { Answer } from '@/semantic/answer';
+import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import { dateRange, format, timestamp } from './format';
 
 const titleCase = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
@@ -45,6 +46,19 @@ export function ProvenancePanel({ a }: { a: Answer }) {
 
         <dt>Filters</dt>
         <dd>{applied.join(' · ')}</dd>
+
+        {(() => {
+          const spec = coverageSpec(a.metric);
+          const value = single?.value;
+          if (!spec || value == null || typeof value !== 'number') return null;
+          const standing = coverageStanding(value, spec);
+          return (
+            <>
+              <dt>Target</dt>
+              <dd>{standing.standing}, {standing.words}. The target is {spec.target.toFixed(2)}x.</dd>
+            </>
+          );
+        })()}
 
         {parts && (
           <>

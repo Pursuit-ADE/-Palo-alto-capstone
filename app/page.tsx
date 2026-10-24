@@ -1,5 +1,6 @@
 import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
+import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
@@ -54,6 +55,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   // Coverage with no quota is NULL: shown as not available, never as 0.00x.
   const covRaw = coverage.rows[0]?.value;
   const cov = covRaw === null || covRaw === undefined ? null : Number(covRaw);
+  const coverageGoal = coverageSpec(coverage.metric);
+  const standing = coverageGoal && cov != null ? coverageStanding(cov, coverageGoal) : null;
   // In the Graphs view, a mouse drag on the page around the graphs turns them too.
   const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const quarter = coverage.filters.period ? `${period} (${dateRange(coverage.filters.period.start, coverage.filters.period.end)})` : period;
@@ -118,8 +121,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
 
           <section className="card coverage" aria-labelledby="cov-title">
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
-            <span className="cov-value">{format(cov, 'ratio')}</span>
-            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : '1.00x means pipeline equals quota.'}</p>
+            <span className={standing ? `cov-value tone-${standing.tone}` : 'cov-value'}>{format(cov, 'ratio')}</span>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : standing ? `${standing.standing}, ${standing.words}. 1.00x means pipeline equals quota.` : '1.00x means pipeline equals quota.'}</p>
             {graphs ? (
               <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} kinds={kinds} />
             ) : (
@@ -128,25 +131,27 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             <div className="bars">
               {byRegion.rows.map((r) => {
                 const v = r.value === null || r.value === undefined ? null : Number(r.value);
-                const max = Math.max(1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
+                const line = coverageGoal?.target ?? 1;
+                const max = Math.max(line, 1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
+                const regionStanding = coverageGoal && v != null ? coverageStanding(v, coverageGoal) : null;
                 return (
                   <div className="bar-row" key={String(r.region)}>
                     <div className="bar-head">
                       <span>{cell('region', r.region, '')}</span>
-                      <b>{format(v, 'ratio')}</b>
+                      <b className={regionStanding ? `tone-${regionStanding.tone}` : undefined}>{format(v, 'ratio')}</b>
                     </div>
                     <div className="track">
-                      <div className="fill" style={{ width: `${((v ?? 0) / max) * 100}%` }} />
-                      <div className="target" style={{ left: `${(1 / max) * 100}%` }} title="1.00x: pipeline equals quota" />
+                      <div className={regionStanding ? `fill tone-${regionStanding.tone}` : 'fill'} style={{ width: `${((v ?? 0) / max) * 100}%` }} />
+                      <div className="target" style={{ left: `${(line / max) * 100}%` }} title={coverageGoal ? `${coverageGoal.target.toFixed(2)}x target` : '1.00x: pipeline equals quota'} />
                     </div>
-                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota{v === null ? ' (no quota, so not available)' : ''}</span>
+                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota{v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}` : ''}</span>
                   </div>
                 );
               })}
             </div>
             </>
             )}
-            <p className="bars-note">The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.</p>
+            <p className="bars-note">{coverageGoal ? `The line marks the ${coverageGoal.target.toFixed(2)}x target. Red is below ${coverageGoal.caution.toFixed(2)}x, amber is from ${coverageGoal.caution.toFixed(2)}x up to the target, and green is at or above the target. 1.00x still means pipeline equals quota.` : 'The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.'}</p>
           </section>
         </div>
 

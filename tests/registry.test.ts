@@ -11,6 +11,15 @@ describe('metric registry and context layer', () => {
     expect([...reg.metrics.keys()].sort()).toEqual(['open_opportunity_count', 'open_pipeline', 'pipeline_coverage']);
   });
 
+  it('pipeline coverage carries the confirmed 3x target and the 2x color boundary below it', () => {
+    const coverage = reg.metrics.get('pipeline_coverage');
+    expect(coverage?.kind).toBe('ratio');
+    if (coverage?.kind !== 'ratio') return;
+    expect(coverage.target).toBe(3);
+    expect(coverage.caution).toBe(2);
+    expect(coverage.caution).toBeLessThan(coverage.target);
+  });
+
   it('documents every column a metric uses in the field dictionary', () => {
     for (const m of reg.metrics.values()) {
       const s = m.kind === 'aggregate' ? m.source : m.denominator;
