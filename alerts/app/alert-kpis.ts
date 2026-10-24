@@ -10,7 +10,7 @@ export interface AlertKpi {
 
 export function alertKpis(counts: Record<string, number>): AlertKpi[] {
   const count = (s: string) => counts[s] ?? 0;
-  const removed = count('suppressed_no_access');
+  const removed = count('suppressed_no_access') + count('suppressed_inactive');
   const failed = count('failed');
   return [
     { key: 'delivered', label: 'Delivered', value: count('delivered'), note: 'sent to your inbox' },
