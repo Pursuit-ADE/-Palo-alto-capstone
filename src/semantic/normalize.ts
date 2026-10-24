@@ -316,7 +316,9 @@ export type NormalizeResult =
   | { kind: 'intent'; intent: Intent }
   // `resume` is the partial request a clarification is waiting on (for example coverage with no quarter yet).
   // The client sends it back as the previous intent, so the answer to the clarification finishes that request.
-  | { kind: 'clarify'; question: string; resume?: Intent }
+  // `about: 'metric'` marks a question about which metric is meant. `ask()` keeps asking it even when a model
+  // proposes a metric, because the model would be choosing the metric the reading could not (#52 review).
+  | { kind: 'clarify'; question: string; resume?: Intent; about?: 'metric' }
   | { kind: 'unsupported'; message: string };
 
 // Words for what is being measured. The synonym match picks a metric by its name ("open opportunities"), so a
@@ -476,7 +478,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const { glossary } = registry;
 
   for (const [term, question] of Object.entries(glossary.ambiguousTerms)) {
-    if (text.includes(` ${term} `)) return { kind: 'clarify', question };
+    if (text.includes(` ${term} `)) return { kind: 'clarify', question, about: 'metric' };
   }
 
   let matches = namedMetrics(text, registry);
@@ -490,7 +492,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     }
     else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
   }
-  if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry) };
+  if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry), about: 'metric' };
   const metric = registry.metrics.get(matches[0]!)!;
 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,

@@ -15,6 +15,25 @@ it('asks when a model metric contradicts a deterministic reading', async () => {
     } },
   });
   expect(result.kind).toBe('clarify');
+  // Names the two readings that conflicted, not the whole catalog (#52 review).
+  if (result.kind === 'clarify') expect(result.question).toBe('Do you mean Open opportunity count or Open pipeline?');
+});
+it('keeps asking a metric question the deterministic reading asked, whatever metric the model picks', async () => {
+  const result = await ask(database, registry, 'u_analyst', 'weighted coverage this quarter', {
+    model: { name: 'synthetic-picks-metric', async propose() {
+      return { kind: 'intent', intent: { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] } };
+    } },
+  });
+  expect(result.kind).toBe('clarify');
+  if (result.kind === 'clarify') expect(result.question).toContain('Weighted coverage is not defined');
+});
+it('lets the model supply a quarter the deterministic reading asked for', async () => {
+  const result = await ask(database, registry, 'u_analyst', 'pipeline coverage', {
+    model: { name: 'synthetic-supplies-quarter', async propose() {
+      return { kind: 'intent', intent: { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] } };
+    } },
+  });
+  expect(result.kind).toBe('answer');
 });
 it('known outside-team and unknown person names have different public responses', async () => {
   const known = await askWithFallback(database, registry, 'u_ts_east', 'open pipeline for Darcel Schlecht', {}, {

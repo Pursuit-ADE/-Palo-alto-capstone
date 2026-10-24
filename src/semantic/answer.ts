@@ -6,7 +6,7 @@ import { queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Intent } from '../registry/types';
-import { normalize } from './normalize';
+import { normalize, type NormalizeResult } from './normalize';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
@@ -173,6 +173,20 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
   if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
 }
 
+/**
+ * The deterministic reading is an independent check on the model's choice of metric. When they disagree, or the
+ * reading had to ask which metric is meant, the user is asked; a different metric is never silently substituted.
+ * The question names the two readings from the registry, so it stays current when a metric is added. A reading
+ * that asks about anything else (a missing quarter, say) lets the model's proposal through (#52 review).
+ */
+function checkMetric(proposal: NormalizeResult, expected: NormalizeResult, registry: Registry): NormalizeResult {
+  if (proposal.kind !== 'intent') return proposal;
+  if (expected.kind === 'clarify' && expected.about === 'metric') return expected;
+  if (expected.kind !== 'intent' || proposal.intent.metric === expected.intent.metric) return proposal;
+  const names = [expected.intent.metric, proposal.intent.metric].map((id) => registry.metrics.get(id)?.name).join(' or ');
+  return { kind: 'clarify', question: `Do you mean ${names}?`, about: 'metric' };
+}
+
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
@@ -190,12 +204,8 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     const asOfDate = snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10);
     const proposal = await model.propose(phrase, registry, asOfDate, previous);
     if (proposal.kind === 'intent') validateIntent(proposal.intent, registry);
-    // An unambiguous deterministic reading is an independent check on model metric selection.
-    // Disagreement asks the user; it never silently substitutes a different metric.
     const expected = model === deterministicModel ? proposal : normalize(phrase, registry, asOfDate, previous);
-    const n = proposal.kind === 'intent' && expected.kind === 'intent' && proposal.intent.metric !== expected.intent.metric
-      ? { kind: 'clarify' as const, question: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?' }
-      : proposal;
+    const n = checkMetric(proposal, expected, registry);
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
