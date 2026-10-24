@@ -15,9 +15,11 @@ describe('metric registry and context layer', () => {
     const coverage = reg.metrics.get('pipeline_coverage');
     expect(coverage?.kind).toBe('ratio');
     if (coverage?.kind !== 'ratio') return;
-    expect(coverage.target).toBe(3);
-    expect(coverage.caution).toBe(2);
-    expect(coverage.caution).toBeLessThan(coverage.target);
+    const { target, caution } = coverage;
+    expect(target).toBe(3);
+    expect(caution).toBe(2);
+    if (target == null || caution == null) return;
+    expect(caution).toBeLessThan(target);
   });
 
   it('documents every column a metric uses in the field dictionary', () => {
