@@ -127,7 +127,7 @@ function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView 
   return <div className="answer notice refused" role="status"><span className="notice-tag">Not answered</span>{result.message}</div>;
 }
 
-function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
+export function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
   const cols = Object.keys(a.rows[0] ?? { value: '' });
   const charts = graphs ? answerCharts(a, graphs.id) : null;
   // Follow-up chips are follow-ups of this answer ("And open pipeline by stage"), so only the latest answer offers them:
@@ -139,9 +139,10 @@ function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
   return (
     <div className="answer">
       <h3>{a.metric.name}</h3>
+      {/* The answer in one sentence comes first (client feedback, Oct 24): a leader reads it and can stop there. */}
+      <p className="narrative narrative-lead">{a.narrative}</p>
       {big && <p className="answer-value">{big}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
-      <p className="narrative">{a.narrative}</p>
       {charts && (
         // The answer list is a live region; the chart's controls change whenever any graph on the page turns, and
         // announcing that for every answer would bury the answers themselves.
