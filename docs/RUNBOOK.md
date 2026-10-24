@@ -85,6 +85,20 @@ Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compo
 | `TRUSTED_PROXY_HOPS` | both | Proxies in front of the app that append to `X-Forwarded-For` (1 for one load balancer). Unset: the header is ignored and all sign-in attempts share one limit of 100 a minute. |
 | `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and one when a session lock starts. |
 
+## Question trends
+
+Counts questions by week, metric and outcome. It does not show question text. The log only keeps a fingerprint, and the report does not read that column.
+
+On the laptop demo, sign in as the analyst (Avery Patel) and open http://localhost:3000/trends. The log is in the running server. A second process cannot see it.
+
+On Postgres, the app login cannot read the audit log. Use the owner login:
+
+```bash
+MIGRATION_DATABASE_URL=postgres://... npm run trends
+```
+
+Weeks start on Monday, UTC. A question that never became a metric is counted as "(no metric)". That is the list of questions the copilot could not place yet.
+
 ## Common problems
 
 | What you see | Why | Fix |
