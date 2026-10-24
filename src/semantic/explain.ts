@@ -33,6 +33,8 @@ type Clarify = { kind: 'clarify'; question: string };
 type Region = NonNullable<Intent['filters']['regions']>[number];
 
 const WHY = / (why|how come|explain|reason|reasons) /;
+/** "How much higher is my coverage than the company's?" asks about a gap without saying why (PR #51 review). */
+const HOW_MUCH = / how much (higher|lower|bigger|smaller|more|less|better|worse) /;
 const DIFFERENCE =
   / (different|differ|differs|difference|discrepancy|mismatch|match|matches|higher|lower|bigger|smaller|than|versus|vs|say|says|said|show|shows|showing|see|sees|seeing|get|gets|got|report|reports|reported) /;
 const THIS_NUMBER = / (this|that|my|our|the) (number|figure|ratio|result) /;
@@ -59,7 +61,7 @@ function clean(phrase: string): string {
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
   const text = clean(phrase);
-  if (!WHY.test(text) || !DIFFERENCE.test(text)) return false;
+  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !DIFFERENCE.test(text)) return false;
   const metric = registry.metrics.get(EXPLAINED_METRIC);
   const names = metric ? [metric.name.toLowerCase(), ...metric.synonyms.map((s) => s.toLowerCase())] : [];
   if (names.some((n) => text.includes(` ${n} `))) return true;

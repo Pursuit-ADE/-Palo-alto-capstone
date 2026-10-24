@@ -38,6 +38,9 @@ describe('which questions get an explanation', () => {
     ['What is our pipeline coverage this quarter?', false],
     ['why is open pipeline different from last week?', false],
     ['explain pipeline coverage', false],
+    ['How much higher is my pipeline coverage than the company number this quarter?', true],
+    ['how much lower is our coverage than marketing says?', true],
+    ['how much coverage do we have this quarter?', false],
   ])('"%s" -> %s', (phrase, expected) => {
     expect(isDiscrepancyQuestion(phrase, reg)).toBe(expected);
   });
@@ -320,5 +323,20 @@ describe('PR #50 review: two named teams or reps are compared with each other', 
   it('asks back instead of combining three or more named slices', async () => {
     const r = await ask(database, reg, 'u_analyst', 'why is coverage different in east, west and central?');
     expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('two slices at a time') });
+  });
+});
+
+describe('PR #51 review: "how much higher… than" is a discrepancy question too', () => {
+  it("gives the seller their own figure and the can't-see explanation, never the company figure", async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', 'How much higher is my pipeline coverage than the company number this quarter?'));
+    expect(e.other).toBeNull();
+    expect(row(e.answer).value).toBe(0.5158);
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+    expect(JSON.stringify(e)).not.toMatch(/1,963,909|3,001,000|0\.65/);
+  });
+
+  it('compares two regions the analyst names', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'how much higher is east coverage than west this quarter?'));
+    expect([(e.answer.intent as Intent).filters.regions, (e.other!.intent as Intent).filters.regions]).toEqual([['east'], ['west']]);
   });
 });
