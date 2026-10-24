@@ -2,7 +2,7 @@
 // it maps a phrasing to a registry metric plus filters using the context layer's synonyms and phrases.
 // The real model (Week 3) must produce the same structured Intent and passes the same validation.
 import type { Registry } from '../registry/load';
-import type { Dimension, Intent } from '../registry/types';
+import type { Dimension, Intent, MetricDefinition } from '../registry/types';
 import { catalog, QUOTA_PERIODS } from '../db/seed';
 import type { Glossary } from '../registry/types';
 import { AMOUNT_CLARIFY, parseAmount } from './amount';
@@ -313,6 +313,38 @@ export type NormalizeResult =
   | { kind: 'clarify'; question: string; resume?: Intent }
   | { kind: 'unsupported'; message: string };
 
+// Words for what is being measured. The synonym match picks a metric by its name ("open opportunities"), so a
+// question can name one metric while asking for another's measure ("total value of open opportunities").
+const VALUE_WORDS = / (value|worth|dollar|dollars|amount|how much|sum|money) /;
+const COUNT_WORDS = / (how many|number of|count|counts) /;
+const QUOTA_WORDS = / (quota|quotas|target|targets) /;
+
+/**
+ * A question whose measure words contradict the metric its name matched: a value on a count metric, a count on a
+ * currency metric, or quota on a metric that isn't a ratio of pipeline to quota (semantic invariance suite). Answering
+ * would be a valid query for the wrong metric, so it is asked about instead.
+ */
+function measureContradiction(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
+  const named = (unit: string) => [...registry.metrics.values()].filter((m) => m.unit === unit).map((m) => m.name);
+  const value = VALUE_WORDS.test(text);
+  const count = COUNT_WORDS.test(text);
+  if ((metric.unit === 'count' && value && !count) || (metric.unit === 'currency' && count && !value)) {
+    return `Do you mean ${named('currency').join(' or ')} (the dollar value of open deals) or ${named('count').join(' or ')} (how many open deals)?`;
+  }
+  if (metric.kind !== 'ratio' && QUOTA_WORDS.test(text)) {
+    return `Do you mean ${named('ratio').join(' or ')} (open pipeline divided by quota for a quarter)? For example, "pipeline coverage this quarter".`;
+  }
+  return undefined;
+}
+
+/** Questions that can't be read exactly once the metric is known: contradicting measure words, or leaving something out. */
+function unreadableQuestion(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
+  const contradiction = measureContradiction(text, metric, registry);
+  if (contradiction) return contradiction;
+  // Leaving a region or stage out can't be represented yet.
+  return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
+}
+
 /** The metrics a question names. Longest matching synonym wins, so "pipeline coverage" beats "pipeline". */
 function namedMetrics(text: string, registry: Registry): string[] {
   let best = 0;
@@ -406,9 +438,8 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
   // never a quietly different answer.
-  if (EXCLUSION.test(text)) {
-    return { kind: 'clarify', question: "I can't leave out a region or stage yet. Which regions or stages do you want included?" };
-  }
+  const unreadable = unreadableQuestion(text, metric, registry);
+  if (unreadable) return { kind: 'clarify', question: unreadable };
   const read = readSelectors(phrase);
   if (read.clarify) return { kind: 'clarify', question: read.clarify };
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
