@@ -5,6 +5,9 @@ import type { FormEventHandler, Ref } from 'react';
 /** The invite code box: required on the sign-up page, optional on the log-in page (filled in, it creates the account). */
 export type InviteField = 'required' | 'optional' | 'off';
 
+/** The server's username rule (src/server/auth.ts USERNAME), before lowercasing. Browsers compile `pattern` in Unicode-sets mode, where a literal hyphen must be escaped. */
+export const USERNAME_PATTERN = String.raw`[A-Za-z0-9._\-]{3,32}`;
+
 /**
  * Which action the form posts. On the sign-up page, and on the log-in page once the invite code box has text, it is the
  * sign-up action, so the code gets its rate limit, auth audit, and server-side password and invite checks. The log-in
@@ -35,7 +38,10 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
       <label htmlFor="username">Username</label>
       {/* Uncontrolled, so text typed before hydration or filled by a password manager is never overwritten. defaultValue
           follows what was typed, so the form reset React does after each attempt keeps the username (and invite code). */}
-      <input id="username" name="username" autoComplete="username" required minLength={3} maxLength={32} autoCapitalize="none" spellCheck={false} defaultValue={username} onChange={(e) => onUsername(e.target.value)} />
+      {/* The same rule the server applies (src/server/auth.ts USERNAME), so a name with a space or an @ is caught before
+          the form is sent, and the password typed alongside it isn't lost. Capitals are fine: the server lowercases. */}
+      <input id="username" name="username" autoComplete="username" required minLength={3} maxLength={32} autoCapitalize="none" spellCheck={false} defaultValue={username} onChange={(e) => onUsername(e.target.value)} pattern={creating ? USERNAME_PATTERN : undefined} title={creating ? 'Letters, numbers, dots, dashes or underscores. No spaces.' : undefined} aria-describedby={creating ? 'username-hint' : undefined} />
+      {creating && <p className="hint" id="username-hint">No spaces or @. For example: mira.k</p>}
       <label htmlFor="password">Password</label>
       <input id="password" name="password" type="password" autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={128} />
       {invite !== 'off' && (
