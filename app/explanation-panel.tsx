@@ -7,13 +7,25 @@ import { dateRange, format } from './format';
 import { ProvenancePanel } from './provenance-panel';
 
 const part = (a: Answer, key: 'numerator' | 'denominator' | 'value') => a.rows[0]?.[key] ?? null;
+const title = (s: string) => s[0]!.toUpperCase() + s.slice(1);
+
+/** What the question itself narrowed the figure to: named regions, teams and reps. The asker's access is the Scope row. */
+function filteredTo(a: Answer): string {
+  const regions = (a.intent as { filters?: { regions?: string[] } }).filters?.regions ?? [];
+  const named = [
+    ...(regions.length ? [`${regions.map(title).join(' and ')} region${regions.length > 1 ? 's' : ''}`] : []),
+    ...(a.filters.teams ?? []).map((t) => `${t}'s team`),
+    ...(a.filters.people ?? []),
+  ];
+  return named.join(', ') || 'none';
+}
 
 function SideBySide({ a, b }: { a: Answer; b: Answer }) {
   const rows: [string, (x: Answer) => string][] = [
     ['Metric', (x) => `${x.metric.name} v${x.metric.version}`],
     ['Quarter', (x) => x.filters.period?.label ?? '—'],
     ['Scope', (x) => scopeText(x.scope)],
-    ['Filtered to', (x) => [...(x.filters.teams ?? []).map((t) => `${t}'s team`), ...(x.filters.people ?? [])].join(', ') || 'none'],
+    ['Filtered to', filteredTo],
     ['Open pipeline', (x) => format(part(x, 'numerator'), 'currency')],
     ['Quota', (x) => format(part(x, 'denominator'), 'currency')],
     ['Coverage', (x) => format(part(x, 'value'), 'ratio')],
@@ -42,7 +54,8 @@ export function ExplanationView({ e }: { e: Explanation }) {
   const a = e.answer;
   return (
     <div className="answer explanation">
-      <h3>Why a coverage number can differ</h3>
+      {/* One figure means the other number is outside the asker's scope or wasn't named: say so, don't promise a reason. */}
+      <h3>{e.other ? 'Why these two coverage figures differ' : 'Your coverage, and what can make another figure differ'}</h3>
       {!e.other && <p className="answer-value">{format(part(a, 'value'), 'ratio')}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
       <p className="narrative">{e.summary}</p>
@@ -59,7 +72,15 @@ export function ExplanationView({ e }: { e: Explanation }) {
           </li>
         ))}
       </ul>
-      <ProvenancePanel a={a} />
+      {e.other ? (
+        // Each figure has its own audit row (source "comparison_side" for the second), so each gets its own panel.
+        <div className="provenance-pair">
+          <div><h4 className="figure-label">First figure</h4><ProvenancePanel a={a} /></div>
+          <div><h4 className="figure-label">Second figure</h4><ProvenancePanel a={e.other} /></div>
+        </div>
+      ) : (
+        <ProvenancePanel a={a} />
+      )}
     </div>
   );
 }
