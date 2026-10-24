@@ -11,7 +11,7 @@
     {
       "name": "open opportunity count, whole scope",
       "intent": { "metric": "open_opportunity_count", "filters": {}, "groupBy": [] },
-      "phrases": ["number of open opportunities", "count our open opportunities", "how many open deals do we have", "open opportunity count"]
+      "phrases": ["number of open opportunities", "count our open opportunities", "how many open deals do we have", "how many open deals are in the pipeline", "open opportunity count"]
     },
     {
       "name": "coverage this quarter",
@@ -109,7 +109,10 @@
     { "phrase": "open pipeline excluding west", "why": "exclusion can't be represented yet" },
     { "phrase": "open pipeline for Nimbus", "why": "unknown name; answering for everything would be a different question" },
     { "phrase": "weighted coverage this quarter", "why": "weighted coverage isn't a governed metric" },
-    { "phrase": "closed won pipeline", "why": "open pipeline excludes won deals" }
+    { "phrase": "closed won pipeline", "why": "open pipeline excludes won deals" },
+    { "phrase": "Compare open pipeline with open opportunity count by region.", "why": "two governed metrics named; answering one would drop the other (PR #51 review)" },
+    { "phrase": "Show pipeline coverage and open pipeline for this quarter.", "why": "two governed metrics named; one is answered at a time" },
+    { "phrase": "open deal count and pipeline value", "why": "two governed metrics named; the longer synonym must not win" }
   ],
   "followUps": [
     {

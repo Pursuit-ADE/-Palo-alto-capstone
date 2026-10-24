@@ -345,19 +345,29 @@ function unreadableQuestion(text: string, metric: MetricDefinition, registry: Re
   return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
 }
 
-/** The metrics a question names. Longest matching synonym wins, so "pipeline coverage" beats "pipeline". */
+/** "The pipeline" is also how people say "the open deals", so beside a more specific metric it doesn't name a second one. */
+const GENERIC_METRIC_WORDS = new Set(['pipeline']);
+
+/**
+ * The metrics a question names. Synonyms are taken longest first and may not overlap, so "pipeline coverage" beats
+ * the "pipeline" inside it, but "open pipeline ... open opportunity count" names two metrics and is asked about, never
+ * answered as the longer one (PR #51 review).
+ */
 function namedMetrics(text: string, registry: Registry): string[] {
-  let best = 0;
-  let matches: string[] = [];
+  const hits: { id: string; at: number; end: number; generic: boolean }[] = [];
   for (const m of registry.metrics.values()) {
-    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
-    if (len === 0) continue;
-    if (len > best) {
-      best = len;
-      matches = [m.id];
-    } else if (len === best) matches.push(m.id);
+    for (const synonym of m.synonyms) {
+      const word = synonym.toLowerCase();
+      for (let at = text.indexOf(` ${word} `); at >= 0; at = text.indexOf(` ${word} `, at + 1)) {
+        hits.push({ id: m.id, at: at + 1, end: at + 1 + word.length, generic: GENERIC_METRIC_WORDS.has(word) });
+      }
+    }
   }
-  return matches;
+  hits.sort((a, b) => b.end - b.at - (a.end - a.at) || a.at - b.at);
+  const picked: typeof hits = [];
+  for (const h of hits) if (!picked.some((p) => h.at < p.end && h.end > p.at)) picked.push(h);
+  const specific = picked.filter((h) => !h.generic);
+  return [...new Set((specific.length ? specific : picked).map((h) => h.id))];
 }
 
 /** The follow-up rule for a question that names a metric: it keeps the previous filters only for the same metric with a follow-up word. */
