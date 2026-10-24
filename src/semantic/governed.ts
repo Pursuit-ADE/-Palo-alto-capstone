@@ -108,10 +108,10 @@ function answerMetric(metric: MetricDefinition): Answer['metric'] {
   };
 }
 
-export async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
+export async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields, pinnedSnapshot?: NonNullable<Awaited<ReturnType<typeof currentSnapshot>>>): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
-  const snapshot = await currentSnapshot(database);
+  const snapshot = pinnedSnapshot ?? await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
   const q = compile(intent, registry, principal, snapshot.id);
   Object.assign(fields, { regions: q.regions, ownerCount: principal.ownerIds?.length ?? null, snapshotId: snapshot.id });

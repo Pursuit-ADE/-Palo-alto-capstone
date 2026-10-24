@@ -4,8 +4,9 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import type { Database } from '../db/client';
 import { queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
-import { IntentError } from './compile';
+import { IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Intent } from '../registry/types';
+import { normalize } from './normalize';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
@@ -186,7 +187,15 @@ export function ask(database: Database, registry: Registry, userId: string, phra
       return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields, linked);
     }
     const snapshot = await currentSnapshot(database);
-    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), previous);
+    const asOfDate = snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10);
+    const proposal = await model.propose(phrase, registry, asOfDate, previous);
+    if (proposal.kind === 'intent') validateIntent(proposal.intent, registry);
+    // An unambiguous deterministic reading is an independent check on model metric selection.
+    // Disagreement asks the user; it never silently substitutes a different metric.
+    const expected = model === deterministicModel ? proposal : normalize(phrase, registry, asOfDate, previous);
+    const n = proposal.kind === 'intent' && expected.kind === 'intent' && proposal.intent.metric !== expected.intent.metric
+      ? { kind: 'clarify' as const, question: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?' }
+      : proposal;
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
@@ -195,6 +204,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     }
     // Scope is resolved again after the model returns: a role or team change made while the model was
     // working applies to this query, not just the next one.
-    return run(database, registry, await principal(), n.intent, fields);
+    if (!snapshot) throw new Error('No data snapshot loaded');
+    return run(database, registry, await principal(), n.intent, fields, snapshot);
   });
 }
