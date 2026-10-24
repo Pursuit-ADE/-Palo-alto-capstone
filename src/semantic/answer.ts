@@ -29,9 +29,12 @@ export function questionFingerprint(text: string): string {
   return createHmac('sha256', AUDIT_KEY).update(text).digest('hex');
 }
 
-async function audit(database: Database, entry: AuditFields & { id: string; userId: string; source: string; outcome: string; requestId: string }) {
+type AuditRow = AuditFields & { id: string; userId: string; source: string; outcome: string; requestId: string };
+
+/** Writes the request's audit row, plus any linked rows (a comparison's second figure) in the same statement. */
+async function audit(database: Database, entry: AuditRow, linked: AuditRow[] = []) {
   const row = { at: new Date(), ...entry };
-  await database.auditDb.insert(queryAudit).values(row);
+  await database.auditDb.insert(queryAudit).values([row, ...linked.map((l) => ({ ...l, at: row.at }))]);
   // Flagged questions and locks also go to the security channel, if one is configured. Sent after the audit row
   // exists, without waiting, and never blocking or changing the answer.
   if (row.flags?.length || row.outcome === 'refused_locked') {
@@ -90,13 +93,16 @@ export async function recordRefusal(database: Database, userId: string, question
   });
 }
 
+/** Who asked, copied onto linked rows so each row of a request names the same account and session. */
+const actorOf = (f: AuditFields) => ({ username: f.username ?? null, sessionId: f.sessionId ?? null, questionSha256: f.questionSha256 ?? null });
+
 async function audited<T extends Reply>(
   database: Database,
   userId: string,
   source: string,
   question: string | null,
   actor: AskOptions['actor'],
-  body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
+  body: (fields: AuditFields, principal: () => Promise<Principal>, linked: AuditFields[]) => Promise<T>,
 ): Promise<T> {
   const requestId = randomUUID();
   const auditId = randomUUID();
@@ -110,19 +116,23 @@ async function audited<T extends Reply>(
     fields.role = p.role;
     return p;
   };
+  const linked: AuditFields[] = [];
   let result: T;
   try {
-    result = await body(fields, principal);
+    result = await body(fields, principal, linked);
   } catch (e) {
     await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e) });
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
-  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome });
+  const linkedRows = linked.map((l) => ({ ...l, ...actorOf(fields), id: randomUUID(), userId, source: 'comparison_side', requestId, outcome: 'answered' }));
+  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome }, linkedRows);
   // The audit ID is filled in only once its row is written.
-  const withId = (a: Answer): Answer => ({ ...a, provenance: { ...a.provenance, auditId } });
+  const withId = (a: Answer, id: string): Answer => ({ ...a, provenance: { ...a.provenance, auditId: id } });
   if (result.kind === 'answer') return { ...result, provenance: { ...result.provenance, auditId } };
-  if (result.kind === 'explanation') return { ...result, answer: withId(result.answer), other: result.other && withId(result.other) };
+  if (result.kind === 'explanation') {
+    return { ...result, answer: withId(result.answer, auditId), other: result.other && withId(result.other, linkedRows[0]?.id ?? auditId) };
+  }
   return result;
 }
 
@@ -165,7 +175,7 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
-  return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
+  return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal, linked) => {
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
     await screen(phrase, userId, await principal(), opts, fields);
@@ -173,7 +183,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     const previous = parsePrevious(opts.previous);
     if (isDiscrepancyQuestion(phrase, registry, previous)) {
       Object.assign(fields, { metricId: EXPLAINED_METRIC });
-      return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields);
+      return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields, linked);
     }
     const snapshot = await currentSnapshot(database);
     const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), previous);

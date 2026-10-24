@@ -10,7 +10,7 @@ One row per question, dashboard tile or intent, written by `src/semantic/answer.
 |---|---|
 | `at` | When (UTC, set by the app server's clock) |
 | `request_id`, `turn` | Ties a conversation's turns together |
-| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events) |
+| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events). `comparison_side` is the second figure of a "why is my number different?" comparison: same `request_id` as its question row |
 | `user_id`, `role` | Who, and the role from the database (`sales_rep`, `technical_seller`, `sales_manager`, `analyst`). Sign-in rows with an unknown account use `unknown` |
 | `question_sha256` | Keyed hash of the question. Same text gives the same hash only while `AUDIT_HASH_KEY` stays the same |
 | `intent`, `metric_id`, `metric_version`, `regions`, `snapshot_id`, `result_hash` | What was asked for and answered |

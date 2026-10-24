@@ -43,7 +43,7 @@ Every answer names its snapshot and as-of date (current: `snap_alto-pals-v2`, as
 ## Access and decision log
 
 - Scope (region, team) comes from the database on every turn (`src/semantic/scope.ts`), never from the question.
-- Every question and dashboard query writes one row to `query_audit`: a keyed hash of the question (not the text), the intent, metric and version, regions, snapshot, result hash, outcome, flags, model and turn. No answer is shown if that row can't be written.
+- Every question and dashboard query writes one row to `query_audit`: a keyed hash of the question (not the text), the intent, metric and version, regions, snapshot, result hash, outcome, flags, model and turn. No answer is shown if that row can't be written. A comparison of two coverage figures writes a second row for the second figure in the same statement (`source = 'comparison_side'`, same `request_id`), so either figure can be replayed from the log.
 - Sign-ins, failed sign-ins and sign-ups are audited too (`source = 'auth'`), with the username only as a keyed hash. Flagged questions and locks can also post to a security Slack channel (`SECURITY_SLACK_WEBHOOK_URL`).
 - In Postgres mode the answering login is read-only, the audit login can only add audit rows, and a separate auth login handles accounts and sessions. The owner login is used only by `npm run db:setup` (`docker/init-roles.sql`, `tests/postgres-roles.test.ts`).
 

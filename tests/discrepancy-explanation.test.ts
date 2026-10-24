@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase, type Database } from '@/db/client';
 import { appUsers, queryAudit } from '@/db/schema';
 import { loadRegistry } from '@/registry/load';
-import { ask, InjectionRefused, type Answer, type Reply } from '@/semantic/answer';
+import { answerIntent, ask, InjectionRefused, type Answer, type Reply } from '@/semantic/answer';
 import { isDiscrepancyQuestion, type Explanation } from '@/semantic/explain';
 import { classify, reconciles } from '@/semantic/explain-text';
 import type { IntentModel } from '@/semantic/model';
@@ -243,8 +243,9 @@ describe('what each comparison compares', () => {
   });
 });
 
-describe('PR #50 review: scope wording', () => {
+describe('PR #50 review: scope wording and a replayable comparison', () => {
   const ask2 = async (user: string, phrase: string) => explained(await ask(database, reg, user, phrase));
+  const rowsOf = (requestId: string) => database.db.select().from(queryAudit).where(eq(queryAudit.requestId, requestId));
 
   it('never says East contains West: two separate regions are described as separate', async () => {
     const e = await ask2('u_analyst', 'explain why coverage is higher in east than west');
@@ -255,5 +256,37 @@ describe('PR #50 review: scope wording', () => {
   it('says the larger slice includes the smaller one only when the filters prove it (team inside the whole scope)', async () => {
     const e = await ask2('u_analyst', "why is Cara Losch's team's coverage different from the company number?");
     expect(e.reasons[0]).toContain('The larger slice includes the smaller one');
+  });
+
+  it('writes one linked audit row per figure, and each row replays to the figure it describes', async () => {
+    const e = await ask2('u_analyst', 'explain why coverage is higher in east than west');
+    const [main] = await database.db.select().from(queryAudit).where(eq(queryAudit.id, e.answer.provenance.auditId));
+    const rows = await rowsOf(main!.requestId);
+    expect(rows).toHaveLength(2);
+    const side = rows.find((r) => r.source === 'comparison_side')!;
+    expect(e.other?.provenance.auditId).toBe(side.id);
+    expect(main).toMatchObject({ source: 'question', regions: ['east'], resultHash: e.answer.provenance.resultHash });
+    expect(side).toMatchObject({
+      userId: 'u_analyst',
+      role: 'analyst',
+      outcome: 'answered',
+      metricId: 'pipeline_coverage',
+      metricVersion: 1,
+      regions: ['west'],
+      snapshotId: e.other?.provenance.snapshotId,
+      resultHash: e.other?.provenance.resultHash,
+      questionSha256: main!.questionSha256,
+    });
+    // Replay each side from the audit row alone: the same intent, run again, gives the same result hash.
+    for (const row of [main!, side]) {
+      const replayed = await answerIntent(database, reg, row.userId, row.intent, 'replay');
+      expect(replayed.provenance.resultHash, row.source).toBe(row.resultHash);
+    }
+  });
+
+  it('a one-figure explanation writes a single audit row', async () => {
+    const e = await ask2('u_ts_east', CLIENT_QUESTION);
+    const [main] = await database.db.select().from(queryAudit).where(eq(queryAudit.id, e.answer.provenance.auditId));
+    expect(await rowsOf(main!.requestId)).toHaveLength(1);
   });
 });

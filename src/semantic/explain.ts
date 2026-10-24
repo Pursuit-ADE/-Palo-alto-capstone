@@ -151,6 +151,7 @@ export async function explainDiscrepancy(
   phrase: string,
   previous: Intent | undefined,
   fields: AuditFields,
+  linked: AuditFields[] = [],
 ): Promise<Explanation | Clarify> {
   const snapshot = await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
@@ -167,8 +168,9 @@ export async function explainDiscrepancy(
   const sides = other ? [answer, other] : [answer];
   const numerators = await Promise.all(sides.map((a) => numeratorMatches(database, registry, principal, a)));
   const verdict = other ? classify(answer, other, numerators) : null;
-  // The audit row records every region queried; all of them are inside the asker's scope.
-  fields.regions = [...new Set([...(fields.regions ?? []), ...(second.regions ?? [])])].sort();
   fields.reason = `explanation:${verdict ?? 'own_scope'}`;
+  // The second figure gets its own audit row (same request id), so each side of a comparison can be replayed from
+  // the log: intent, metric version, regions, snapshot and result hash (PR #50 review).
+  if (other) linked.push({ ...second, role: fields.role, reason: 'explanation:second_figure' });
   return { kind: 'explanation', answer, other, verdict, ...explanationText(answer, other, verdict, numerators) };
 }
