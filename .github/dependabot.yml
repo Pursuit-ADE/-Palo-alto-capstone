@@ -1,14 +1,32 @@
+# Weekly dependency updates. Updates are grouped so one PR moves a package together: React and react-dom stay
+# on the same version, and both apps' updates arrive at the same time so their versions keep matching
+# (docs/CODING-STANDARDS.md). Minor and patch bumps come as one PR per ecosystem; majors stay separate.
 version: 2
 updates:
   - package-ecosystem: npm
     directory: /
+    target-branch: main
     schedule:
       interval: weekly
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
+      day: monday
+    groups:
+      copilot-minor-and-patch:
+        update-types: [minor, patch]
   - package-ecosystem: npm
     directory: /alerts
+    target-branch: main
     schedule:
       interval: weekly
+      day: monday
+    groups:
+      alerts-minor-and-patch:
+        update-types: [minor, patch]
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: main
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ['*']
