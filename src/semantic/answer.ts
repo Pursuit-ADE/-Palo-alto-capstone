@@ -8,6 +8,7 @@ import { appUsers, dataSnapshots, queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
 import { compile, IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Dimension, type Intent, type MetricDefinition } from '../registry/types';
+import { normalize } from './normalize';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { deterministicModel, type IntentModel } from './model';
@@ -157,10 +158,10 @@ function ratioParts(metric: MetricDefinition, registry: Registry, scope: string,
   };
 }
 
-async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
+async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields, pinnedSnapshot?: NonNullable<Awaited<ReturnType<typeof currentSnapshot>>>): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
-  const snapshot = await currentSnapshot(database);
+  const snapshot = pinnedSnapshot ?? await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
   const q = compile(intent, registry, principal, snapshot.id);
   Object.assign(fields, { regions: q.regions, ownerCount: principal.ownerIds?.length ?? null, snapshotId: snapshot.id });
@@ -340,7 +341,16 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     if (flags.includes('link')) throw new InjectionRefused('link');
     if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
     const snapshot = await currentSnapshot(database);
-    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), parsePrevious(opts.previous));
+    const asOfDate = snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10);
+    const previous = parsePrevious(opts.previous);
+    const proposal = await model.propose(phrase, registry, asOfDate, previous);
+    if (proposal.kind === 'intent') validateIntent(proposal.intent, registry);
+    // An unambiguous deterministic reading is an independent check on model metric selection.
+    // Disagreement asks the user; it never silently substitutes a different metric.
+    const expected = model === deterministicModel ? proposal : normalize(phrase, registry, asOfDate, previous);
+    const n = proposal.kind === 'intent' && expected.kind === 'intent' && proposal.intent.metric !== expected.intent.metric
+      ? { kind: 'clarify' as const, question: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?' }
+      : proposal;
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
@@ -349,6 +359,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     }
     // Scope is resolved again after the model returns: a role or team change made while the model was
     // working applies to this query, not just the next one.
-    return run(database, registry, await principal(), n.intent, fields);
+    if (!snapshot) throw new Error('No data snapshot loaded');
+    return run(database, registry, await principal(), n.intent, fields, snapshot);
   });
 }
