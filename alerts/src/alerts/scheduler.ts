@@ -1,6 +1,6 @@
 // The scheduler: on every tick, evaluate events since the stored cursor, then flush due digests and retries.
 // The cursor lives in the database, so a restart resumes where it left off instead of re-scanning or skipping.
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { alertCursor } from '../db/schema';
 import type { Channels } from './channels';
@@ -28,7 +28,7 @@ export async function tick(db: Db, rules: Map<string, AlertRule>, channels: Chan
   await db
     .insert(alertCursor)
     .values({ id: CURSOR_ID, evaluatedUntil: now })
-    .onConflictDoUpdate({ target: alertCursor.id, set: { evaluatedUntil: now } });
+    .onConflictDoUpdate({ target: alertCursor.id, set: { evaluatedUntil: sql`GREATEST(${alertCursor.evaluatedUntil}, ${now.toISOString()}::timestamptz)` } });
   return created;
 }
 

@@ -203,7 +203,7 @@ export function compile(intent: Intent, registry: Registry, principal: Principal
     `WITH num AS (SELECT n.region_id, ${measureSql(num.source, 'n')} AS v FROM ${num.source.table} n WHERE ${numWhere} GROUP BY n.region_id),`,
     `den AS (SELECT d.region_id, ${measureSql(metric.denominator, 'd')} AS v FROM ${metric.denominator.table} d WHERE ${denWhere} GROUP BY d.region_id)`,
     byRegion
-      ? `SELECT den.region_id AS region, COALESCE(num.v, 0) AS numerator, den.v AS denominator, ROUND(COALESCE(num.v, 0) / NULLIF(den.v, 0), 4) AS value FROM den LEFT JOIN num ON num.region_id = den.region_id ORDER BY den.region_id`
+      ? `SELECT COALESCE(den.region_id, num.region_id) AS region, COALESCE(num.v, 0) AS numerator, den.v AS denominator, ROUND(COALESCE(num.v, 0) / NULLIF(den.v, 0), 4) AS value FROM den FULL OUTER JOIN num ON num.region_id = den.region_id ORDER BY region`
       : `SELECT x.numerator, x.denominator, ROUND(x.numerator / NULLIF(x.denominator, 0), 4) AS value FROM (SELECT COALESCE((SELECT SUM(v) FROM num), 0) AS numerator, (SELECT SUM(v) FROM den) AS denominator) x`,
   ].join('\n');
   return { text, params: p.values, regions };
