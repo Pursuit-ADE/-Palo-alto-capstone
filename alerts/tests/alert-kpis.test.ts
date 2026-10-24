@@ -13,6 +13,12 @@ describe('alert summary', () => {
     expect(k[2]!.detail).toBe('1 access removed · 3 channel unavailable');
   });
 
+  it('counts someone who left the company as not sent, with the access removed (PR #55)', () => {
+    const k = alertKpis({ suppressed_no_access: 1, suppressed_inactive: 2, failed: 1 });
+    expect(k[2]!.value).toBe(4);
+    expect(k[2]!.detail).toBe('3 access removed · 1 channel unavailable');
+  });
+
   it('missing statuses count as 0', () => {
     expect(alertKpis({}).map((x) => x.value)).toEqual([0, 0, 0]);
   });

@@ -6,7 +6,7 @@ import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm'
 import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appAccounts, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
-import { employeeIsActive, type EmployeeDirectory } from './employee-status';
+import { employeeStatusOf, type EmployeeDirectory } from './employee-status';
 import { render, type AlertRule } from './rules';
 import { digestDue, lastSlot, normalizeFrequency } from './schedule';
 
@@ -27,7 +27,7 @@ export interface EngineOptions {
   directory?: EmployeeDirectory;
 }
 
-export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'failed';
+export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'suppressed_inactive' | 'failed';
 
 /** A claim older than this is treated as a send that was cut off, and may be taken over. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000;
@@ -98,6 +98,16 @@ export async function canSeeAccount(db: Db, userId: string, accountId: string): 
   return rows.length > 0;
 }
 
+/**
+ * Whether an alert may be created for this person now: the account isn't disabled, the employee directory (when one is
+ * set) says active, and they can see the account. "Unknown" skips creation; the late-arrival window finds the event again.
+ */
+async function canAlert(db: Db, opts: EngineOptions, userId: string, accountId: string): Promise<boolean> {
+  if (await isDisabled(db, userId)) return false;
+  if ((await employeeStatusOf(opts.directory, userId)) !== 'active') return false;
+  return canSeeAccount(db, userId, accountId);
+}
+
 export function inQuietHours(sub: { quietStartHour: number | null; quietEndHour: number | null }, now: Date): boolean {
   const { quietStartHour: s, quietEndHour: e } = sub;
   if (s === null || e === null || s === e) return false;
@@ -123,9 +133,7 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
     const events = await matchingEvents(db, rule, since, now);
     for (const ev of events) {
       for (const { s: sub } of audience) {
-        if (await isDisabled(db, sub.userId)) continue;
-        if (!(await employeeIsActive(opts.directory, sub.userId))) continue;
-        if (!(await canSeeAccount(db, sub.userId, ev.accountId))) continue;
+        if (!(await canAlert(db, opts, sub.userId, ev.accountId))) continue;
         const id = `alert_${rule.id}_${sub.userId}_${ev.id}`;
         const inserted = await db
           .insert(alertDeliveries)
@@ -169,27 +177,35 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
 
 /**
  * Whether this alert may still go to this user right now: the user still exists, is not disabled, has a role in the rule's
- * audience, is still subscribed to the rule, can still see the account, and (when a directory is set) is still an active
- * employee. Read fresh from the database and the directory.
+ * audience, is still subscribed to the rule, and can still see the account. Read fresh from the database.
  */
-export async function stillEligible(
-  db: Db,
-  rules: Map<string, AlertRule>,
-  row: { userId: string; ruleId: string; accountId: string },
-  directory?: EmployeeDirectory,
-): Promise<boolean> {
+export async function stillEligible(db: Db, rules: Map<string, AlertRule>, row: { userId: string; ruleId: string; accountId: string }): Promise<boolean> {
   const rule = rules.get(row.ruleId);
   if (!rule) return false;
   const [user] = await db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, row.userId));
   if (!user || !(rule.audience as string[]).includes(user.role)) return false;
   if (await isDisabled(db, row.userId)) return false;
-  if (!(await employeeIsActive(directory, row.userId))) return false;
   const [sub] = await db
     .select({ u: alertSubscriptions.userId })
     .from(alertSubscriptions)
     .where(and(eq(alertSubscriptions.userId, row.userId), eq(alertSubscriptions.ruleId, row.ruleId)));
   if (!sub) return false;
   return canSeeAccount(db, row.userId, row.accountId);
+}
+
+const VERDICT_STATUS = { retry: 'failed', inactive: 'suppressed_inactive', no_access: 'suppressed_no_access' } as const;
+
+/** What to do with one claimed alert just before sending: send it, retry it later, or drop it for a stated reason. */
+async function sendVerdict(
+  db: Db,
+  rules: Map<string, AlertRule>,
+  row: { userId: string; ruleId: string; accountId: string },
+  directory: EmployeeDirectory | undefined,
+): Promise<'send' | keyof typeof VERDICT_STATUS> {
+  const employee = await employeeStatusOf(directory, row.userId);
+  if (employee === 'inactive') return 'inactive';
+  if (employee === 'unknown') return 'retry';
+  return (await stillEligible(db, rules, row)) ? 'send' : 'no_access';
 }
 
 /**
@@ -238,8 +254,10 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const [userId, channel] = k.split('|') as [string, string];
     const items: typeof claimed = [];
     for (const r of group) {
-      if (await stillEligible(db, rules, r, opts.directory)) items.push(r);
-      else await db.update(alertDeliveries).set({ status: 'suppressed_no_access' }).where(mine([r.id]));
+      const verdict = await sendVerdict(db, rules, r, opts.directory);
+      if (verdict === 'send') items.push(r);
+      // A directory that could not answer is a failed send, so it keeps its retries; "left the company" is final.
+      else await db.update(alertDeliveries).set({ status: VERDICT_STATUS[verdict] }).where(mine([r.id]));
     }
     if (items.length === 0) continue;
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
