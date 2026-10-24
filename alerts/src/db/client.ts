@@ -98,7 +98,8 @@ async function applyGrants(owner: pg.Pool) {
     REVOKE CREATE ON SCHEMA public FROM PUBLIC;
     GRANT USAGE ON SCHEMA public TO alerts_app;
     -- Only what alert matching, routing and the inbox read: no deals, quotas, products or regions.
-    GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
+    -- product_usage is the synthetic table the low-usage rule reads. The products catalog stays closed.
+    GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, product_usage, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT INSERT, UPDATE ON alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
     -- Demo sign-in (Week 5): accounts and sessions; no UPDATE, so an account's person can't be changed.
@@ -128,5 +129,6 @@ export async function loadSeed(db: Db, seed: string = DEFAULT_SEED) {
     await tx.insert(schema.quotas).values(s.quotas);
     if (s.supportCases.length) await tx.insert(schema.supportCases).values(s.supportCases);
     if (s.engagements.length) await tx.insert(schema.engagements).values(s.engagements);
+    if (s.productUsage.length) await tx.insert(schema.productUsage).values(s.productUsage);
   });
 }

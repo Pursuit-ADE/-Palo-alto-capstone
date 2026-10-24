@@ -84,6 +84,21 @@ export const opportunities = pgTable('opportunities', {
   isWon: boolean('is_won').notNull(),
 });
 
+// Synthetic monthly product usage for the low-usage alert (plan item 14). Not a governed metric.
+// purchased_quantity is what was bought on purchase_date and is repeated on every month, so a rule can
+// compare quantity_used with it without a second table. source is 'synthetic': the sample has no usage.
+export const productUsage = pgTable('product_usage', {
+  id: text('id').primaryKey(),
+  snapshotId: text('snapshot_id').notNull().references(() => dataSnapshots.id),
+  accountId: text('account_id').notNull().references(() => accounts.id),
+  productId: text('product_id').notNull().references(() => products.id),
+  purchaseDate: date('purchase_date').notNull(),
+  purchasedQuantity: integer('purchased_quantity').notNull(),
+  usageMonth: date('usage_month').notNull(),
+  quantityUsed: integer('quantity_used').notNull(),
+  source: text('source').notNull(),
+}, (t) => [index('product_usage_account_product').on(t.accountId, t.productId)]);
+
 // Synthetic quotas per sales rep and fiscal quarter: pipeline coverage = open pipeline / quota.
 export const quotas = pgTable('quotas', {
   id: text('id').primaryKey(),
