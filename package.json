@@ -8,9 +8,21 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
     "test": "vitest run",
     "db:generate": "drizzle-kit generate",
-    "eval:golden": "tsx scripts/eval-golden.ts"
+    "eval:golden": "tsx scripts/eval-golden.ts",
+    "eval:redteam": "tsx scripts/eval-redteam.ts",
+    "invites": "tsx scripts/invites.ts",
+    "accounts": "tsx scripts/accounts.ts",
+    "docs:dictionary": "tsx scripts/data-dictionary.ts",
+    "onboard:profile": "tsx scripts/onboard-dataset.ts profile",
+    "onboard:propose": "tsx scripts/onboard-dataset.ts propose",
+    "onboard:confirm": "tsx scripts/onboard-dataset.ts confirm",
+    "db:setup": "tsx scripts/db-setup.ts",
+    "purge": "tsx scripts/purge.ts"
   },
   "engines": {
     "node": ">=22.12.0"
@@ -18,6 +30,8 @@
   "dependencies": {
     "@anthropic-ai/sdk": "0.133.0",
     "@electric-sql/pglite": "0.5.8",
+    "@fontsource-variable/manrope": "5.3.0",
+    "@fontsource/ibm-plex-mono": "5.3.0",
     "drizzle-orm": "0.45.4",
     "next": "16.4.1",
     "pg": "8.23.1",
@@ -26,11 +40,13 @@
     "zod": "4.6.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.6.2",
     "@types/node": "26.6.4",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "drizzle-kit": "0.31.11",
+    "fast-check": "4.10.2",
     "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.0.3"

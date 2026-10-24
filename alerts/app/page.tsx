@@ -3,28 +3,41 @@ import { demoUsers } from '@/db/seed';
 import { alertSubscriptions } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { DEMO_NOW } from '@/alerts/demo';
-import { testIdentitiesEnabled } from '@/server/identity';
+import { redirect } from 'next/navigation';
+import { requireUser } from '@/server/require-user';
+import { logOutAction } from './auth-actions';
+import { PreferencesForm } from './preferences-form';
 import { getAlertsRuntime } from '@/server/runtime';
+import { SyntheticBadge } from './synthetic-badge';
+import { alertKpis } from './alert-kpis';
+import { Chart3D } from './chart3d';
+import { readChartKinds, readView } from './view-mode';
+import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
 
-function hours(s: number | null, e: number | null): string {
-  if (s === null || e === null) return 'None';
-  return `${String(s).padStart(2, '0')}:00 to ${String(e).padStart(2, '0')}:00 UTC`;
-}
-
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
-  if (!testIdentitiesEnabled()) return <SignInRequired />;
+  // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
+  // shown only when nobody is signed in and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
-  const user = USERS.some((u) => u.id === params.user) ? params.user! : 'u_ts_east';
+  const actor = await requireUser(params.user, 'u_ts_east');
+  if (!actor) redirect('/login');
+  const user = actor.userId;
+  const signedIn = actor.username ? user : undefined;
   const me = USERS.find((u) => u.id === user)!;
   const { database, rules } = await getAlertsRuntime();
   // Only delivered alerts are readable. Held, blocked or failed alerts are counted, never shown.
   const mine = await inbox(database.db, user);
   const counts = await statusCounts(database.db, user);
-  const count = (s: string) => counts[s] ?? 0;
+  const kpis = alertKpis(counts);
+  const view = await readView();
+  const graphs = view === 'graphs';
+  const kinds = graphs ? await readChartKinds() : undefined;
+  // In the Graphs view, a mouse drag on the page around the graph turns it too.
+  const surface = graphs ? { 'data-c3d-surface': '' } : {};
+  const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
   return (
@@ -37,30 +50,61 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               <span>Customer Analytics · Team ALTO PALS</span>
             </div>
           </div>
-          <span className="badge">Maven CRM data</span>
-          <form className="who" method="get">
-            <label htmlFor="user">Viewing as</label>
-            <select id="user" name="user" defaultValue={user}>
-              {USERS.map((u) => (
-                <option key={u.id} value={u.id}>{u.displayName}</option>
-              ))}
-            </select>
-            <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
-          </form>
+          <SyntheticBadge />
+          {signedIn ? (
+            <form className="who" action={logOutAction}>
+              <span>Signed in as {me.displayName}</span>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Log out</button>
+            </form>
+          ) : (
+            <form className="who" method="get">
+              <label htmlFor="user">Viewing as</label>
+              <select id="user" name="user" defaultValue={user}>
+                {USERS.map((u) => (
+                  <option key={u.id} value={u.id}>{u.displayName}</option>
+                ))}
+              </select>
+              <button type="submit" className="badge" style={{ background: 'transparent', cursor: 'pointer' }}>Switch</button>
+            </form>
+          )}
         </div>
       </header>
 
-      <main>
+      <main {...surface}>
         <div className="page-head">
           <h1>Your alerts</h1>
-          <p>Private to {me.displayName.split(' (')[0]}: alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. Identity switch for testing, not a login yet.</p>
+          <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          <ViewSwitch view={view} />
         </div>
 
-        <section className="kpis" aria-label="Alert summary">
-          <div className="kpi"><span className="label">Delivered</span><span className="value">{count('delivered')}</span><span className="note">sent to your inbox</span></div>
-          <div className="kpi"><span className="label">Waiting for digest</span><span className="value">{count('queued_digest')}</span><span className="note">held by your digest or quiet-hours setting; shown once delivered</span></div>
-          <div className="kpi"><span className="label">Not sent</span><span className="value">{count('suppressed_no_access') + count('failed')}</span><span className="note">access removed or channel unavailable</span></div>
-        </section>
+        {graphs ? (
+          <section className="card" aria-label="Alert summary">
+            <Chart3D
+              charts={[
+                {
+                  id: 'alert-summary',
+                  title: 'Your alerts by status',
+                  unit: 'count',
+                  size: 'card',
+                  form: 'columns',
+                  categoryName: 'Status',
+                  categories: kpis.map((k) => ({ key: k.key, label: k.label })),
+                  series: ['Alerts'],
+                  data: kpis.map((k) => ({ category: k.key, series: 0, value: k.value, display: k.value.toLocaleString('en-US'), detail: k.detail ?? k.note })),
+                  summary: `Your alerts by status: ${kpis.map((k) => `${k.label} ${k.value}`).join(', ')}.`,
+                  parts: true, // the three statuses don't overlap, so a donut of them is honest
+                },
+              ]}
+              kinds={kinds}
+            />
+          </section>
+        ) : (
+          <section className="kpis" aria-label="Alert summary">
+            {kpis.map((k) => (
+              <div className="kpi" key={k.key}><span className="label">{k.label}</span><span className="value">{k.value}</span><span className="note">{k.note}</span></div>
+            ))}
+          </section>
+        )}
 
         <section className="card" aria-labelledby="inbox-title">
           <h2 id="inbox-title">Inbox</h2>
@@ -86,25 +130,24 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         <div className="grid2">
           <section className="card" aria-labelledby="subs-title">
             <h2 id="subs-title">Your subscriptions</h2>
-            <p className="sub">You choose the rules, how often, quiet hours and channel.</p>
-            {subs.length === 0 ? (
-              <p className="empty">Not subscribed to any rule.</p>
+            <p className="sub">Choose the alerts you want, how often, where, and your quiet hours. Only alerts meant for your role are listed. Changes apply to new alerts; ones already waiting keep their channel.</p>
+            {myRules.length === 0 ? (
+              <p className="empty">No alerts are available for your role yet.</p>
             ) : (
-              <div className="tablewrap">
-                <table>
-                  <thead><tr><th>Rule</th><th>Frequency</th><th>Quiet hours</th><th>P1 bypass</th><th>Channel</th></tr></thead>
-                  <tbody>
-                    {subs.map((s) => (
-                      <tr key={s.ruleId}>
-                        <td>{rules.get(s.ruleId)?.name ?? s.ruleId}{rules.get(s.ruleId) && !(rules.get(s.ruleId)!.audience as string[]).includes(me.role) && <span className="muted"> (not for your role, so it never fires)</span>}</td>
-                        <td>{s.frequency === 'realtime' ? 'Right away' : 'Daily digest'}</td>
-                        <td>{hours(s.quietStartHour, s.quietEndHour)}</td>
-                        <td>{s.criticalBypass ? 'Yes' : 'No'}</td>
-                        <td>{s.channel === 'inbox' ? 'In-app inbox' : 'Slack'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="prefs">
+                {myRules.map((r) => {
+                  const s = subs.find((x) => x.ruleId === r.id) ?? null;
+                  return (
+                    <PreferencesForm
+                      key={`${user}-${r.id}`}
+                      user={user}
+                      ruleId={r.id}
+                      ruleName={r.name}
+                      critical={r.criticalSeverities.length > 0}
+                      sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
+                    />
+                  );
+                })}
               </div>
             )}
           </section>
@@ -127,13 +170,3 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   );
 }
 
-function SignInRequired() {
-  return (
-    <main>
-      <div className="page-head">
-        <h1>Sign-in is not set up yet</h1>
-        <p>This app has no sign-in yet, so it only runs with test identities, which are turned off here. To try it locally, set ALLOW_TEST_IDENTITIES=true in .env.local and restart.</p>
-      </div>
-    </main>
-  );
-}

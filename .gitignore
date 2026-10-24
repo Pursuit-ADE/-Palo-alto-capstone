@@ -7,4 +7,8 @@ next-env.d.ts
 .env
 .env.*
 !.env.example
-.claude/
+.claude/*
+!.claude/agents/
+tests/tmp/
+onboarding/active.json
+onboarding/proposal.json

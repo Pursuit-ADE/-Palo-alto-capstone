@@ -4,3 +4,24 @@
 /alerts/rules/    @brovaset @MITRAKER
 /src/semantic/    @brovaset @MITRAKER
 /.github/         @brovaset @MITRAKER
+# Security-sensitive code (audit O2): sign-in, sessions, identity, database roles and grants, headers and CSP,
+# dependencies and the scripts that change accounts or data.
+/src/server/          @brovaset @MITRAKER
+/src/db/              @brovaset @MITRAKER
+/alerts/src/          @brovaset @MITRAKER
+/alerts/app/*actions.ts @brovaset @MITRAKER
+/app/*actions.ts      @brovaset @MITRAKER
+/drizzle/             @brovaset @MITRAKER
+/alerts/drizzle/      @brovaset @MITRAKER
+/docker/              @brovaset @MITRAKER
+/proxy.ts             @brovaset @MITRAKER
+/alerts/proxy.ts      @brovaset @MITRAKER
+/next.config.ts       @brovaset @MITRAKER
+/alerts/next.config.ts @brovaset @MITRAKER
+/package.json         @brovaset @MITRAKER
+/package-lock.json    @brovaset @MITRAKER
+/alerts/package.json  @brovaset @MITRAKER
+/alerts/package-lock.json @brovaset @MITRAKER
+/scripts/             @brovaset @MITRAKER
+/onboarding/          @brovaset @MITRAKER
+/SECURITY.md          @brovaset @MITRAKER

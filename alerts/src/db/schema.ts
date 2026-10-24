@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -119,7 +119,8 @@ export const engagements = pgTable('engagements', {
 
 // ---- Alerts (PRD Part 2) ----
 
-// L3: each user subscribes to the rules they want and picks frequency, quiet hours and channel.
+// L3: each user subscribes to the rules they want and picks frequency (realtime, daily, weekly, monthly),
+// quiet hours and channel.
 // Quiet hours are whole hours in UTC; start > end means the window crosses midnight.
 export const alertSubscriptions = pgTable(
   'alert_subscriptions',
@@ -131,6 +132,9 @@ export const alertSubscriptions = pgTable(
     quietStartHour: integer('quiet_start_hour'),
     quietEndHour: integer('quiet_end_hour'),
     criticalBypass: boolean('critical_bypass').notNull(),
+    // When this subscription last received a digest; the next one is due in the following daily, weekly or
+    // monthly slot (see digestDue in src/alerts/schedule.ts).
+    lastDigestAt: timestamp('last_digest_at', { withTimezone: true }),
   },
   (t) => [primaryKey({ columns: [t.userId, t.ruleId] })],
 );
@@ -160,5 +164,42 @@ export const alertDeliveries = pgTable(
     claimToken: text('claim_token'),
     attempts: integer('attempts').notNull().default(0),
   },
-  (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId)],
+  (t) => [uniqueIndex('alert_dedupe').on(t.ruleId, t.userId, t.eventId), index('alert_deliveries_user_status').on(t.userId, t.status)],
 );
+
+// How far the scheduler has evaluated events, so each run only looks at new events and a restart resumes.
+export const alertCursor = pgTable('alert_cursor', {
+  id: text('id').primaryKey(),
+  evaluatedUntil: timestamp('evaluated_until', { withTimezone: true }).notNull(),
+});
+
+// Demo sign-in (Week 5). An account belongs to one demo person; the person, and so the role, comes from the invite
+// code used to create it, never from the form. Passwords are stored as scrypt hashes, session tokens as SHA-256
+// hashes. Shared invite codes with the copilot (same DEMO_INVITE_SECRET); separate accounts and sessions.
+export const appAccounts = pgTable('app_accounts', {
+  username: text('username').primaryKey(),
+  userId: text('user_id').notNull().references(() => appUsers.id),
+  passwordHash: text('password_hash').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  // Set by `npm run accounts -- disable <username>`. A disabled account can't log in and its sessions stop working.
+  disabledAt: timestamp('disabled_at', { withTimezone: true }),
+}, (t) => [
+  // One account per demo person in each app: an invite code can be used once, so a leaked code can't mint more accounts.
+  uniqueIndex('app_accounts_user_id_unique').on(t.userId),
+]);
+
+// Sign-in attempts in the last minute, for the brute-force limits (per username and per address). Shared by every
+// process on the same database; rows older than a minute are deleted as new attempts arrive.
+export const loginAttempts = pgTable('login_attempts', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull(),
+  at: timestamp('at', { withTimezone: true }).notNull(),
+}, (t) => [index('login_attempts_key_at').on(t.key, t.at)]);
+
+export const appSessions = pgTable('app_sessions', {
+  tokenHash: text('token_hash').primaryKey(),
+  username: text('username').notNull().references(() => appAccounts.username, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+}, (t) => [index('app_sessions_expires_at').on(t.expiresAt), index('app_sessions_user_id').on(t.userId)]);

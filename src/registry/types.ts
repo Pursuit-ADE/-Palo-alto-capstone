@@ -6,7 +6,7 @@ export type Dimension = z.infer<typeof Dimension>;
 
 // Only these tables and columns can ever appear in compiled SQL.
 export const ALLOWED_COLUMNS = {
-  opportunities: ['amount', 'is_closed', 'close_date', 'stage', 'region_id', 'owner_user_id', 'account_id', 'snapshot_id'],
+  opportunities: ['amount', 'is_closed', 'close_date', 'stage', 'region_id', 'owner_user_id', 'account_id', 'product_id', 'snapshot_id'],
   quotas: ['amount', 'period', 'region_id', 'user_id', 'snapshot_id'],
 } as const;
 export type AllowedTable = keyof typeof ALLOWED_COLUMNS;
@@ -60,6 +60,8 @@ export const Glossary = z.object({
   periodPhrases: z.record(z.string(), z.string()),
   dimensionPhrases: z.record(z.string(), Dimension),
   ambiguousTerms: z.record(z.string(), z.string()),
+  /** Business rules in plain language, each naming the file that applies it (tests check that they agree). */
+  businessRules: z.array(z.object({ id: z.string().regex(/^[a-z][a-z0-9_]*$/), rule: z.string().min(1), appliesIn: z.string().min(1) })).default([]),
 });
 export type Glossary = z.infer<typeof Glossary>;
 
@@ -74,6 +76,23 @@ export const Intent = z
         regions: z.array(z.enum(['central', 'east', 'west'])).min(1).max(3).optional(),
         stages: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
         period: z.string().regex(/^FY\d{2}-Q[1-4]$/).optional(),
+        // Closed lists from the dataset, resolved to ids before SQL. Bounds match the other filters.
+        amount: z
+          .object({
+            min: z.number().finite().nonnegative().max(1e12).optional(),
+            max: z.number().finite().nonnegative().max(1e12).optional(),
+            minInclusive: z.boolean().optional(),
+            maxInclusive: z.boolean().optional(),
+          })
+          .strict()
+          .refine((a) => a.min != null || a.max != null, { message: 'amount needs a bound' })
+          .optional(),
+        products: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
+        accounts: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
+        sectors: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
+        people: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
+        /** Manager names. "Cara Losch's team" is that manager's reps, not a filter on the manager. */
+        teams: z.array(z.string().min(1).max(80)).min(1).max(10).optional(),
       })
       .strict(),
     groupBy: z

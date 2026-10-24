@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
-// Static security headers for every response. The Content Security Policy is set per request in proxy.ts.
+// Static security headers for every response. These are fixed at `next build`, so the Content Security Policy
+// (a nonce per request) and HSTS (read from the environment when the server runs) are set in proxy.ts instead.
 const securityHeaders = [
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },

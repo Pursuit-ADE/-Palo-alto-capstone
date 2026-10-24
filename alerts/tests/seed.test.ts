@@ -44,3 +44,14 @@ describe('dataset: Maven CRM sample plus synthetic additions', () => {
     expect(data.engagements.length).toBeGreaterThan(0);
   });
 });
+
+// Business rule "cxo" (registry/glossary.json in the copilot): only titles starting with "Chief" are CXOs, and only
+// they can fire the CXO alert.
+describe('cxo rule', () => {
+  it('flags exactly the contacts whose title starts with "Chief"', async () => {
+    const { buildSeed: build, isCxoTitle } = await import('@/db/seed');
+    expect(isCxoTitle('Chief Technology Officer')).toBe(true);
+    expect(isCxoTitle('Mischief Manager')).toBe(false);
+    for (const c of build().contacts) expect(c.isCxo).toBe(c.title.startsWith('Chief '));
+  });
+});

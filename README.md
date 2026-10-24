@@ -1,12 +1,14 @@
 # Governed Analytics Copilot
 
+[![CI](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/ci.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/ci.yml) [![Alerts CI](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/alerts-ci.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/alerts-ci.yml) [![CodeQL](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/codeql.yml/badge.svg)](https://github.com/Pursuit-ADE/-Palo-alto-capstone/actions/workflows/codeql.yml)
+
 Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, Demo Day 11/9/2026).
 
 A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts are in `alerts/` (since Week 2); Week 4 adds the scheduler, editable preferences and weekly or monthly digests.
 
 **No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
 
-New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md).
+New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md). Reviewing it for security or AI risk? Start with the [system card](docs/SYSTEM-CARD.md), then the [red-team results](docs/RED-TEAM.md) and [detections](docs/DETECTIONS.md).
 
 ## Run it
 
@@ -19,11 +21,13 @@ npm run build
 npm start         # http://localhost:3000
 ```
 
-There is no sign-in yet, so the pages only run with test identities. Create `.env.local` with `ALLOW_TEST_IDENTITIES=true` before `npm start`. Leave it unset anywhere real users can reach the app.
+**Demo sign-in (Week 5).** People create an account with an invite code, and the code decides which demo person, and so which role and data, the account gets. The user id then comes only from the session cookie, never from a form, URL or alert link. To turn it on, put a long random `DEMO_INVITE_SECRET` in `.env.local`, run `npm run invites` to print one code per demo person, and share each code only with the person who should use it. On a laptop with the embedded database, also set `ALLOW_EMBEDDED_DB=true` (production refuses it otherwise). The client asked for Active Directory and SSO in a real rollout; this sign-up is for the demo.
+
+For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm run dev` still shows the "Viewing as" switch when nobody is signed in. A production server (`npm start`) refuses to start with it on.
 
 **Postgres mode (least privilege):** `docker compose up -d`, then set the three database URLs from `.env.example`. The app migrates and loads data as the owner, answers questions as `app_readonly` (SELECT only, read-only transactions, 5 s statement timeout) and writes the audit log as `app_audit` (INSERT on `query_audit` only).
 
-Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused.
+Pick a mock identity and ask, for example, "coverage by region for this quarter". An East seller only sees East; asking for West is refused. Open pipeline and open opportunity count can also be filtered by deal size, product, account, sector, or the sales rep who owns the deal. A sector counts when the question says sector, industry, or vertical beside the name. A manager named with their team means that manager's reps. Pipeline coverage can be filtered by that rep or team. A filter quota is not split by, or a name that is not in the data, gets a clarifying question instead of a number for the whole scope.
 
 ## How it works
 
@@ -60,6 +64,16 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 - **Charts and narrative (A6):** a plain-language summary and a bar chart (with a Vega-Lite spec) are built from the governed rows, never written by a model.
 - **Red-team suite (S1, S2, S6):** `tests/conversation-and-redteam.test.ts` covers instruction overrides, fake authority, emotional pressure, a role claimed mid-chat, gradual scope escalation over a conversation, SQL and links in questions, a tampered conversation state, and a compromised model proposing out-of-scope or malformed intents. Suspicious questions are flagged in the audit log with reason codes (S3); flags never change scope. After 3 flagged questions in 10 minutes, a user is locked out of asking for 10 minutes. `npm run eval:golden` checks the configured intent model against the golden set.
 
+## Week 4: alerts finished and red-team completed
+
+- **Alerts (`alerts/`):** weekly and monthly digests on a real schedule (Mondays and the 1st, 13:00 UTC) alongside right-away and daily; a preferences screen where each person subscribes and sets frequency, channel, quiet hours and the P1 bypass; a scheduler (`ALERTS_SCHEDULER=true`) that only checks new events and resumes from a stored cursor; and a persistent Postgres mode with a least-privilege `alerts_app` login, tested in CI. See `alerts/README.md`.
+- **Red-team suite completed (S1, S2, S6):** `tests/redteam-matrix.test.ts` runs one row per PRD scenario and checks both the answer and the audit row. Questions containing a link are now blocked and logged (`refused_injection`), not just flagged. The matrix in plain language is in `docs/RED-TEAM.md`.
+
+## Week 5: dataset onboarding (A7) and demo sign-in
+
+- **Dataset onboarding (A7):** `src/onboard/*` and `scripts/onboard-dataset.ts` profile a second CRM folder (`data/northstar-crm/`), propose only the three existing governed metrics from `registry/metrics/*.json`, require human confirmation (`npm run onboard:confirm -- --by "<name>"`), and make the dataset queryable (`DATASET_DIR=data/northstar-crm`) without inventing metrics or SQL. See [`docs/ONBOARDING.md`](docs/ONBOARDING.md).
+- **Demo sign-in:** Invite-code account creation (`npm run invites`), scrypt password hashing, and server-side session cookies (`src/server/auth.ts`, `src/server/session.ts`), with Active Directory / SSO documented for production rollout.
+
 ## Security controls
 
 | Control | Where | Proof |
@@ -79,21 +93,25 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Not done yet (by roadmap week)
 
-- Real sign-in (OIDC) so the user id comes from a verified session instead of the test identity switch.
-- Shared rate limiting (gateway or Redis) when the app runs on more than one instance; today's limiter is per process.
-- HSTS once the app is served over HTTPS.
-- Week 2: business rules in the context layer; run the app on Postgres mode by default.
+- Company sign-in (Active Directory and SSO through OIDC) instead of demo accounts; the session code is the place it plugs in.
+- A gateway rate limit in front of more than one server. The app's own counters live in `session_guard` and are shared by processes that use the same Postgres database. PGlite still resets them on restart.
 - Claude golden-set evaluation in CI: CI runs the deterministic model. Run `INTENT_MODEL=claude npm run eval:golden` with Anthropic credentials to check Claude against the golden set before relying on it; a valid, in-scope but wrong metric from the model would otherwise still be answered. The client allows any AI provider (Oct 15), so Claude is the one we test.
 - Low-usage alert for CSMs (stretch): the client chose the definition on Oct 15, usage below 20% of what the customer bought, six months after purchase. Not built yet: it needs product-usage data, which the sample doesn't have.
-- Session lock and rate limiter are per process (in memory); a shared store is needed for more than one instance.
-- Alerts (in `alerts/`): persistent scheduler and database, user-editable preferences, weekly/monthly digests.
+- Alerts (in `alerts/`): per-user time zones, the CSM triggers, letting people edit trigger conditions, and running more than one scheduler at once.
+- Running on Postgres by default: `npm start` still uses the embedded database, and Postgres mode needs the database URLs (see the runbook).
 - The test identity picker is not authentication.
 
 ## Project documents
 
-- [PRD v1 (PDF)](ALTO-PALS_PRD_v1.docx.pdf)
-- [Roadmap v1 (PDF)](ALTO-PALS_Roadmap_v1.docx.pdf)
+- [PRD v1 (PDF)](docs/product/ALTO-PALS_PRD_v1.docx.pdf)
+- [Roadmap v1 (PDF)](docs/product/ALTO-PALS_Roadmap_v1.docx.pdf)
 
-## Branches
+## Branches and releases
 
-Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on.
+Weeks 1 to 5 were built on `week1` to `week5` branches, which are now kept for history. From v0.5.0 on, all work branches from `main` and comes back through a reviewed pull request.
+
+Stable points on `main` are tagged with [semantic versions](https://semver.org/): `v0.1.0` to `v0.3.0` are Weeks 1 to 3, and `v0.5.0` is Weeks 4 and 5. [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the branch flow, the checks every pull request must pass and how reviews work. The rules themselves are in [docs/CODING-STANDARDS.md](docs/CODING-STANDARDS.md). Security issues go through [SECURITY.md](SECURITY.md), not public issues.
