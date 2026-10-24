@@ -242,3 +242,18 @@ describe('what each comparison compares', () => {
     }
   });
 });
+
+describe('PR #50 review: scope wording', () => {
+  const ask2 = async (user: string, phrase: string) => explained(await ask(database, reg, user, phrase));
+
+  it('never says East contains West: two separate regions are described as separate', async () => {
+    const e = await ask2('u_analyst', 'explain why coverage is higher in east than west');
+    expect(e.reasons.join(' ')).not.toContain('includes the smaller');
+    expect(e.reasons[0]).toContain('The two regions are separate');
+  });
+
+  it('says the larger slice includes the smaller one only when the filters prove it (team inside the whole scope)', async () => {
+    const e = await ask2('u_analyst', "why is Cara Losch's team's coverage different from the company number?");
+    expect(e.reasons[0]).toContain('The larger slice includes the smaller one');
+  });
+});

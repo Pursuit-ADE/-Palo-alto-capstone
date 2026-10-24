@@ -78,6 +78,30 @@ function checksFor(sides: Answer[], numerators: boolean[], byPeriod: boolean) {
   });
 }
 
+type SliceFilters = { regions?: string[]; people?: string[]; teams?: string[] };
+const sliceOf = (a: Answer): SliceFilters => (a.intent as { filters?: SliceFilters }).filters ?? {};
+const within = (inner?: string[], outer?: string[]) => !outer || (inner !== undefined && inner.every((x) => outer.includes(x)));
+
+/** Whether `inner` is provably part of `outer`: every filter outer sets, inner sets too, with a subset of its values. */
+function contains(outer: Answer, inner: Answer): boolean {
+  const [o, i] = [sliceOf(outer), sliceOf(inner)];
+  return outer.scope === inner.scope && within(i.regions, o.regions) && within(i.people, o.people) && within(i.teams, o.teams);
+}
+
+/** Two region-only slices with no region in common. A deal and a quota belong to one region, so these never overlap. */
+function separateRegions(a: Answer, b: Answer): boolean {
+  const [x, y] = [sliceOf(a), sliceOf(b)];
+  if (x.people || x.teams || y.people || y.teams || !x.regions || !y.regions) return false;
+  return !x.regions.some((r) => y.regions?.includes(r));
+}
+
+/** Says how two slices relate only as far as their filters prove it (PR #50 review: East and West are not nested). */
+function scopeReason(a: Answer, b: Answer): string {
+  if (contains(a, b) || contains(b, a)) return 'The larger slice includes the smaller one, so both its pipeline and its quota include the smaller slice.';
+  if (separateRegions(a, b)) return "The two regions are separate: each figure is its own region's pipeline over its own region's quota, and neither includes the other.";
+  return "The two slices cover different deals and quota, and may overlap. Each figure is its own slice's pipeline over its own quota.";
+}
+
 const COMBINING = "Coverage is total open pipeline over total quota. A combined figure is not the average of each team's coverage.";
 
 /** One figure: the asker's own, with the reasons any two coverage figures can legitimately differ. */
@@ -112,7 +136,7 @@ function compared(a: Answer, b: Answer, verdict: Verdict): { summary: string; re
       }
       return {
         summary: `${same}, the same quarter (${a.filters.period?.label}) and ${data}. They differ only in scope: ${sliceLabel(a)} is ${figure(a)}, and ${sliceLabel(b)} is ${figure(b)}.`,
-        reasons: ['The larger scope includes the smaller one, so both its pipeline and its quota include the smaller slice.', COMBINING],
+        reasons: [scopeReason(a, b), COMBINING],
       };
     case 'different_period':
       return {
