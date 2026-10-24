@@ -17,6 +17,12 @@ const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|n
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
+/**
+ * "East vs West", "compare east and west", "is east higher than (the) west": two figures wanted, not their sum. A
+ * comparative counts only with a region right after "than", so "deals larger than $50,000" stays a deal-size filter.
+ */
+const COMPARISON =
+  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 // A capitalized name, including a product id whose last token is a number ("GTK 500").
@@ -345,6 +351,23 @@ function unreadableQuestion(text: string, metric: MetricDefinition, registry: Re
   return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
 }
 
+/**
+ * A comparison of two or more named regions is answered region by region, never as one combined figure (PR #51
+ * review). The regions stay as filters, so only the named ones are shown. If region can't be added as a breakdown,
+ * the question is asked back. Applied to both intent models (here and in followUpRule), like the follow-up rule.
+ */
+export function comparedRegions(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const regions = intent.filters.regions ?? [];
+  if (regions.length < 2 || intent.groupBy.includes('region') || !COMPARISON.test(clean(phrase))) return intent;
+  const metric = registry.metrics.get(intent.metric);
+  if (metric?.dimensions.includes('region') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'region'] };
+  const names = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ');
+  return { kind: 'clarify', question: `To compare ${names} I show each region on its own, which leaves room for one other breakdown. Which one do you want?` };
+}
+
+/** An intent, or the clarifying question a rule returned instead. */
+export const asResult = (x: Intent | { kind: 'clarify'; question: string }): NormalizeResult => ('kind' in x ? x : { kind: 'intent', intent: x });
+
 /** "The pipeline" is also how people say "the open deals", so beside a more specific metric it doesn't name a second one. */
 const GENERIC_METRIC_WORDS = new Set(['pipeline']);
 
@@ -536,5 +559,5 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   else delete filters.stages;
   if (period) filters.period = period;
   else delete filters.period;
-  return { kind: 'intent', intent: { metric: metric.id, filters, groupBy } };
+  return asResult(comparedRegions({ metric: metric.id, filters, groupBy }, phrase, registry));
 }

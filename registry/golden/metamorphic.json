@@ -100,6 +100,36 @@
       "differsIn": "filters",
       "a": { "phrase": "open opportunities this quarter", "expect": { "metric": "open_opportunity_count", "filters": { "period": "FY27-Q1" }, "groupBy": [] } },
       "b": { "phrase": "how many open opportunities in the west", "expect": { "metric": "open_opportunity_count", "filters": { "regions": ["west"] }, "groupBy": [] } }
+    },
+    {
+      "change": "coverage for East and West -> is East higher than West (PR #51 review: never one combined figure)",
+      "differsIn": "groupBy",
+      "a": { "phrase": "coverage for east and west this quarter", "expect": { "metric": "pipeline_coverage", "filters": { "regions": ["east", "west"], "period": "FY27-Q1" }, "groupBy": [] } },
+      "b": { "phrase": "Is East pipeline coverage higher than West this quarter?", "expect": { "metric": "pipeline_coverage", "filters": { "regions": ["east", "west"], "period": "FY27-Q1" }, "groupBy": ["region"] } }
+    },
+    {
+      "change": "coverage for East and West -> East vs West",
+      "differsIn": "groupBy",
+      "a": { "phrase": "coverage for east and west this quarter", "expect": { "metric": "pipeline_coverage", "filters": { "regions": ["east", "west"], "period": "FY27-Q1" }, "groupBy": [] } },
+      "b": { "phrase": "east vs west coverage this quarter", "expect": { "metric": "pipeline_coverage", "filters": { "regions": ["east", "west"], "period": "FY27-Q1" }, "groupBy": ["region"] } }
+    },
+    {
+      "change": "open pipeline in East and West -> is East bigger than West",
+      "differsIn": "groupBy",
+      "a": { "phrase": "open pipeline in the east and west", "expect": { "metric": "open_pipeline", "filters": { "regions": ["east", "west"] }, "groupBy": [] } },
+      "b": { "phrase": "Is open pipeline in the east bigger than the west?", "expect": { "metric": "open_pipeline", "filters": { "regions": ["east", "west"] }, "groupBy": ["region"] } }
+    },
+    {
+      "change": "deal size with \"larger than\" stays a filter -> East vs West",
+      "differsIn": "groupBy",
+      "a": { "phrase": "open pipeline in the east and west on deals larger than $50,000", "expect": { "metric": "open_pipeline", "filters": { "regions": ["east", "west"], "amount": { "min": 50000, "minInclusive": false } }, "groupBy": [] } },
+      "b": { "phrase": "open pipeline in the east vs the west on deals larger than $50,000", "expect": { "metric": "open_pipeline", "filters": { "regions": ["east", "west"], "amount": { "min": 50000, "minInclusive": false } }, "groupBy": ["region"] } }
+    },
+    {
+      "change": "count by stage in East and West -> compare East and West by stage",
+      "differsIn": "groupBy",
+      "a": { "phrase": "open opportunities by stage in the east and west", "expect": { "metric": "open_opportunity_count", "filters": { "regions": ["east", "west"] }, "groupBy": ["stage"] } },
+      "b": { "phrase": "compare open opportunities by stage in east and west", "expect": { "metric": "open_opportunity_count", "filters": { "regions": ["east", "west"] }, "groupBy": ["stage", "region"] } }
     }
   ],
   "clarify": [

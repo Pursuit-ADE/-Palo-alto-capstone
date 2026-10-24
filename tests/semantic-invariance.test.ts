@@ -9,7 +9,7 @@ import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
 import { ask, type Answer } from '@/semantic/answer';
 import { validateIntent } from '@/semantic/compile';
-import type { IntentModel } from '@/semantic/model';
+import { followUpRule, type IntentModel } from '@/semantic/model';
 import { normalize, type NormalizeResult } from '@/semantic/normalize';
 
 const reg = loadRegistry();
@@ -150,5 +150,23 @@ describe('a valid but wrong metric is a semantic failure, even when access and S
     const expected = cases.equivalent.find((g) => g.phrases.includes(phrase))!.intent as Intent;
     expect(semanticVerdict(expected, { kind: 'intent', intent: (r as Answer).intent as Intent })).toBe('wrong_metric');
     expect(semanticVerdict(expected, read(phrase))).toBe('correct');
+  });
+});
+
+describe('a comparison of named regions is answered region by region (PR #51 review)', () => {
+  it('asks instead of adding region when the question already has two breakdowns', () => {
+    expect(read('compare open pipeline by stage and by owner in east vs west').kind).toBe('clarify');
+  });
+
+  it('applies the same rule to a model reply, so Claude cannot return one combined figure either', () => {
+    const combined: Intent = { metric: 'pipeline_coverage', filters: { regions: ['east', 'west'], period: 'FY27-Q1' }, groupBy: [] };
+    const r = followUpRule({ kind: 'intent', intent: combined }, 'Is East pipeline coverage higher than West this quarter?', reg, undefined);
+    expect(r).toEqual({ kind: 'intent', intent: { ...combined, groupBy: ['region'] } });
+  });
+
+  it('the by-region answer shows each named region on its own row, and nothing else', async () => {
+    const r = await ask(database, reg, 'u_analyst', 'Is East pipeline coverage higher than West this quarter?');
+    if (r.kind !== 'answer') throw new Error(r.kind);
+    expect(r.rows.map((row) => row.region)).toEqual(['east', 'west']);
   });
 });

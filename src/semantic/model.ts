@@ -9,7 +9,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Registry } from '../registry/load';
 import { Intent } from '../registry/types';
-import { assignSelectors, continuesPrevious, normalize, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
+import { asResult, assignSelectors, comparedRegions, continuesPrevious, normalize, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
 
 export interface IntentModel {
   readonly name: string;
@@ -128,7 +128,7 @@ export function followUpRule(result: NormalizeResult, question: string, registry
   if (metric?.kind === 'ratio' && metric.requiresPeriod && !assigned.filters.period) {
     return { kind: 'clarify', question: CLARIFY_TEXT.period, resume: assigned };
   }
-  return { kind: 'intent', intent: assigned };
+  return asResult(comparedRegions(assigned, question, registry));
 }
 
 function baseFilters(out: z.infer<typeof ModelOutput>): Record<string, unknown> {
