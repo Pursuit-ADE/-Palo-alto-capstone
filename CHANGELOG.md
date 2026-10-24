@@ -6,7 +6,11 @@ What each version of the Governed Analytics Copilot added. The format follows
 
 ## [Unreleased]
 
-Weeks 4 and 5, on `week4` and `week5`. They become `v0.4.0` and `v0.5.0` when promoted to `main`.
+Work merged into `main` after v0.5.0 goes here.
+
+## [0.5.0] - 2026-10-24
+
+Weeks 4 and 5, promoted from `week5` to `main` together. There is no separate v0.4.0: Week 4 was merged into Week 5 before it reached `main`.
 
 ### Added
 
@@ -20,6 +24,10 @@ Weeks 4 and 5, on `week4` and `week5`. They become `v0.4.0` and `v0.5.0` when pr
 - Filters for deal size, product, account, sector and rep (#42).
 - Interactive sign-in, a graphs view and a chart picker (#45).
 - Coding standards, `CLAUDE.md`, a codebase-steward agent and Biome lint in CI (#44).
+- Email as a second private alert channel, sent only to that person's own address (#41).
+- Both apps run in Docker on Postgres as production servers, and CI runs the whole stack on every change (#48, #49).
+- Contributing guide, this changelog, pull request and issue templates (#47).
+- Week 3 and Week 4 review notes in `docs/` (#18, #19).
 
 ### Security
 
@@ -29,6 +37,7 @@ Weeks 4 and 5, on `week4` and `week5`. They become `v0.4.0` and `v0.5.0` when pr
 - A separate `app_auth` database role, the owner URL kept out of the running app, indexes and a
   90/180-day purge job (#25).
 - Slack text can no longer use formatting characters to hide or restyle alert text (#25).
+- A disabled account stops getting alerts, new ones and queued digests alike (#46).
 
 ### Fixed
 
@@ -65,7 +74,8 @@ Week 1 (#1).
   compiler and the golden question set.
 - PRD and roadmap.
 
-[Unreleased]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.3.0...week5
+[Unreleased]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.5.0...main
+[0.5.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/releases/tag/v0.1.0
