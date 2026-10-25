@@ -2,7 +2,8 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, uniqueIndex, index, check } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -85,7 +86,8 @@ export const opportunities = pgTable('opportunities', {
 });
 
 // Synthetic monthly product usage for the low-usage alert (plan item 14). Same columns as the copilot schema.
-// purchased_quantity is what was bought on purchase_date and is repeated on every month. source is 'synthetic'.
+// purchased_quantity is what was bought on purchase_date and is repeated on every month. It must be above
+// zero so that division cannot hit zero once real rows replace the synthetic ones. source is 'synthetic'.
 export const productUsage = pgTable('product_usage', {
   id: text('id').primaryKey(),
   snapshotId: text('snapshot_id').notNull().references(() => dataSnapshots.id),
@@ -96,7 +98,10 @@ export const productUsage = pgTable('product_usage', {
   usageMonth: date('usage_month').notNull(),
   quantityUsed: integer('quantity_used').notNull(),
   source: text('source').notNull(),
-}, (t) => [index('product_usage_account_product').on(t.accountId, t.productId)]);
+}, (t) => [
+  index('product_usage_account_product').on(t.accountId, t.productId),
+  check('product_usage_purchased_quantity_positive', sql`${t.purchasedQuantity} > 0`),
+]);
 
 // Synthetic quotas per sales rep and fiscal quarter: pipeline coverage = open pipeline / quota.
 export const quotas = pgTable('quotas', {

@@ -7,7 +7,8 @@
 // purchased_quantity is what was bought on purchase_date and is repeated on every month.
 // source is 'synthetic'. Fire when the latest usage_month on or before the data date is under 20%
 // of purchased_quantity and that date is at least six months after purchase_date. Route to the
-// account team of account_id.
+// account team of account_id. lowUsageHits does not filter by snapshotId. The rule should pass only
+// the current snapshot's rows, like the other rules do.
 
 export const LOW_USAGE_FRACTION = 0.2;
 export const USAGE_WAIT_MONTHS = 6;

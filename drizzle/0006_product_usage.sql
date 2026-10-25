@@ -8,7 +8,8 @@ CREATE TABLE "product_usage" (
 	"purchased_quantity" integer NOT NULL,
 	"usage_month" date NOT NULL,
 	"quantity_used" integer NOT NULL,
-	"source" text NOT NULL
+	"source" text NOT NULL,
+	CONSTRAINT "product_usage_purchased_quantity_positive" CHECK ("purchased_quantity" > 0)
 );
 --> statement-breakpoint
 ALTER TABLE "product_usage" ADD CONSTRAINT "product_usage_snapshot_id_data_snapshots_id_fk" FOREIGN KEY ("snapshot_id") REFERENCES "public"."data_snapshots"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
