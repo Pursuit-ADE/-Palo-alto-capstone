@@ -20,6 +20,7 @@ describe('metric registry and context layer', () => {
     expect(caution).toBe(2);
     if (target == null || caution == null) return;
     expect(caution).toBeLessThan(target);
+    expect(coverage.notes).toContain('display-only and do not change the computed value');
   });
 
   it('documents every column a metric uses in the field dictionary', () => {
