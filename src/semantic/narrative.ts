@@ -48,7 +48,7 @@ export function narrate(metric: { name: string; unit: string; target?: number | 
   const top = sorted[0]!;
   const bottom = sorted[sorted.length - 1]!;
   const parts = [`${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}`];
-  if (sorted.length > 1) parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}`);
+  if (sorted.length > 1) parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}${standingPhrase(metric, Number(bottom.value))}`);
   return `${parts.join(', and ')} (${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}).${note}`;
 }
 

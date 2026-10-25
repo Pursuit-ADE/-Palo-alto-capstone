@@ -24,6 +24,16 @@ describe('coverage target', () => {
     expect(text).toContain('0.52x, off target, below 2.00x');
   });
 
+  it('names the standing of the lowest figure as well as the highest', () => {
+    const text = narrate(
+      { name: 'Pipeline coverage', unit: 'ratio', target: 3, caution: 2 },
+      [{ region: 'west', value: 3.1 }, { region: 'east', value: 0.52 }],
+      ['region'],
+    );
+    expect(text).toContain('West is highest at 3.10x, on target, at or above 3.00x');
+    expect(text).toContain('East is lowest at 0.52x, off target, below 2.00x');
+  });
+
   it('leaves a ratio with no target unlabeled', () => {
     const text = narrate({ name: 'Pipeline coverage', unit: 'ratio' }, [{ value: 0.52, numerator: 1, denominator: 2 }], [], 'FY27-Q1');
     expect(text).not.toContain('target');
