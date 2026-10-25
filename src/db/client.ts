@@ -187,5 +187,6 @@ export async function loadSeed(db: Db, seed?: string, options: { dataDir?: strin
     if (s.quotas.length) await tx.insert(schema.quotas).values(s.quotas); // none when no rep has won deals yet
     if (s.supportCases.length) await tx.insert(schema.supportCases).values(s.supportCases);
     if (s.engagements.length) await tx.insert(schema.engagements).values(s.engagements);
+    if (s.productUsage.length) await tx.insert(schema.productUsage).values(s.productUsage);
   });
 }
