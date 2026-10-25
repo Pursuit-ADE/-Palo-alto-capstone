@@ -47,8 +47,10 @@ export function narrate(metric: { name: string; unit: string; target?: number | 
   const sorted = [...ranked].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
   const top = sorted[0]!;
   const bottom = sorted[sorted.length - 1]!;
+  // One row is not a ranking: say it is the only one, not that it is both highest and a list of '1 stages'.
+  if (sorted.length === 1) return `${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is the only ${dim}, at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}.${note}`;
   const parts = [`${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}`];
-  if (sorted.length > 1) parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}${standingPhrase(metric, Number(bottom.value))}`);
+  parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}${standingPhrase(metric, Number(bottom.value))}`);
   return `${parts.join(', and ')} (${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}).${note}`;
 }
 

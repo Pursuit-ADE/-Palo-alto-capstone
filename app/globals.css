@@ -148,6 +148,7 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .page-head .facts { margin: 10px 0 0; }
 .page-head .facts li { background: var(--card); }
 .narrative { margin: 0 0 10px; }
+.narrative-lead { font-size: 1.15rem; line-height: 1.45; font-weight: 600; margin: 4px 0 12px; }
 .chart { margin: 4px 0 12px; overflow-x: auto; }
 .chart svg { width: 100%; max-width: 760px; height: auto; display: block; }
 .chart-bar { fill: var(--orange); }
