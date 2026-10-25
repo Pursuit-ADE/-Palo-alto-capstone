@@ -9,6 +9,8 @@ export const DEMO_SUBSCRIPTIONS = [
   { userId: 'u_ts_west', ruleId: 'high_severity_case', frequency: 'daily', channel: 'inbox', quietStartHour: null, quietEndHour: null, criticalBypass: false },
   // Darcel gets CXO engagement alerts as they happen.
   { userId: 'u_darcel_schlecht', ruleId: 'cxo_engagement', frequency: 'realtime', channel: 'inbox', quietStartHour: null, quietEndHour: null, criticalBypass: false },
+  // Jordan is a technical seller on Acme's account team, and the synthetic usage data has Acme at 15% of what it bought.
+  { userId: 'u_ts_east', ruleId: 'low_usage', frequency: 'realtime', channel: 'inbox', quietStartHour: null, quietEndHour: null, criticalBypass: false },
   // A rep subscribed to a technical-seller rule receives nothing: the rule's audience excludes sales reps.
   { userId: 'u_darcel_schlecht', ruleId: 'high_severity_case', frequency: 'realtime', channel: 'inbox', quietStartHour: null, quietEndHour: null, criticalBypass: false },
 ];

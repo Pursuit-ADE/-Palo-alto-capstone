@@ -39,7 +39,7 @@ The inbox follows current access: an alert about an account the user can no long
 | PRD | Where |
 |---|---|
 | L1 versioned alert-rule catalog | `rules/*.json`, `src/alerts/rules.ts` |
-| L2 starting triggers | `high_severity_case` (technical sellers), `cxo_engagement` (sales reps). CSM triggers are stretch and not built. |
+| L2 starting triggers | `high_severity_case` (technical sellers), `cxo_engagement` (sales reps), `low_usage` (technical sellers and sales reps on the account team: usage under 20% of what was bought, six months after purchase; the usage data is synthetic, `src/db/product-usage.ts`, `src/alerts/low-usage.ts`). CSM triggers are stretch and not built. |
 | L3 preferences | `alert_subscriptions`: frequency, quiet hours (UTC), P1 bypass, channel |
 | L4 private routing, send-time check | `canSeeAccount()` in `src/alerts/engine.ts`, called at creation and again in `send()` |
 | L5 channels | `src/alerts/channels.ts`: in-app inbox; Slack per-user webhooks and per-user email; no shared fallback |
