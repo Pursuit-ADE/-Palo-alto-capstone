@@ -48,6 +48,18 @@ export function unansweredTrends(counts: TrendCount[]): TrendCount[] {
   return counts.filter((c) => c.outcome !== 'answered');
 }
 
+/**
+ * Runs the query to completion, then closes the connection. The query is lazy: returning it without
+ * awaiting lets `close` run first, and Postgres then rejects the read.
+ */
+export async function finishThenClose<T>(query: () => Promise<T>, close: () => Promise<void>): Promise<T> {
+  try {
+    return await query();
+  } finally {
+    await close();
+  }
+}
+
 /** Plain-text report. The only fields printed are week, metric, outcome and count. */
 export function formatTrends(counts: TrendCount[]): string {
   const lines = ['Question trends. No question text is stored or shown.', ''];

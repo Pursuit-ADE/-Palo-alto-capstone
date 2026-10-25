@@ -43,6 +43,13 @@
       "when": 1792260942696,
       "tag": "0005_lookup_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792500000000,
+      "tag": "0006_question_trends",
+      "breakpoints": true
     }
   ]
 }

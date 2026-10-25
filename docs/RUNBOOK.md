@@ -91,10 +91,10 @@ Counts questions by week, metric and outcome. It does not show question text. Th
 
 On the laptop demo, sign in as the analyst (Avery Patel) and open http://localhost:3000/trends. The log is in the running server. A second process cannot see it.
 
-On Postgres, the app login cannot read the audit log. Use the owner login:
+On Postgres, the app login reads the counts view and still cannot read the audit log. Use that login, not the owner login:
 
 ```bash
-MIGRATION_DATABASE_URL=postgres://... npm run trends
+DATABASE_URL=postgres://... npm run trends
 ```
 
 Weeks start on Monday, UTC. A question that never became a metric is counted as "(no metric)". That is the list of questions the copilot could not place yet.

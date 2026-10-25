@@ -2,7 +2,7 @@
 // Maven Analytics "CRM Sales Opportunities" sample (a fictional company). Quotas, contacts, support
 // cases, engagements and technical sellers are synthetic, because the sample has none.
 // Every business table carries snapshot_id so each answer can name the data it came from.
-import { pgTable, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
+import { pgTable, pgView, text, numeric, boolean, date, timestamp, integer, primaryKey, jsonb, uniqueIndex, index } from 'drizzle-orm/pg-core';
 
 export const dataSnapshots = pgTable('data_snapshots', {
   id: text('id').primaryKey(),
@@ -178,3 +178,12 @@ export const queryAudit = pgTable('query_audit', {
   username: text('username'),
   sessionId: text('session_id'),
 }, (t) => [index('query_audit_at').on(t.at), index('query_audit_user_at').on(t.userId, t.at)]);
+
+// Counts only. The app login can read this view and still cannot read query_audit. The grant is applied
+// with the other grants: the embedded database has no app_readonly role, so the migration does not grant it.
+export const questionTrendsView = pgView('question_trends', {
+  week: date('week').notNull(),
+  metric: text('metric').notNull(),
+  outcome: text('outcome').notNull(),
+  count: integer('count').notNull(),
+}).existing();

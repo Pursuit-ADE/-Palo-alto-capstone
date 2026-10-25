@@ -1,11 +1,10 @@
-// Question trends for the signed-in analyst (plan item 16). Counts from this server's audit log.
-// The laptop demo's log is in memory, so this page is how that demo reads it. Postgres keeps the log
-// where the app login cannot read it; the runbook's `npm run trends` uses the owner login there.
+// Question trends for the signed-in analyst (plan item 16). Counts from the question_trends view.
+// The view has no question text. Anyone else gets a 404, so the page does not announce itself.
 import { eq } from 'drizzle-orm';
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { questionTrends, unansweredTrends, type TrendCount } from '@/audit/question-trends';
-import { appUsers, queryAudit } from '@/db/schema';
+import { notFound, redirect } from 'next/navigation';
+import { unansweredTrends, type TrendCount } from '@/audit/question-trends';
+import { appUsers, questionTrendsView } from '@/db/schema';
 import { requireUser } from '@/server/require-user';
 import { getDatabase } from '@/server/runtime';
 
@@ -39,6 +38,7 @@ export default async function TrendsPage() {
   if (!actor) redirect('/login');
   const database = await getDatabase();
   const [person] = await database.db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, actor.userId));
+  if (person?.role !== 'analyst') notFound();
   return (
     <main>
       <div className="page-head">
@@ -46,25 +46,13 @@ export default async function TrendsPage() {
         <p>Counts of questions by week, metric and outcome. Question text is not stored and is not shown.</p>
         <p><Link href="/">Back to the overview</Link></p>
       </div>
-      {person?.role !== 'analyst' ? (
-        <p className="sub">This report is for the analyst.</p>
-      ) : database.mode === 'postgres' ? (
-        <p className="sub">This server&apos;s login cannot read the audit log. Run <code>npm run trends</code> with <code>MIGRATION_DATABASE_URL</code> set, as the runbook says.</p>
-      ) : (
-        <Trends database={database} />
-      )}
+      <Trends database={database} />
     </main>
   );
 }
 
 async function Trends({ database }: { database: Awaited<ReturnType<typeof getDatabase>> }) {
-  const rows = await database.db.select({
-    at: queryAudit.at,
-    source: queryAudit.source,
-    outcome: queryAudit.outcome,
-    metricId: queryAudit.metricId,
-  }).from(queryAudit);
-  const counts = questionTrends(rows);
+  const counts = await database.db.select().from(questionTrendsView);
   const missed = unansweredTrends(counts);
   return (
     <>
