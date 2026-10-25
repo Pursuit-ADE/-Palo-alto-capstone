@@ -1,6 +1,7 @@
-# Weekly dependency updates. Updates are grouped so one PR moves a package together: React and react-dom stay
-# on the same version, and both apps' updates arrive at the same time so their versions keep matching
-# (docs/CODING-STANDARDS.md). Minor and patch bumps come as one PR per ecosystem; majors stay separate.
+# Weekly dependency updates: every Monday, one minor-and-patch PR for the copilot and one for alerts, so React and
+# react-dom always move together inside each PR. Dependabot groups per directory, so the two apps arrive as two PRs:
+# merge them together, or the apps drift onto different versions (docs/CODING-STANDARDS.md asks that they match).
+# Majors stay as their own PRs. GitHub Actions get one weekly PR for minor and patch updates.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -30,3 +31,4 @@ updates:
     groups:
       actions:
         patterns: ['*']
+        update-types: [minor, patch]
