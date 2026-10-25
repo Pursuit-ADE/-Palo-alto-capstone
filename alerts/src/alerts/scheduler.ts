@@ -24,7 +24,7 @@ export async function tick(db: Db, rules: Map<string, AlertRule>, channels: Chan
   const [cursor] = await db.select().from(alertCursor).where(eq(alertCursor.id, CURSOR_ID));
   const since = cursor ? new Date(Math.max(start.getTime(), cursor.evaluatedUntil.getTime() - lateWindowMs())) : start;
   const created = since < now ? await runAlerts(db, rules, channels, since, now, opts) : [];
-  await flushDigests(db, rules, channels, now);
+  await flushDigests(db, rules, channels, now, opts);
   await db
     .insert(alertCursor)
     .values({ id: CURSOR_ID, evaluatedUntil: now })
