@@ -55,7 +55,7 @@ export function ProvenancePanel({ a }: { a: Answer }) {
           return (
             <>
               <dt>Target</dt>
-              <dd>{standing.standing}, {standing.words}. The target is {spec.target.toFixed(2)}x.</dd>
+              <dd>{standing.standing}, {standing.words}.</dd>
             </>
           );
         })()}

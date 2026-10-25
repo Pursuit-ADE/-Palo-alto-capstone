@@ -7,11 +7,11 @@ const spec = { target: 3, caution: 2 };
 
 describe('coverage target', () => {
   it('says on target at 3x and above, and off target below, with the color in words', () => {
-    expect(coverageStanding(3, spec)).toEqual({ standing: 'on target', words: 'at or above 3.00x', tone: 'green' });
+    expect(coverageStanding(3, spec)).toEqual({ standing: 'on target', words: 'at or above 3.00x. The target is 3.00x', tone: 'green' });
     expect(coverageStanding(3.4, spec).tone).toBe('green');
-    expect(coverageStanding(2, spec)).toEqual({ standing: 'off target', words: 'between 2.00x and 3.00x', tone: 'amber' });
-    expect(coverageStanding(2.5, spec).tone).toBe('amber');
-    expect(coverageStanding(1.99, spec)).toEqual({ standing: 'off target', words: 'below 2.00x', tone: 'red' });
+    expect(coverageStanding(2, spec)).toEqual({ standing: 'off target', words: 'between 2.00x and 3.00x. The target is 3.00x', tone: 'amber' });
+    expect(coverageStanding(2.5, spec)).toEqual({ standing: 'off target', words: 'between 2.00x and 3.00x. The target is 3.00x', tone: 'amber' });
+    expect(coverageStanding(1.99, spec)).toEqual({ standing: 'off target', words: 'below 2.00x. The target is 3.00x', tone: 'red' });
   });
 
   it('puts the standing in the sentence when the metric carries a target', () => {
@@ -21,7 +21,7 @@ describe('coverage target', () => {
       [],
       'FY27-Q1',
     );
-    expect(text).toContain('0.52x, off target, below 2.00x');
+    expect(text).toContain('0.52x, off target, below 2.00x. The target is 3.00x.');
   });
 
   it('names the standing of the lowest figure as well as the highest', () => {
@@ -30,8 +30,8 @@ describe('coverage target', () => {
       [{ region: 'west', value: 3.1 }, { region: 'east', value: 0.52 }],
       ['region'],
     );
-    expect(text).toContain('West is highest at 3.10x, on target, at or above 3.00x');
-    expect(text).toContain('East is lowest at 0.52x, off target, below 2.00x');
+    expect(text).toContain('West is highest at 3.10x, on target, at or above 3.00x. The target is 3.00x');
+    expect(text).toContain('East is lowest at 0.52x, off target, below 2.00x. The target is 3.00x');
   });
 
   it('leaves a ratio with no target unlabeled', () => {
