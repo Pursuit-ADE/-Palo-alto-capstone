@@ -6,7 +6,7 @@ Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, D
 
 A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts are in `alerts/` (since Week 2); Week 4 adds the scheduler, editable preferences and weekly or monthly digests.
 
-**No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
+**No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases, engagements and product usage are synthetic.
 
 New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md). Reviewing it for security or AI risk? Start with the [system card](docs/SYSTEM-CARD.md), then the [red-team results](docs/RED-TEAM.md) and [detections](docs/DETECTIONS.md).
 
@@ -108,9 +108,9 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Branches and releases
 
-Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on. Work merges into the current week branch through a reviewed pull request, and each finished week is promoted to `main`.
+Weeks 1 to 5 were built on `week1` to `week5` branches, which are now kept for history. From v0.5.0 on, all work branches from `main` and comes back through a reviewed pull request.
 
-Stable points on `main` are tagged with [semantic versions](https://semver.org/) (`v0.1.0` is Week 1, `v0.2.0` Week 2, `v0.3.0` Week 3). [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable; `week*` branches are work in progress.
+Stable points on `main` are tagged with [semantic versions](https://semver.org/): `v0.1.0` to `v0.3.0` are Weeks 1 to 3, and `v0.5.0` is Weeks 4 and 5. [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable.
 
 ## Contributing
 

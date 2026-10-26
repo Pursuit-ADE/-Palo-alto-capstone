@@ -129,7 +129,7 @@ async function applyGrants(owner: pg.Pool) {
     -- Only the tables the governed query path reads. Contacts, support cases, engagements and the audit log
     -- are not readable, so a bug above the database can't reach them through this login.
     GRANT SELECT ON data_snapshots, regions, app_users, products, accounts, account_team, opportunities, quotas TO app_readonly;
-    -- Counts of questions only. The answering login still cannot read query_audit itself.
+    -- Counts of questions only (migration 0007). The answering login still cannot read query_audit itself.
     GRANT SELECT ON question_trends TO app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
     REVOKE SELECT ON session_guard FROM app_readonly;
@@ -189,5 +189,6 @@ export async function loadSeed(db: Db, seed?: string, options: { dataDir?: strin
     if (s.quotas.length) await tx.insert(schema.quotas).values(s.quotas); // none when no rep has won deals yet
     if (s.supportCases.length) await tx.insert(schema.supportCases).values(s.supportCases);
     if (s.engagements.length) await tx.insert(schema.engagements).values(s.engagements);
+    if (s.productUsage.length) await tx.insert(schema.productUsage).values(s.productUsage);
   });
 }
