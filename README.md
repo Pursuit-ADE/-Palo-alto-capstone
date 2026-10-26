@@ -103,8 +103,10 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Project documents
 
-- [PRD v1 (PDF)](docs/product/ALTO-PALS_PRD_v1.docx.pdf)
-- [Roadmap v1 (PDF)](docs/product/ALTO-PALS_Roadmap_v1.docx.pdf)
+- [PRD](docs/product/PRD.md) and [roadmap](docs/product/ROADMAP.md): the living copies, v1.2 after the Oct 24 client call.
+  How they are kept current is in [docs/product/README.md](docs/product/README.md).
+- [Deploying on GCP with a BigQuery replica of Salesforce](docs/DEPLOYMENT-GCP.md) (design)
+- [PRD v1 (PDF)](docs/product/ALTO-PALS_PRD_v1.docx.pdf) and [roadmap v1 (PDF)](docs/product/ALTO-PALS_Roadmap_v1.docx.pdf), as approved on Oct 7
 
 ## Branches and releases
 
