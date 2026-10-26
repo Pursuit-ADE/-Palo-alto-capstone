@@ -1,6 +1,6 @@
 # Alex's feedback: gaps and who owns them
 
-This plan lists every request from our second call with Alex (Palo Alto Networks) and from his earlier emails. Each request is checked against `week5` at `ea45608` and given one owner. Demo Day is November 9, so everything here should land on `week5` by **Sunday, November 1**. That leaves the week of November 2 for the dry run and the v1.0 release.
+This plan lists every request from our second call with Alex (Palo Alto Networks) and from his earlier emails. Each request is checked against `week5` at `ea45608` and given one owner. Demo Day is November 9, so everything here should land on `main` by **Sunday, November 1**. Since the v0.5.0 release (#57), `main` is the only long-lived branch: every item branches from `main` and comes back through a reviewed PR. That leaves the week of November 2 for the dry run and the v1.0 release.
 
 **How to use this:**
 - Reviewers, check that your own section is right and doable, and say so in the PR.
@@ -49,7 +49,7 @@ This plan lists every request from our second call with Alex (Palo Alto Networks
    - Reading a BigQuery replica of Salesforce through a read-only service account.
    - What changes in `src/db/`: a new reader. The registry and scope stay the same.
    - Design only, no code.
-6. **Release (end of week).** Promote `week5` to `main` through reviewed PRs, tag `v1.0.0`, and update the changelog.
+6. **Release (end of week).** Cut `v1.0.0-rc.1` from `main` for the dry run, then tag `v1.0.0`, and update the changelog.
 
 ## Trevor (@trukwava)
 
@@ -73,7 +73,7 @@ This plan lists every request from our second call with Alex (Palo Alto Networks
 ## Adedoyin (@brovaset)
 
 14. **Synthetic usage data (F).** Monthly usage per account and product, against purchased quantity, in the seed. Labeled synthetic and deterministic. It must include accounts on both sides of 20% at the six-month mark. Done when item 12 can test against it.
-15. **Coverage target and colors (C).** Add a reviewed `target: 3` to `pipeline_coverage` in the registry. Show on or off target in the sentence and the receipt. Use red below 2x, amber from 2x to 3x and green at 3x and above, with the words in the text, not color alone. Add a bullet ("battery") chart: actual bar against the target line. Confirm the thresholds once Alex replies to item 1. Done when golden phrases and the dashboard show the label.
+15. **Coverage target and colors (C).** Add a reviewed `target: 3` to `pipeline_coverage` in the registry. Show on or off target in the sentence and the receipt. Use red below 2x, amber from 2x to 3x and green at 3x and above, with the words in the text, not color alone. Add a bullet ("battery") chart: actual bar against the target line. The 3x target is confirmed by Alex. The 2x color boundary is our split and still waits on his answer to item 1. Done when golden phrases and the dashboard show the label.
 16. **Question trends report (I).** A script or page built from `query_audit` that counts questions by metric, outcome (answered, asked, refused) and week, with no question text. It answers "what are people asking that we can't answer yet?" Done when it runs on the demo database and is linked from the runbook.
 
 ## Dates
