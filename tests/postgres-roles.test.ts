@@ -51,6 +51,7 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
 
   it('the app role can read question counts and still cannot read the audit log', async () => {
     await app.query('SELECT week, metric, outcome, count FROM question_trends');
+    await app.query('SELECT week, topic, outcome, count FROM question_topics');
     await denied(app, 'SELECT * FROM query_audit');
   });
 

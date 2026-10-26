@@ -28,7 +28,7 @@ describe('migrations', () => {
     await migrate(db, { migrationsFolder: MIGRATIONS }); // the upgrade: must not try to recreate existing tables
     await migrate(db, { migrationsFolder: MIGRATIONS }); // and running it again on start is a no-op
     const cols = await client.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name = 'query_audit'");
-    expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(['question_sha256', 'flags', 'model', 'turn']));
+    expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(['question_sha256', 'flags', 'model', 'turn', 'topic']));
     const purchased = await client.query<{ def: string }>("SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'product_usage_purchased_quantity_positive'");
     expect(purchased.rows[0]?.def).toContain('purchased_quantity > 0');
     await client.query(`INSERT INTO query_audit (id, at, request_id, source, user_id, outcome, metric_id) VALUES
@@ -38,6 +38,12 @@ describe('migrations', () => {
       "SELECT week::text AS week, metric, outcome, count FROM question_trends",
     );
     expect(trends.rows).toEqual([{ week: '2026-10-19', metric: 'pipeline_coverage', outcome: 'answered', count: 1 }]);
+    await client.query(`INSERT INTO query_audit (id, at, request_id, source, user_id, outcome, topic) VALUES
+      ('q3', '2026-10-20T12:00:00Z', 'r3', 'question', 'u', 'unsupported', 'support_cases')`);
+    const topics = await client.query<{ week: string; topic: string; outcome: string; count: number }>(
+      'SELECT week::text AS week, topic, outcome, count FROM question_topics',
+    );
+    expect(topics.rows).toEqual([{ week: '2026-10-19', topic: 'support_cases', outcome: 'unsupported', count: 1 }]);
     await client.close();
   });
 

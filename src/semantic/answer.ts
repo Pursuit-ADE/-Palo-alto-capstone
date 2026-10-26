@@ -13,6 +13,7 @@ import { notifySecurity } from '../server/security-notify';
 import { deterministicModel, type IntentModel } from './model';
 import { chartSpec, narrate, type OwnerNames } from './narrative';
 import { findPeriod } from './periods';
+import { topicOf } from '../audit/topics';
 import { ALL_REGIONS, resolvePrincipal, scopeStatement, ScopeViolation, type Principal } from './scope';
 
 export const MAX_QUESTION_LENGTH = 300;
@@ -262,6 +263,7 @@ export async function recordRefusal(database: Database, userId: string, question
     outcome,
     reason,
     questionSha256: questionFingerprint(question),
+    topic: topicOf(question),
     username: actor?.username ?? null,
     sessionId: actor?.sessionId ?? null,
   });
@@ -295,7 +297,8 @@ async function audited<T extends Reply>(
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
-  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome });
+  // The topic label is for questions that were not answered; an answer already names its metric.
+  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome, topic: outcome === 'answered' ? null : (fields.topic ?? null) });
   // The audit ID is filled in only once its row is written.
   return result.kind === 'answer' ? { ...result, provenance: { ...result.provenance, auditId } } : result;
 }
@@ -327,7 +330,8 @@ export function parsePrevious(raw: unknown): Intent | undefined {
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal) => {
-    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
+    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
     const p = await principal();
     if (await opts.guard?.isLocked(userId)) throw new SessionLocked();

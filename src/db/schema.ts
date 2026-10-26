@@ -197,6 +197,8 @@ export const queryAudit = pgTable('query_audit', {
   // the first 16 characters of the stored token hash, never the token.
   username: text('username'),
   sessionId: text('session_id'),
+  // A label from the fixed list in src/audit/topics.ts for a question that was not answered (migration 0008). Never text.
+  topic: text('topic'),
 }, (t) => [index('query_audit_at').on(t.at), index('query_audit_user_at').on(t.userId, t.at)]);
 
 // Counts only. The app login can read this view and still cannot read query_audit. The grant is applied
@@ -204,6 +206,14 @@ export const queryAudit = pgTable('query_audit', {
 export const questionTrendsView = pgView('question_trends', {
   week: date('week').notNull(),
   metric: text('metric').notNull(),
+  outcome: text('outcome').notNull(),
+  count: integer('count').notNull(),
+}).existing();
+
+// Unanswered questions by week, topic and outcome (migration 0008). The read-only login can read these counts only.
+export const questionTopicsView = pgView('question_topics', {
+  week: date('week').notNull(),
+  topic: text('topic').notNull(),
   outcome: text('outcome').notNull(),
   count: integer('count').notNull(),
 }).existing();
