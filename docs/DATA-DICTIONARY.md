@@ -8,7 +8,7 @@ Generated from `registry/` by `npm run docs:dictionary`. Do not edit by hand: ch
 |---|---|---|---|---|
 | Open opportunity count (`open_opportunity_count`) | Number of opportunities that are not yet closed. | region, stage, owner | v1 | Customer Analytics (metric steward) |
 | Open pipeline (`open_pipeline`) | Total amount of opportunities that are not yet closed (won or lost). | region, stage, owner | v1 | Customer Analytics (metric steward) |
-| Pipeline coverage (`pipeline_coverage`) | Open pipeline closing in a quota period divided by quota for the same period. 3.0 means pipeline is three times quota. The target is 3.00x. | region | v1 | Customer Analytics (metric steward) |
+| Pipeline coverage (`pipeline_coverage`) | Open pipeline closing in a quota period divided by quota for the same period. 3.0 means pipeline is three times quota. | region | v1 | Customer Analytics (metric steward) |
 
 ## Business rules
 

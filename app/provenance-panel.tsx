@@ -1,5 +1,5 @@
 import type { Answer } from '@/semantic/answer';
-import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
+import { coverageReceipt, coverageSpec } from '@/semantic/coverage-target';
 import { dateRange, format, timestamp } from './format';
 
 const titleCase = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
@@ -17,7 +17,9 @@ function amountText(amount: NonNullable<Answer['filters']['amount']>): string {
 /** Where an answer's number came from: definition, scope, applied filters, snapshot and audit row. Shown under every answer. */
 export function ProvenancePanel({ a }: { a: Answer }) {
   const { filters: f, provenance: p, parts } = a;
+  const spec = coverageSpec(a.metric);
   const single = a.rows.length === 1 && 'numerator' in a.rows[0]! ? a.rows[0]! : null;
+  const receipt = single && typeof single.value === 'number' && spec ? coverageReceipt(single.value, spec) : null;
   const applied = [
     f.period ? `${f.period.label} (${dateRange(f.period.start, f.period.end)})` : 'Any expected close date',
     `${list(f.regions.map(titleCase))} region${f.regions.length > 1 ? 's' : ''}`,
@@ -47,18 +49,12 @@ export function ProvenancePanel({ a }: { a: Answer }) {
         <dt>Filters</dt>
         <dd>{applied.join(' · ')}</dd>
 
-        {(() => {
-          const spec = coverageSpec(a.metric);
-          const value = single?.value;
-          if (!spec || value == null || typeof value !== 'number') return null;
-          const standing = coverageStanding(value, spec);
-          return (
-            <>
-              <dt>Target</dt>
-              <dd>{standing.standing}, {standing.words}.</dd>
-            </>
-          );
-        })()}
+        {receipt && (
+          <>
+            <dt>Target</dt>
+            <dd>{receipt}</dd>
+          </>
+        )}
 
         {parts && (
           <>

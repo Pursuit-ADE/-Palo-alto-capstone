@@ -20,7 +20,26 @@ describe('metric registry and context layer', () => {
     expect(caution).toBe(2);
     if (target == null || caution == null) return;
     expect(caution).toBeLessThan(target);
+    expect(coverage.notes).toContain('Alex confirmed the 3.00x target for this demo on the midpoint check call');
     expect(coverage.notes).toContain('display-only and do not change the computed value');
+    expect(coverage.description).not.toContain('The target is');
+  });
+
+  it('refuses a ratio target that is missing its pair or sits at or below the color boundary', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'reg-target-'));
+    fs.cpSync(path.join(process.cwd(), 'registry'), dir, { recursive: true });
+    const file = path.join(dir, 'metrics', 'pipeline_coverage.json');
+    const write = (patch: Record<string, unknown>) => {
+      const metric = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+      fs.writeFileSync(file, JSON.stringify({ ...metric, ...patch }));
+    };
+    write({ caution: 4 });
+    expect(() => loadRegistry(dir)).toThrow(/color boundary/);
+    const onlyTarget = JSON.parse(fs.readFileSync(file, 'utf8')) as Record<string, unknown>;
+    onlyTarget.target = 3;
+    delete onlyTarget.caution;
+    fs.writeFileSync(file, JSON.stringify(onlyTarget));
+    expect(() => loadRegistry(dir)).toThrow(/both target and caution/);
   });
 
   it('documents every column a metric uses in the field dictionary', () => {

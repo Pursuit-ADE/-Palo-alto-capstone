@@ -1,6 +1,7 @@
 import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
-import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
+import { coverageSpec, coverageStanding, type CoverageTarget } from '@/semantic/coverage-target';
+import type { Answer } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
@@ -17,6 +18,38 @@ import { readChartKinds, readView } from './view-mode';
 import { ViewSwitch } from './view-switch';
 
 export const dynamic = 'force-dynamic';
+
+function CoverageBars({ rows, period, goal }: { rows: Answer['rows']; period: string; goal: CoverageTarget | null }) {
+  const line = goal?.target ?? 1;
+  const max = Math.max(line, 1.25, ...rows.map((x) => Number(x.value ?? 0)));
+  return (
+    <div className="bars">
+      {rows.map((r) => (
+        <CoverageBar key={String(r.region)} row={r} period={period} goal={goal} max={max} line={line} />
+      ))}
+    </div>
+  );
+}
+
+function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][number]; period: string; goal: CoverageTarget | null; max: number; line: number }) {
+  const v = row.value === null || row.value === undefined ? null : Number(row.value);
+  const regionStanding = goal && v != null ? coverageStanding(v, goal) : null;
+  const tone = regionStanding ? `tone-${regionStanding.tone}` : undefined;
+  const legend = v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}` : '';
+  return (
+    <div className="bar-row">
+      <div className="bar-head">
+        <span>{cell('region', row.region, '')}</span>
+        <b className={tone}>{format(v, 'ratio')}</b>
+      </div>
+      <div className="track">
+        <div className={tone ? `fill ${tone}` : 'fill'} style={{ width: `${((v ?? 0) / max) * 100}%` }} />
+        <div className="target" style={{ left: `${(line / max) * 100}%` }} title={goal ? `${goal.target.toFixed(2)}x target` : '1.00x: pipeline equals quota'} />
+      </div>
+      <span className="legend">{format(row.numerator, 'currency')} closing in {period} vs {format(row.denominator, 'currency')} quota{legend}</span>
+    </div>
+  );
+}
 
 const USERS = demoUsers();
 
@@ -128,27 +161,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             ) : (
             <>
             <h2>By region</h2>
-            <div className="bars">
-              {byRegion.rows.map((r) => {
-                const v = r.value === null || r.value === undefined ? null : Number(r.value);
-                const line = coverageGoal?.target ?? 1;
-                const max = Math.max(line, 1.25, ...byRegion.rows.map((x) => Number(x.value ?? 0)));
-                const regionStanding = coverageGoal && v != null ? coverageStanding(v, coverageGoal) : null;
-                return (
-                  <div className="bar-row" key={String(r.region)}>
-                    <div className="bar-head">
-                      <span>{cell('region', r.region, '')}</span>
-                      <b className={regionStanding ? `tone-${regionStanding.tone}` : undefined}>{format(v, 'ratio')}</b>
-                    </div>
-                    <div className="track">
-                      <div className={regionStanding ? `fill tone-${regionStanding.tone}` : 'fill'} style={{ width: `${((v ?? 0) / max) * 100}%` }} />
-                      <div className="target" style={{ left: `${(line / max) * 100}%` }} title={coverageGoal ? `${coverageGoal.target.toFixed(2)}x target` : '1.00x: pipeline equals quota'} />
-                    </div>
-                    <span className="legend">{format(r.numerator, 'currency')} closing in {period} vs {format(r.denominator, 'currency')} quota{v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}` : ''}</span>
-                  </div>
-                );
-              })}
-            </div>
+            <CoverageBars rows={byRegion.rows} period={period} goal={coverageGoal} />
             </>
             )}
             <p className="bars-note">{coverageGoal ? `The line marks the ${coverageGoal.target.toFixed(2)}x target. Red is below ${coverageGoal.caution.toFixed(2)}x, amber is from ${coverageGoal.caution.toFixed(2)}x up to the target, and green is at or above the target. 1.00x still means pipeline equals quota.` : 'The line marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.'}</p>

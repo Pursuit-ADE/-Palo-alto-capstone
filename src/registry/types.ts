@@ -43,9 +43,18 @@ export const RatioMetric = Base.extend({
   denominator: Source,
   requiresPeriod: z.boolean().default(false),
   // Reviewed goal for the ratio, and the color boundary below it. Both are optional so a ratio with no
-  // agreed target stays unlabeled.
+  // agreed target stays unlabeled. One without the other, or a boundary at or above the target, is refused
+  // at load (standards section 9 rule 5) instead of quietly hiding the labels.
   target: z.number().positive().optional(),
   caution: z.number().positive().optional(),
+}).superRefine((metric, ctx) => {
+  const target = metric.target;
+  const caution = metric.caution;
+  if ((target == null) !== (caution == null)) {
+    ctx.addIssue({ code: 'custom', message: 'A ratio target needs both target and caution, or neither.', path: ['caution'] });
+  } else if (target != null && caution != null && caution >= target) {
+    ctx.addIssue({ code: 'custom', message: 'The color boundary must be below the target.', path: ['caution'] });
+  }
 });
 export const MetricDefinition = z.discriminatedUnion('kind', [AggregateMetric, RatioMetric]);
 export type MetricDefinition = z.infer<typeof MetricDefinition>;

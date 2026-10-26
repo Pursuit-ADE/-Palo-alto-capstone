@@ -28,7 +28,7 @@ export function narrate(metric: { name: string; unit: string; target?: number | 
     const r = rows[0]!;
     if (metric.unit === 'ratio') {
       if (!hasValue(r)) return `${metric.name}${when} is not available: there is no quota for this period, so ${usd(Number(r.numerator ?? 0))} of open pipeline has nothing to cover.`;
-      return `${metric.name}${when} is ${fmt(r.value, 'ratio')}${standingPhrase(metric, Number(r.value))}. ${usd(Number(r.numerator ?? 0))} of open pipeline closing in the quarter against ${usd(Number(r.denominator ?? 0))} of quota.`;
+      return `${metric.name}${when} is ${fmt(r.value, 'ratio')}${standingPhrase(metric, Number(r.value))}. That is ${usd(Number(r.numerator ?? 0))} of open pipeline closing in the quarter against ${usd(Number(r.denominator ?? 0))} of quota.`;
     }
     return `${metric.name}${when} is ${fmt(r.value, metric.unit)}.`;
   }
@@ -43,15 +43,42 @@ export function narrate(metric: { name: string; unit: string; target?: number | 
     const name = groupBy.map((d) => label(d, top[d], names)).join(' and ');
     return `${metric.name}${when} by ${groupBy.join(' and ')}: ${rows.length} combinations. The largest is ${name} at ${fmt(top.value, metric.unit)}.${note}`;
   }
-  const dim = groupBy[0]!;
+  return rankedBreakdown(metric, rows, ranked, groupBy[0]!, when, note, names);
+}
+
+// One sentence for the ranking, then one clause for the standing, so the target is not repeated on both ends.
+function rankedBreakdown(
+  metric: { name: string; unit: string; target?: number | null; caution?: number | null },
+  rows: Row[],
+  ranked: Row[],
+  dim: string,
+  when: string,
+  note: string,
+  names?: OwnerNames,
+): string {
   const sorted = [...ranked].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
   const top = sorted[0]!;
   const bottom = sorted[sorted.length - 1]!;
   // One row is not a ranking: say it is the only one, not that it is both highest and a list of '1 stages'.
   if (sorted.length === 1) return `${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is the only ${dim}, at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}.${note}`;
-  const parts = [`${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}`];
-  parts.push(`${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)}${standingPhrase(metric, Number(bottom.value))}`);
-  return `${parts.join(', and ')} (${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}).${note}`;
+  const count = `${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}`;
+  const ranking = `${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)} and ${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)} (${count}).`;
+  return `${ranking}${sharedStanding(metric, top, bottom, dim, names)}${note}`;
+}
+
+/** The band without the repeated "The target is" sentence. The ranking names the target once. */
+function bandOnly(words: string): string {
+  return words.split('. ')[0] ?? words;
+}
+
+function sharedStanding(metric: { unit: string; target?: number | null; caution?: number | null }, top: Row, bottom: Row, dim: string, names?: OwnerNames): string {
+  const spec = metric.unit === 'ratio' ? coverageSpec(metric) : null;
+  if (!spec || typeof top.value !== 'number' || typeof bottom.value !== 'number') return '';
+  const high = coverageStanding(top.value, spec);
+  const low = coverageStanding(bottom.value, spec);
+  const target = `the target is ${spec.target.toFixed(2)}x`;
+  if (high.standing === low.standing && high.words === low.words) return ` Both are ${high.standing} (${bandOnly(high.words)}; ${target}).`;
+  return ` ${label(dim, top[dim], names)} is ${high.standing} (${bandOnly(high.words)}) and ${label(dim, bottom[dim], names)} is ${low.standing} (${bandOnly(low.words)}); ${target}.`;
 }
 
 /** A Vega-Lite bar chart spec for one breakdown, or null when a single number needs no chart. */

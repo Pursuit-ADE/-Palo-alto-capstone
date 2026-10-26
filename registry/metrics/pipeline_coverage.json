@@ -2,7 +2,7 @@
   "id": "pipeline_coverage",
   "version": 1,
   "name": "Pipeline coverage",
-  "description": "Open pipeline closing in a quota period divided by quota for the same period. 3.0 means pipeline is three times quota. The target is 3.00x.",
+  "description": "Open pipeline closing in a quota period divided by quota for the same period. 3.0 means pipeline is three times quota.",
   "owner": "Customer Analytics (metric steward)",
   "unit": "ratio",
   "synonyms": ["pipeline coverage", "coverage", "coverage ratio", "pipe coverage", "pipeline to quota", "pipeline vs quota"],
@@ -18,5 +18,5 @@
   "target": 3,
   "caution": 2,
   "dimensions": ["region"],
-  "notes": "Total (unweighted) coverage. Coverage by region is a view of this metric, not a separate formula. The target 3.00x is confirmed. Below 2.00x is red, from 2.00x up to the target is amber, and at or above the target is green. The 2.00x color boundary is the plan's split. The target and the color boundary are display-only and do not change the computed value."
+  "notes": "Total (unweighted) coverage. Coverage by region is a view of this metric, not a separate formula. Alex confirmed the 3.00x target for this demo on the midpoint check call. Below 2.00x is red, from 2.00x up to the target is amber, and at or above the target is green. The 2.00x color boundary is the plan's split, not a second confirmation from that call. The target and the color boundary are display-only and do not change the computed value."
 }
