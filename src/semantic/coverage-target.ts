@@ -25,3 +25,11 @@ export function coverageSpec(metric: { target?: number | null; caution?: number 
   if (metric.target == null || metric.caution == null || metric.caution >= metric.target) return null;
   return { target: metric.target, caution: metric.caution };
 }
+
+/** Headroom past a target line. A marker at the end of a clipped, rounded track is hidden. The ratio charts use this same pad. */
+export const COVERAGE_AXIS_PAD = 0.25;
+
+/** Scale for the Numbers-view coverage bars: at least the old 1.25 floor, and always past the target line. */
+export function coverageTrackMax(line: number, values: readonly number[]): number {
+  return Math.max(line + COVERAGE_AXIS_PAD, 1.25, ...values);
+}

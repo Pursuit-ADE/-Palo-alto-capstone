@@ -1,6 +1,6 @@
 import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
-import { coverageSpec, coverageStanding, type CoverageTarget } from '@/semantic/coverage-target';
+import { coverageSpec, coverageStanding, coverageTrackMax, type CoverageTarget } from '@/semantic/coverage-target';
 import type { Answer } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 
 function CoverageBars({ rows, period, goal }: { rows: Answer['rows']; period: string; goal: CoverageTarget | null }) {
   const line = goal?.target ?? 1;
-  const max = Math.max(line, 1.25, ...rows.map((x) => Number(x.value ?? 0)));
+  const max = coverageTrackMax(line, rows.map((x) => Number(x.value ?? 0)));
   return (
     <div className="bars">
       {rows.map((r) => (

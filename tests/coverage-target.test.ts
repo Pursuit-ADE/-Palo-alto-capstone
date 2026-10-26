@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { openDatabase } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
 import { answerIntent, type Answer } from '@/semantic/answer';
-import { coverageReceipt, coverageStanding } from '@/semantic/coverage-target';
+import { coverageReceipt, coverageStanding, coverageTrackMax } from '@/semantic/coverage-target';
 import { narrate } from '@/semantic/narrative';
 import { answerCharts } from '../app/chart-data';
 
@@ -74,6 +74,15 @@ describe('coverage target', () => {
     } finally {
       await db.close();
     }
+  });
+
+  it('keeps the target line inside the bar track when every region is below it', () => {
+    const regions = [0.76, 0.43, 0.5];
+    const max = coverageTrackMax(3, regions);
+    expect(max).toBeGreaterThan(3);
+    expect((3 / max) * 100).toBeLessThan(100);
+    expect(coverageTrackMax(3, [4.2])).toBe(4.2);
+    expect(coverageTrackMax(1, [0.52])).toBe(1.25);
   });
 
   it('leaves a ratio with no target unlabeled', () => {

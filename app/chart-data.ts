@@ -2,7 +2,7 @@
 // format()/cell() text, as the Numbers view, so a graph can never show a number the table doesn't. Missing values
 // (no quota) stay missing: drawn as "n/a", never as 0.
 import type { Answer } from '@/semantic/answer';
-import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
+import { COVERAGE_AXIS_PAD, coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import type { ChartData, ChartDatum, Unit } from './chart3d-math';
 import { cell, format } from './format';
 
@@ -156,7 +156,7 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
       series: ['Coverage'],
       data: ratio,
       target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' },
-      axisFloor: goal ? Math.max(goal.target + 0.25, 1.25) : 1.25,
+      axisFloor: goal ? Math.max(goal.target + COVERAGE_AXIS_PAD, 1.25) : 1.25,
       summary: `${sentence(`Pipeline coverage by region, ${period}`, ratio, (d) => label(d.category))} ${goal ? `The target is ${goal.target.toFixed(2)}x.` : '1.00x means pipeline equals quota.'}`,
     },
     {
@@ -230,7 +230,7 @@ function oneBreakdownCharts(a: Answer, id: string, unit: Unit, period: string | 
   };
   if (unit !== 'ratio') return [base];
   const goal = coverageSpec(a.metric);
-  const ratioChart: ChartData = { ...base, tab: 'Coverage', target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' }, axisFloor: goal ? Math.max(goal.target + 0.25, 1.25) : 1.25 };
+  const ratioChart: ChartData = { ...base, tab: 'Coverage', target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' }, axisFloor: goal ? Math.max(goal.target + COVERAGE_AXIS_PAD, 1.25) : 1.25 };
   if (!a.rows.some((r) => 'numerator' in r)) return [ratioChart];
   const values = ordered.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), unit) }));
   const bullet = againstTarget(a.metric, cats, values, `${id}-target`, `${a.metric.name} against target`);
