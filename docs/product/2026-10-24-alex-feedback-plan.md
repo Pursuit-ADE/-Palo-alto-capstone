@@ -66,7 +66,7 @@ This plan lists every request from our second call with Alex (Palo Alto Networks
 
 ## Mofazzal (@mofazzal0413)
 
-11. **Employee status before alerts (D).** Add a synthetic `employment_status` (active or inactive), labeled synthetic like the quotas, standing in for Active Directory. The engine skips inactive people when routing and before every send, next to the disabled-account check from #46. Done when tests cover active, inactive, and becoming inactive while a digest is queued.
+11. **Employee status before alerts (D).** A synthetic active or inactive status, read behind an `EmployeeDirectory` interface that stands in for Active Directory (not a database column, so a real directory can replace it later). The engine skips inactive people when routing and before every send, next to the disabled-account check from #46. Done when tests cover active, inactive, and becoming inactive while a digest is queued. **Merged in #55 (on `main` through #58).**
 12. **Low-usage alert, option (a) (F).** Usage below 20% of what the customer bought, six months after purchase. It is a versioned rule in `alerts/rules/`, uses the synthetic usage data from item 14, and is routed to the account team. Done when the rule fires on seeded cases and stays silent before six months.
 13. **Distribution lists (E), design only until Alex answers.** Write down how a list would work without breaking "only people who may see the account". For example, a list expands to members, and each member is still checked. Build it only if Alex says yes.
 
@@ -74,14 +74,14 @@ This plan lists every request from our second call with Alex (Palo Alto Networks
 
 14. **Synthetic usage data (F).** Monthly usage per account and product, against purchased quantity, in the seed. Labeled synthetic and deterministic. It must include accounts on both sides of 20% at the six-month mark. Done when item 12 can test against it.
 15. **Coverage target and colors (C).** Add a reviewed `target: 3` to `pipeline_coverage` in the registry. Show on or off target in the sentence and the receipt. Use red below 2x, amber from 2x to 3x and green at 3x and above, with the words in the text, not color alone. Add a bullet ("battery") chart: actual bar against the target line. The 3x target is confirmed by Alex. The 2x color boundary is our split and still waits on his answer to item 1. Done when golden phrases and the dashboard show the label.
-16. **Question trends report (I).** A script or page built from `query_audit` that counts questions by metric, outcome (answered, asked, refused) and week, with no question text. It answers "what are people asking that we can't answer yet?" Done when it runs on the demo database and is linked from the runbook.
+16. **Question trends report (I).** A script or page built from `query_audit` that counts questions by metric, outcome and week, with no question text. Count the outcomes the audit log actually writes (`answered`, `clarify`, `unsupported`, `refused_injection`, `refused_scope`, `refused_intent`, `refused_locked`, `error`); "not answered" is every outcome other than `answered`. It answers "what are people asking that we can't answer yet?" Done when it runs on the demo database and is linked from the runbook.
 
 ## Dates
 
-| By | What |
-|---|---|
-| Mon Oct 26 | Item 1 email sent; #50 to #52 merged |
-| Thu Oct 29 | Items 3, 7, 11, 14, 15 merged |
-| Sun Nov 1 | Everything else merged; item 4 re-score done |
-| Week of Nov 2 | Dry run with Alex; item 6 release |
-| Mon Nov 9 | Demo Day |
+| By | What | Status on Oct 26 |
+|---|---|---|
+| Mon Oct 26 | Item 1 email sent; #50 to #52 merged | Behind: #50 to #52 still open, so item 4 waits |
+| Thu Oct 29 | Items 3, 7, 11, 14, 15 merged | 3 (#56), 11 (#55) and 14 (#59) merged; 15 is #60, ready once CI runs; 7 is #50 to #52 |
+| Sun Nov 1 | Everything else merged; item 4 re-score done | 12 is #68; 16 is #61, then #71 (items 10 and 16, on top of #61); 5 is #72 |
+| Week of Nov 2 | Dry run with Alex; item 6 release | To book by email |
+| Mon Nov 9 | Demo Day | |
