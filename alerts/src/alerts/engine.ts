@@ -63,7 +63,7 @@ export async function matchingEvents(db: Db, rule: AlertRule, since: Date, until
       values: { account: accountName, severity: c.severity, subject: c.subject, when: when(c.openedAt) },
     }));
   }
-  if (rule.event === 'low_usage') return lowUsageEvents(db, since, until);
+  if (rule.event === 'low_usage') return lowUsageEvents(db, until);
   const rows = await db
     .select({ e: engagements, accountName: accounts.name, title: contacts.title, isCxo: contacts.isCxo })
     .from(engagements)

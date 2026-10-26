@@ -3,9 +3,9 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
-import { alertDeliveries, alertSubscriptions, productUsage } from '@/db/schema';
+import { accounts, alertDeliveries, alertSubscriptions, dataSnapshots, productUsage } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { LOW_USAGE_FRACTION, USAGE_WAIT_MONTHS } from '@/db/product-usage';
+import { LOW_USAGE_FRACTION, USAGE_WAIT_MONTHS, productUsageRows } from '@/db/product-usage';
 import type { Channels } from '@/alerts/channels';
 import { staticEmployeeDirectory } from '@/alerts/employee-status';
 import { matchingEvents, runAlerts } from '@/alerts/engine';
@@ -68,9 +68,32 @@ describe('low-usage alert on the seed (plan item 12)', () => {
     for (const id of others) expect(events.map((e) => e.accountId)).not.toContain(id);
   });
 
-  it('stays silent before six months have passed since purchase', async () => {
-    const early = new Date('2026-07-15T00:00:00Z'); // the purchase was Feb 8, so Aug 8 is the first day it counts
-    expect(await matchingEvents(database.db, rule, SINCE, early)).toEqual([]);
+  it('stays silent before six months have passed since purchase, measured on the snapshot date', async () => {
+    // The purchase was Feb 8, so Aug 8 is the first day it counts. The data date is the snapshot's, not the clock's.
+    await database.db.update(dataSnapshots).set({ asOfDate: '2026-07-15' });
+    expect(await matchingEvents(database.db, rule, SINCE, DAY)).toEqual([]);
+  });
+
+  it('still alerts when the scheduler window starts a week after the usage month (the month is reported late)', async () => {
+    await subscribe(ON_TEAM);
+    const lateSince = new Date('2026-10-08T00:00:00Z'); // the usage month is Oct 1; since is a week later
+    const ch = recorder();
+    await runAlerts(database.db, rules, ch, lateSince, DAY);
+    await runAlerts(database.db, rules, ch, lateSince, DAY);
+    expect(await deliveries(ON_TEAM)).toHaveLength(1);
+    expect(ch.calls).toHaveLength(1);
+  });
+
+  it('reads only the newest snapshot, even when an older one still has a low account', async () => {
+    const newest = 'snap_newer';
+    const productId = data.productUsage[0]!.productId;
+    await database.db.insert(dataSnapshots).values({ id: newest, seed: 'newer', asOfDate: '2026-11-05', loadedAt: new Date('2026-11-05T06:00:00Z'), notes: null });
+    await database.db.insert(accounts).values({ id: 'acc_newco', snapshotId: newest, name: 'Newco', sector: 'technology' });
+    await database.db.insert(productUsage).values(
+      productUsageRows(newest, [{ accountId: 'acc_newco', productId, monthsAgo: 8, purchasedQuantity: 100, quantityUsed: 10 }], '2026-11-05'),
+    );
+    const events = await matchingEvents(database.db, rule, SINCE, new Date('2026-11-06T00:00:00Z'));
+    expect(events.map((e) => e.accountId)).toEqual(['acc_newco']);
   });
 
   it('alerts a seller on the account team, with the synthetic label in the text', async () => {
