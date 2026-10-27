@@ -112,7 +112,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | S6 | Red-team test suite in CI. | Must | Done (deterministic); the run against Claude is still to do |
 | S7 | Read-only analytics database role; scoped aggregates only, never raw rows to the model. | Must | Done |
 | S8 | **Independent evaluator** (Oct 24): agents outside the product repo, with no write access to product code, rate findings Low, Medium or High. Findings go to the code's author as issues, fixed by normal reviewed PRs. | Must | Done (separate evaluator repo) |
-| S9 | **Agent context and system rules** (Oct 24): the rules the model works under are written down as its context, and each is also enforced in code. No fine-tuning, no RAG. | Must | PR (#71) |
+| S9 | **Agent context and system rules** (Oct 24): the rules the model works under are written down as its context, and each is also enforced in code. No fine-tuning, no RAG. | Must | In progress (Trevor, system-rules PR) |
 | S10 | **Question trends** (Oct 24): counts of questions by week, metric and outcome; unanswered questions labeled with a topic from a fixed list (never their words); a read-only trends agent writes a weekly summary whose numbers all come from code. | Should | PR (#61, #71) |
 
 ### Deployment
