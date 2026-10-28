@@ -50,7 +50,7 @@ share of time spent on manual data stitching. That share is our assumption, a ra
 | Technical seller / solution consultant (primary, confirmed Oct 5) | Lives "between two worlds," pre-sale and post-sale | Full: copilot and alerts |
 | Sales rep / account owner | Many accounts; needs timely engagement signals | Copilot scoping and alerts |
 | Executive / leader (Oct 24) | Reads one sentence and moves on; 3D charts get in the way | The one-sentence answer and the 2D default |
-| Customer success manager | Adoption after the sale | Low-usage alert (Should) |
+| Customer success manager | Adoption after the sale | Stretch: the large-deal trigger. (The low-usage alert goes to the account team: technical sellers and sales reps.) |
 | Metric steward (admin) | Owns official metric definitions | Edits the registry through reviewed pull requests |
 | Analyst (product owner) | Wants to know what people ask and can't get answered (Oct 24) | Question trends page and weekly trends agent |
 
@@ -97,7 +97,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | L4 | Private routing: one shared rule evaluated per user; no alert reveals another user's accounts; access re-checked at send time. | Must | Done |
 | L5 | **Channels by urgency** (Oct 24): Slack for urgent alerts (P1, for example an executive or production dashboard is broken), email for status updates and digests. | Must: one channel; Should: both | Both channels done; urgency mapping open |
 | L6 | Alert explains why it fired and links to the copilot. | Should | Done |
-| L7 | **Active employees only** (Oct 24): check employee status before routing and again before every send, standing in for Active Directory. People who leave get nothing and are signed out. | Must | Done (#55) |
+| L7 | **Active employees only** (Oct 24): check employee status before routing and again before every send, standing in for Active Directory. People who leave get nothing and are signed out. The check is on when the status list is set (off in the plain demo). If the directory is down or can’t tell, the alert is held and retried, never dropped; only a confirmed “inactive” is final. | Must | Done (#55) |
 | L8 | Distribution lists (Oct 24 question): a list expands to members, and each member passes the same checks. | Could | Design only, waiting on Alex |
 
 ### Security and governance
@@ -155,7 +155,7 @@ synthetic tables for what it lacks. Synthetic data is confirmed as acceptable (A
 
 Never cut: server-side role scope and send-time alert re-authorization, no model-written SQL, metric definition and
 answer provenance, cross-scope and prompt-injection tests, private per-user alert routing, the high-severity support-case
-alert, and a repeatable demo. If scope must shrink, as Alex suggested, we write the assumption down and cut from the
+alert, active-employee checks (L7), and a repeatable demo. If scope must shrink, as Alex suggested, we write the assumption down and cut from the
 bottom of the Should and Could items first. Timing and the cut order are in the [roadmap](ROADMAP.md).
 
 ## 8. Assumptions and questions for Alex
