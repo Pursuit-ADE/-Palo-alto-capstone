@@ -50,6 +50,8 @@ export async function notifySecurity(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ text: securityMessage(e) }),
       signal: AbortSignal.timeout(5_000),
+      // Never follow a redirect off hooks.slack.com (evaluator G-07, #65).
+      redirect: 'error',
     });
     if (res.ok) lastSent.set(key, now);
     return res.ok;

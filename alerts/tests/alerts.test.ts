@@ -538,7 +538,28 @@ describe('Email channel (L5)', () => {
   it('rejects a localhost email webhook in production', () => {
     expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'production' })).toBe(false);
     expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'development' })).toBe(true);
-    expect(isEmailWebhook('https://mail.example/send', { NODE_ENV: 'production' })).toBe(true);
+    expect(isEmailWebhook('https://mail.example/send', { NODE_ENV: 'production', EMAIL_WEBHOOK_HOSTS: 'mail.example' })).toBe(true);
+  });
+
+  it('refuses an HTTPS email webhook whose host is not on the allow-list (#65)', () => {
+    expect(isEmailWebhook('https://mail.example/send', { NODE_ENV: 'production' })).toBe(false);
+    expect(isEmailWebhook('https://attacker.example/send', { NODE_ENV: 'production', EMAIL_WEBHOOK_HOSTS: 'mail.example' })).toBe(false);
+    expect(isEmailWebhook('https://mail.example.attacker.example/send', { EMAIL_WEBHOOK_HOSTS: 'mail.example' })).toBe(false);
+    expect(isEmailWebhook('https://MAIL.example/send', { EMAIL_WEBHOOK_HOSTS: ' mail.example , other.example' })).toBe(true);
+  });
+
+  it('never follows a redirect on Slack or email webhooks (#65)', async () => {
+    const seen: (string | undefined)[] = [];
+    const ch = createChannels({
+      slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' },
+      emails: { u_ts_east: 'jordan@example.test' },
+      emailWebhook: 'https://mail.example/send',
+      env: { EMAIL_WEBHOOK_HOSTS: 'mail.example' },
+      fetch: async (_url, init) => { seen.push(init.redirect); return { ok: true }; },
+    });
+    expect(await ch.deliver('slack', 'u_ts_east', [item], false)).toBe(true);
+    expect(await ch.deliver('email', 'u_ts_east', [item], false)).toBe(true);
+    expect(seen).toEqual(['error', 'error']);
   });
 
   it('posts the message to a laptop email webhook, never to a shared inbox URL as the recipient', async () => {

@@ -87,6 +87,7 @@ services:
       # Email channel (#41). This stack runs in production mode, so the webhook must be HTTPS; a localhost catcher is refused.
       EMAIL_USER_ADDRESSES: ${EMAIL_USER_ADDRESSES:-}
       EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}
+      EMAIL_WEBHOOK_HOSTS: ${EMAIL_WEBHOOK_HOSTS:-}
       # Employee-status check (#55). Compose only forwards variables it names, so without this line the check is always off here.
       EMPLOYEE_STATUS: ${EMPLOYEE_STATUS:-}
     ports:
