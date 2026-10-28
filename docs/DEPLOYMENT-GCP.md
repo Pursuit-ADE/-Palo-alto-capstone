@@ -76,12 +76,36 @@ Any provider is acceptable (Alex, Oct 15). Two options with the same code (`src/
 
 If the model is down or slow, the deterministic model answers, as it does now.
 
+### Backups and recovery
+
+Evaluator H-07 (#85). Not built for Demo Day; this is the plan for a rollout.
+
+| Data | Where it comes from | How it's protected | Target |
+|---|---|---|---|
+| Snapshots (accounts, deals, quotas, cases) | Rebuilt from the BigQuery replica by the loader | Re-run the loader; keep the last 7 snapshots so an answer's as-of date can still be read | RPO 1 day, RTO 1 hour |
+| Audit log, sessions, accounts, alert subscriptions and deliveries | Written by the app; exists nowhere else | Cloud SQL automated backups plus point-in-time recovery (7-day window), in a second region | RPO 5 minutes, RTO 4 hours |
+| Registry, rules, migrations | The git repository | Git history and release tags | Rebuilt from a tag |
+
+A restore drill once a quarter: restore the latest backup into a scratch Cloud SQL instance, run `npm run db:setup`
+against it (migrations are append-only, so it only applies what's new), and check that the audit log, accounts and
+pending alerts are intact. Retention (`npm run purge`) still applies after a restore, so a backup can't bring back audit
+rows older than 90 days into daily use.
+
+### Why the compiler can stay Postgres
+
+Evaluator H-08 (#87) notes that the compiler, which enforces scope, writes Postgres-only SQL. In the recommended shape
+that is deliberate: the answering path never queries BigQuery, so the scope-enforcing SQL, its read-only login, its
+statement timeout and its tests (`tests/governed-query.test.ts`, `tests/postgres-roles.test.ts`) move to Cloud SQL
+unchanged. Only the loader speaks BigQuery, and it doesn't decide who sees what. If PANW later needs the direct path
+below, the compiler gets a dialect layer behind one reader interface (compiled query in, rows out), and the same
+scope tests run against both.
+
 ## Alternative: query BigQuery directly
 
 The compiler could emit BigQuery SQL and run each question against the replica, with BigQuery row-level access policies
 as a second scope check. It gives fresher data, but costs more: a second SQL dialect in the compiler, a per-query cost
 and latency, and a service account on the answering path that can read the whole replica. We'd choose it only if a daily
-snapshot is too stale for the users.
+snapshot is too stale for the users. It would also need a per-user query cost cap in BigQuery.
 
 ## Open questions for PANW
 
