@@ -74,7 +74,9 @@ export const Intent = z
         // Bounded arrays: guards against reported resource exhaustion when validating unbounded arrays,
         // and a model-generated intent should never be able to send thousands of values.
         regions: z.array(z.enum(['central', 'east', 'west'])).min(1).max(3).optional(),
-        stages: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
+        // Open-deal stages only. A stage outside this pair is refused before a query, so a model or a
+        // tampered intent cannot filter on a stage the open pipeline does not count.
+        stages: z.array(z.enum(['Prospecting', 'Engaging'])).min(1).max(10).optional(),
         period: z.string().regex(/^FY\d{2}-Q[1-4]$/).optional(),
         // Closed lists from the dataset, resolved to ids before SQL. Bounds match the other filters.
         amount: z
