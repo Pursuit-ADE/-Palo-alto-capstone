@@ -2,7 +2,7 @@
 // Pages are dynamic (force-dynamic), which nonces require. HSTS is set here too, per request, so ENABLE_HSTS is read
 // when the server starts rather than baked in by `next build` (on in production, ignored by browsers over plain http). upgrade-insecure-requests stays off: it would break a plain-http localhost demo.
 import { NextResponse, type NextRequest } from 'next/server';
-import { HSTS_VALUE, httpsSettings } from './src/server/https';
+import { HSTS_VALUE, httpsSettings, REQUEST_PROTO_HEADER } from './src/server/https';
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
@@ -25,6 +25,9 @@ export function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set('x-nonce', nonce);
   requestHeaders.set('Content-Security-Policy', csp);
+  // The scheme of the URL this server is answering. Replaces any client-supplied value. The session cookie
+  // reads it so plain http does not get a Secure cookie that Safari on a phone would drop.
+  requestHeaders.set(REQUEST_PROTO_HEADER, request.nextUrl.protocol === 'https:' ? 'https' : 'http');
   const response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set('Content-Security-Policy', csp);
   if (httpsSettings().hsts) response.headers.set('Strict-Transport-Security', HSTS_VALUE);

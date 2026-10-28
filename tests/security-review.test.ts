@@ -8,7 +8,7 @@ import { ask, InjectionRefused } from '@/semantic/answer';
 import { flagQuestion, normalizeForFlags } from '@/semantic/flags';
 import { CLARIFY_TEXT, toResult, UNSUPPORTED_TEXT, type IntentModel } from '@/semantic/model';
 import { AuthError, signUp } from '@/server/auth';
-import { httpsSettings } from '@/server/https';
+import { httpsSettings, secureCookieForRequest } from '@/server/https';
 import { assertNoTestIdentitiesInProduction, testIdentitiesEnabled } from '@/server/identity';
 import { weakPasswordReason } from '@/server/passwords';
 import { notifySecurity, securityMessage } from '@/server/security-notify';
@@ -97,6 +97,13 @@ describe('3. HTTPS protections are on by default in production', () => {
   it('stays off in development unless asked for', () => {
     expect(httpsSettings({ NODE_ENV: 'development' })).toEqual({ hsts: false, secureCookie: false });
     expect(httpsSettings({ NODE_ENV: 'development', ENABLE_HSTS: 'true' })).toEqual({ hsts: true, secureCookie: true });
+  });
+  it('leaves the Secure flag off for a plain-http request and on for https', () => {
+    expect(secureCookieForRequest('http', { NODE_ENV: 'production' })).toBe(false);
+    expect(secureCookieForRequest('https', { NODE_ENV: 'production' })).toBe(true);
+    expect(secureCookieForRequest(null, { NODE_ENV: 'production' })).toBe(true);
+    expect(secureCookieForRequest('http', { NODE_ENV: 'production', COOKIE_SECURE: 'true' })).toBe(true);
+    expect(secureCookieForRequest('https', { COOKIE_SECURE: 'false' })).toBe(false);
   });
 });
 

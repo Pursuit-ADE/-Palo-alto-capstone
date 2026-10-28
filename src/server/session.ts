@@ -1,6 +1,6 @@
 // The signed-in user for this request, read only from the session cookie. Server-only.
-import { cookies } from 'next/headers';
-import { httpsSettings } from './https';
+import { cookies, headers } from 'next/headers';
+import { REQUEST_PROTO_HEADER, secureCookieForRequest } from './https';
 import { sessionInfo, SESSION_HOURS, type SessionInfo } from './auth';
 import { getDatabase } from './runtime';
 
@@ -18,13 +18,22 @@ export async function currentSession(): Promise<SessionInfo | undefined> {
   return sessionInfo((await getDatabase()).authDb, token);
 }
 
+async function cookieIsSecure(): Promise<boolean> {
+  try {
+    return secureCookieForRequest((await headers()).get(REQUEST_PROTO_HEADER));
+  } catch {
+    // No request scope. Fall back to the process default.
+    return secureCookieForRequest(null);
+  }
+}
+
 export async function setSessionCookie(token: string) {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    // On by default in production; see src/server/https.ts.
-    secure: httpsSettings().secureCookie,
+    // Secure on HTTPS. Off on plain http, so a phone at the LAN address keeps the session. See https.ts.
+    secure: await cookieIsSecure(),
     maxAge: SESSION_HOURS * 3600,
   });
 }
