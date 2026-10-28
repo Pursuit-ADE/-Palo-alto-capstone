@@ -57,6 +57,19 @@ describe('topic labels in the audit log', () => {
   });
 });
 
+describe('topic column constraint (migration 0008)', () => {
+  it('accepts every label in the list and refuses anything else', async () => {
+    const database = await openDatabase();
+    try {
+      const row = (id: string, topic: string | null) => ({ id, requestId: id, source: 'question', userId: 'u_ts_east', outcome: 'unsupported', topic });
+      await database.auditDb.insert(queryAudit).values([...TOPICS.map((t) => row(`ok_${t}`, t)), row('ok_null', null)]);
+      await expect(database.auditDb.insert(queryAudit).values(row('bad', 'why are sellers asking about support cases'))).rejects.toThrow();
+    } finally {
+      await database.close();
+    }
+  });
+});
+
 const counts: TrendCount[] = [
   { week: '2026-10-12', metric: 'open_pipeline', outcome: 'answered', count: 4 },
   { week: '2026-10-12', metric: '(no metric)', outcome: 'unsupported', count: 1 },

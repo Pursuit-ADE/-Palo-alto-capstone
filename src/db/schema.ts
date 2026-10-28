@@ -199,7 +199,12 @@ export const queryAudit = pgTable('query_audit', {
   sessionId: text('session_id'),
   // A label from the fixed list in src/audit/topics.ts for a question that was not answered (migration 0008). Never text.
   topic: text('topic'),
-}, (t) => [index('query_audit_at').on(t.at), index('query_audit_user_at').on(t.userId, t.at)]);
+}, (t) => [
+  index('query_audit_at').on(t.at),
+  index('query_audit_user_at').on(t.userId, t.at),
+  // Migration 0008: only labels from TOPICS in src/audit/topics.ts.
+  check('query_audit_topic_known', sql`${t.topic} IS NULL OR ${t.topic} IN ('support_cases', 'product_usage', 'renewals_churn', 'forecast', 'engagements_contacts', 'competitors', 'pricing_discounts', 'people_hr', 'other')`),
+]);
 
 // Counts only. The app login can read this view and still cannot read query_audit. The grant is applied
 // with the other grants: the embedded database has no app_readonly role, so migration 0007 does not grant it.
