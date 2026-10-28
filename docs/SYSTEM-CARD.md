@@ -30,22 +30,6 @@ A copilot next to certified pipeline dashboards. A person asks a plain-language 
 | Narrative and chart | Built by code from the governed rows (`src/semantic/narrative.ts`), never by a model |
 | Prompt version | Not logged separately yet; the prompt is in `src/semantic/model.ts` under version control |
 
-## Question log and trends
-
-Client guidance (Oct 24): log every question so another agent can find trends.
-
-- Every question writes one `query_audit` row (see "Access and decision log"). The words are never stored, only a keyed
-  fingerprint.
-- A question that is not answered also gets a **topic label** from a fixed list (support cases, product usage, renewals
-  and churn, forecast, engagements and contacts, competitors, pricing, people, other; `src/audit/topics.ts`). The label
-  comes from the list, never from the question.
-- Two views hold counts only: `question_trends` (week, metric, outcome) and `question_topics` (week, topic, outcome, for
-  unanswered questions). The read-only app login can read the views and still cannot read `query_audit`.
-- The **trends agent** (`npm run trends:agent`, `src/audit/trends-agent.ts`) reads only those views. Code works out
-  every number as a fact. With `TRENDS_AGENT=claude`, Claude picks which facts matter and says why, in words with no
-  digits; any output with a number, or a fact it was not given, falls back to the plain summary. Analysts see the same
-  summary on `/trends`.
-
 ## Data and lineage
 
 | Source | What | Where |
@@ -63,6 +47,22 @@ Every answer names its snapshot and as-of date (current: `snap_alto-pals-v2`, as
 - Sign-ins, failed sign-ins and sign-ups are audited too (`source = 'auth'`), with the username only as a keyed hash. Flagged questions and locks can also post to a security Slack channel (`SECURITY_SLACK_WEBHOOK_URL`).
 - In Postgres mode the answering login is read-only, the audit login can only add audit rows, and a separate auth login handles accounts and sessions. The owner login is used only by `npm run db:setup` (`docker/init-roles.sql`, `tests/postgres-roles.test.ts`).
 
+## Question log and trends
+
+Client guidance (Oct 24): log every question so another agent can find trends.
+
+- Every question writes one `query_audit` row (see "Access and decision log"). The words are never stored, only a keyed
+  fingerprint.
+- A question that is not answered also gets a **topic label** from a fixed list (support cases, product usage, renewals
+  and churn, forecast, engagements and contacts, competitors, pricing, people, other; `src/audit/topics.ts`). The label
+  comes from the list, never from the question.
+- Two views hold counts only: `question_trends` (week, metric, outcome) and `question_topics` (week, topic, outcome, for
+  unanswered questions). The read-only app login can read the views and still cannot read `query_audit`.
+- The **trends agent** (`npm run trends:agent`, `src/audit/trends-agent.ts`) reads only those views. Code works out
+  every number as a fact. With `TRENDS_AGENT=claude`, Claude picks which facts matter and says why, in words with no
+  digits; any output with a number, or a fact it was not given, falls back to the plain summary. Analysts see the same
+  summary on `/trends`.
+
 ## Evaluation (Oct 17)
 
 Details and definitions are in `docs/RED-TEAM.md` (metrics).
@@ -74,7 +74,7 @@ Details and definitions are in `docs/RED-TEAM.md` (metrics).
 | Red-team matrix, deterministic and Claude (10 runs per row) | No out-of-scope data in any run |
 | Prompt leak attempts with Claude | 0/30 |
 | Follow-up conversations, Claude vs deterministic (one rule for both, #28) | 10-turn conversation identical on every turn, 3 of 3 runs |
-| Postgres least-privilege tests | 7/7 (Docker) |
+| Postgres least-privilege tests | 7/7 (Docker, Oct 17). Now 8 in `tests/postgres-roles.test.ts` with the question-count test; rerun before release |
 
 ## Known limits
 
@@ -82,6 +82,7 @@ Findings are tracked in `docs/RED-TEAM.md` (F1–F25). The ones a reviewer shoul
 
 - Not built yet: backups and disaster recovery, SSO with MFA, health checks and error reporting, a DPIA and processor agreements for Anthropic, Slack and email.
 - Pattern-based prompt flags are a speed bump; scope enforcement in the database is the real control.
+- Topic labels are coarse: the first matching word list wins, so "use cases" counts as support cases and "will we hit quota" as forecast. Read them as trends, not exact categories.
 - This is a self-assessment by the team that built it. The client's own red team should test it before any rollout.
 
 ## Retention
