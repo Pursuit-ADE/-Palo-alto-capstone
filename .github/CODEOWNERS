@@ -1,5 +1,7 @@
 # Changes to governed definitions need review from the metric and alert stewards (T-10).
 # Pair with branch protection on main ("Require review from Code Owners").
+# Catch-all first (evaluator G-10, #79): every path has an owner. Later lines are more specific and win.
+*                     @brovaset @MITRAKER
 /registry/        @brovaset @MITRAKER
 /alerts/rules/    @brovaset @MITRAKER
 /src/semantic/    @brovaset @MITRAKER
@@ -25,3 +27,10 @@
 /scripts/             @brovaset @MITRAKER
 /onboarding/          @brovaset @MITRAKER
 /SECURITY.md          @brovaset @MITRAKER
+# Agent instructions and settings, and the tests that prove the rules (evaluator G-10, #79).
+/.claude/             @brovaset @MITRAKER
+/CLAUDE.md            @brovaset @MITRAKER
+/tests/               @brovaset @MITRAKER
+/alerts/tests/        @brovaset @MITRAKER
+/app/                 @brovaset @MITRAKER
+/alerts/app/          @brovaset @MITRAKER
