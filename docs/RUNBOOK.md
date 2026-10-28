@@ -124,7 +124,7 @@ The key never goes in the repo, a commit, a PR, a chat or a slide. Put it in a f
 
 - **Laptop (`npm run dev`) and the eval scripts:** in `.env.local` at the repo root, two lines: `INTENT_MODEL=claude` and `ANTHROPIC_API_KEY=` followed by the key. Next.js and `npm run eval:golden` / `eval:redteam` read it. Restart `npm run dev` after editing it.
 - **Docker (`docker compose --profile app up`):** the same two lines in `.env` at the repo root (Compose reads `.env`, not `.env.local`), then `docker compose --profile app up -d copilot` to restart the copilot with them.
-- **Check it took:** the answer's receipt names the model (`claude-opus-5-5`); with no key or on a timeout the deterministic model answers and the receipt says so.
+- **Check it took:** `npm run eval:golden` prints `Model: claude-opus-5-5` on its first line. Without a key it prints `Model: deterministic`. The audit log records the model for every question (`query_audit.model`).
 - Both files are in `.gitignore` (`.env`, `.env.*`). Run `git status` before committing: neither should ever appear.
 
 CI runs the tests, a build, dependency and secret scans, CodeQL, the Postgres login tests, and a fresh-install check that starts both apps and loads their sign-in pages.
