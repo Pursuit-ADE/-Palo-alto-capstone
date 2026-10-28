@@ -4,6 +4,14 @@ Contents: [rules of engagement](#rules-of-engagement), [threat model](#threat-mo
 
 Red teaming makes the copilot safer in the areas tested. It does not make it "secure". Each section says what was tested and what was not.
 
+**What lives here and what doesn't.** This repo keeps the red-team **tests** (`tests/redteam-matrix.test.ts`,
+`tests/conversation-and-redteam.test.ts`, `scripts/eval-redteam.ts`) and this page. The **independent evaluator** (its
+agents, the 103 checks, the Low/Medium/High rubric and every evaluation report) lives in a separate repository,
+[MITRAKER/governed-analytics-copilot](https://github.com/MITRAKER/governed-analytics-copilot), with no write access to
+this one (client guidance, Oct 24; PRD S8). Its findings arrive here as issues labeled `evaluator`, and they are fixed
+by normal reviewed pull requests. Attack reports and attacker-style prompts don't go in this repo. That repository is
+private: ask Mitra for read access.
+
 ## Rules of engagement
 
 - **Target:** the copilot and the alerts app, run locally on the seeded demo data (Maven sample plus synthetic tables). Never real CRM data, real credentials, or anyone else's systems.
