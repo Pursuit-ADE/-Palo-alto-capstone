@@ -1,14 +1,15 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
-import { REQUEST_PROTO_HEADER, secureCookieForRequest } from '@/server/https';
+import { secureCookieForRequest } from '@/server/https';
 import { isView, VIEW_COOKIE } from './view-mode';
 
 async function cookieIsSecure(): Promise<boolean> {
   try {
-    return secureCookieForRequest((await headers()).get(REQUEST_PROTO_HEADER));
+    const h = await headers();
+    return secureCookieForRequest({ host: h.get('host'), proto: h.get('x-forwarded-proto') });
   } catch {
-    return secureCookieForRequest(null);
+    return secureCookieForRequest();
   }
 }
 

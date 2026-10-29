@@ -1,6 +1,6 @@
 // The signed-in user for this request, read only from the session cookie. Server-only.
 import { cookies, headers } from 'next/headers';
-import { REQUEST_PROTO_HEADER, secureCookieForRequest } from './https';
+import { secureCookieForRequest } from './https';
 import { sessionInfo, SESSION_HOURS, type SessionInfo } from './auth';
 import { getAlertsRuntime } from './runtime';
 
@@ -22,10 +22,11 @@ export async function currentSession(): Promise<SessionInfo | undefined> {
 
 async function cookieIsSecure(): Promise<boolean> {
   try {
-    return secureCookieForRequest((await headers()).get(REQUEST_PROTO_HEADER));
+    const h = await headers();
+    return secureCookieForRequest({ host: h.get('host'), proto: h.get('x-forwarded-proto') });
   } catch {
     // No request scope. Fall back to the process default.
-    return secureCookieForRequest(null);
+    return secureCookieForRequest();
   }
 }
 
@@ -34,7 +35,7 @@ export async function setSessionCookie(token: string) {
     httpOnly: true,
     sameSite: 'lax',
     path: '/',
-    // Secure on HTTPS. Off on plain http, so a phone at the LAN address keeps the session. See https.ts.
+    // Secure in production. Off only for a direct plain-http demo on localhost or the private LAN. See https.ts.
     secure: await cookieIsSecure(),
     maxAge: SESSION_HOURS * 3600,
   });

@@ -98,12 +98,20 @@ describe('3. HTTPS protections are on by default in production', () => {
     expect(httpsSettings({ NODE_ENV: 'development' })).toEqual({ hsts: false, secureCookie: false });
     expect(httpsSettings({ NODE_ENV: 'development', ENABLE_HSTS: 'true' })).toEqual({ hsts: true, secureCookie: true });
   });
-  it('leaves the Secure flag off for a plain-http request and on for https', () => {
-    expect(secureCookieForRequest('http', { NODE_ENV: 'production' })).toBe(false);
-    expect(secureCookieForRequest('https', { NODE_ENV: 'production' })).toBe(true);
-    expect(secureCookieForRequest(null, { NODE_ENV: 'production' })).toBe(true);
-    expect(secureCookieForRequest('http', { NODE_ENV: 'production', COOKIE_SECURE: 'true' })).toBe(true);
-    expect(secureCookieForRequest('https', { COOKIE_SECURE: 'false' })).toBe(false);
+  it('drops Secure only for a direct plain-http demo on loopback or the private LAN', () => {
+    const production = { NODE_ENV: 'production' };
+    expect(secureCookieForRequest({ host: '192.168.1.48:3000', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: 'localhost:3000', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '10.1.2.3', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '172.16.0.4', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '[::1]', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '172.15.0.4', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '172.32.0.4', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '192.168.1.48', proto: 'https' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '10.0.0.5', proto: 'http' }, { ...production, TRUSTED_PROXY_HOPS: '1' })).toBe(true);
+    expect(secureCookieForRequest({ host: '192.168.1.48', proto: 'http' }, { ...production, COOKIE_SECURE: 'true' })).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com', proto: 'https' }, { COOKIE_SECURE: 'false' })).toBe(false);
   });
 });
 
