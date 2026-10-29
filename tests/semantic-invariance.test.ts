@@ -197,6 +197,7 @@ describe('the model path asks where the deterministic model asks', () => {
   it.each([
     ['Compare open pipeline with open opportunity count by region.', intent('open_opportunity_count', {}, ['region'])],
     ['Show pipeline coverage and open pipeline for this quarter', intent('pipeline_coverage', Q1)],
+    ['Show coverage and pipeline for this quarter', intent('pipeline_coverage', Q1)],
   ])('a model answering one metric for "%s", which names two, is asked about', (phrase, one) => {
     expect(viaModel(phrase, one)).toEqual({ kind: 'clarify', question: expect.stringMatching(/^Do you mean .+ or .+\?$/) });
   });

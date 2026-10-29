@@ -11,12 +11,12 @@
     {
       "name": "open opportunity count, whole scope",
       "intent": { "metric": "open_opportunity_count", "filters": {}, "groupBy": [] },
-      "phrases": ["number of open opportunities", "count our open opportunities", "how many open deals do we have", "how many open deals are in the pipeline", "open opportunity count"]
+      "phrases": ["number of open opportunities", "count our open opportunities", "how many open deals do we have", "how many open deals are in the pipeline", "how many open opportunities are in my pipeline", "open opportunity count"]
     },
     {
       "name": "coverage this quarter",
       "intent": { "metric": "pipeline_coverage", "filters": { "period": "FY27-Q1" }, "groupBy": [] },
-      "phrases": ["pipeline coverage this quarter", "what is our coverage for this quarter", "pipeline to quota this quarter", "coverage ratio for FY27-Q1", "FY27-Q1 pipeline coverage", "pipeline vs quota this quarter"]
+      "phrases": ["pipeline coverage this quarter", "what is our coverage for this quarter", "pipeline to quota this quarter", "coverage ratio for FY27-Q1", "FY27-Q1 pipeline coverage", "pipeline vs quota this quarter", "coverage of my pipeline this quarter"]
     },
     {
       "name": "coverage next quarter",
@@ -133,6 +133,10 @@
     }
   ],
   "clarify": [
+    { "phrase": "Show coverage and pipeline for this quarter", "why": "coverage and pipeline together (plan item 7); answering coverage alone drops the pipeline (issue #81)" },
+    { "phrase": "pipeline and coverage for next quarter", "why": "a bare pipeline joined to another metric names open pipeline too (issue #81)" },
+    { "phrase": "open opportunities plus pipeline by region", "why": "a bare pipeline joined to another metric names open pipeline too (issue #81)" },
+    { "phrase": "coverage, pipeline for this quarter", "why": "a bare pipeline joined to another metric names open pipeline too (issue #81)" },
     { "phrase": "pipeline coverage", "why": "coverage needs a quarter" },
     { "phrase": "coverage", "why": "coverage needs a quarter" },
     { "phrase": "what is the pipeline for last quarter", "why": "only FY27-Q1 and FY27-Q2 have quota" },

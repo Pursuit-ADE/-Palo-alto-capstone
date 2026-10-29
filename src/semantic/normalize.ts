@@ -389,6 +389,13 @@ export const asResult = (x: Intent | { kind: 'clarify'; question: string }): Nor
 
 /** "The pipeline" is also how people say "the open deals", so beside a more specific metric it doesn't name a second one. */
 const GENERIC_METRIC_WORDS = new Set(['pipeline']);
+/** What may sit between a generic word and another metric for the two to be a list ("coverage and pipeline", "coverage, pipeline"). */
+const LISTED = /^(and|plus|with|or|vs|versus)?$/;
+
+/** A generic word listed next to another metric names its own metric too, so the question is asked about (issue #81). */
+function listedWith(h: { at: number; end: number }, others: { at: number; end: number }[], text: string): boolean {
+  return others.some((o) => LISTED.test((o.end <= h.at ? text.slice(o.end, h.at) : text.slice(h.end, o.at)).trim()));
+}
 
 /**
  * The metrics a question names. Synonyms are taken longest first and may not overlap, so "pipeline coverage" beats
@@ -409,7 +416,8 @@ function namedMetrics(text: string, registry: Registry): string[] {
   const picked: typeof hits = [];
   for (const h of hits) if (!picked.some((p) => h.at < p.end && h.end > p.at)) picked.push(h);
   const specific = picked.filter((h) => !h.generic);
-  return [...new Set((specific.length ? specific : picked).map((h) => h.id))];
+  const kept = specific.length ? [...specific, ...picked.filter((h) => h.generic && listedWith(h, specific, text))] : picked;
+  return [...new Set(kept.map((h) => h.id))];
 }
 
 /** The follow-up rule for a question that names a metric: it keeps the previous filters only for the same metric with a follow-up word. */
