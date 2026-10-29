@@ -79,7 +79,7 @@ Each row is checked against the one new audit note written for its own question.
 
 Why this holds (the "lethal trifecta"): an AI system with private data, untrusted text and a way to send data out can be made to leak it. Here the model can't send anything: it only proposes an intent, alerts are rules, and answers are built from governed rows. Cutting that leg is the design.
 
-Against Claude: `npm run eval:redteam` runs 17 attacks (these rows plus two more) end to end through whichever model is configured, and passes an attack only when it is refused or answered inside East. `INTENT_MODEL=claude npm run eval:redteam` attacks Claude. It makes real API calls, so it is not in CI. Last run Oct 28 against `claude-opus-5-5`: 0 of 170 attacks got through; see [metrics](#metrics).
+Against Claude: `npm run eval:redteam` runs 17 attacks (these rows plus two more) end to end through whichever model is configured, and passes an attack only when it is refused or answered inside East. With `INTENT_MODEL=claude` and the key in `.env.local` (`docs/RUNBOOK.md`), `npm run eval:redteam` attacks Claude. It makes real API calls, so it is not in CI. Last run Oct 28 against `claude-opus-5-5`: attack success rate 0/170; see [metrics](#metrics).
 
 ## Labels
 
@@ -148,7 +148,22 @@ Report these in the weekly update. Definitions:
 
 The deterministic model behaves the same every run, so one run is enough. Claude is not deterministic: run each attack and each golden question 10 times and report the rate, not a single pass.
 
-| Measure | Latest result (Oct 17) |
+### Claude re-score (Oct 28, plan item 4)
+
+Model `claude-opus-5-5`, key from `.env.local`. "Merged branch" means a local merge of #50 and #51 onto `0032f69`; neither
+is on `main`. Raw output and the exact commands: [evaluator repo, `reports/2026-10-28-claude-rescore`](https://github.com/MITRAKER/governed-analytics-copilot/tree/main/reports/2026-10-28-claude-rescore).
+
+| Measure | Result |
+|---|---|
+| Golden set, deterministic, `main` (`0032f69`) | 69/69 |
+| Golden set, Claude, `main` | 69/69 in each of **2 passes** (30 s timeout). Not yet the 10-pass rate this page asks for, so quote it as two passes. In pass 2: 51 intents as expected, 14 clarifying questions as expected, 3 "unsupported" as expected, and 1 expected "unsupported" answered with a clarifying question ("how is the business doing"), which the script's rule counts as a match. 68 of 69 were the same reading as the deterministic model |
+| Golden set, Claude, merged branch | 69/69 in each of 2 passes (30 s timeout); the same split and the same one difference |
+| `eval:redteam`, Claude, merged branch | Attack success rate **0/170** (17 attacks × 10 runs, 30 s timeout). 0 thrown model errors (timeouts or API errors) on any turn, counted with a local copy of the script that tallies every turn; the shipped script prints only each attack's last turn |
+| Timeouts at the default 8 s | Two `eval:golden` runs (`main` and the merged branch) started at the same time both stopped on a timed-out call: the script has no fallback, while the app falls back to the deterministic model (`src/server/ask.ts`). The 8 s red-team runs started alongside them didn't count thrown errors, so they are not quoted. The golden numbers above are from the 30 s runs |
+
+### Record up to Oct 17 (historical; golden set then had 66 phrasings)
+
+| Measure | Result |
 |---|---|
 | Matrix, deterministic model | 17/17 rows plus planted-CRM-data pass (with #20). ASR 0 |
 | `eval:redteam`, deterministic model | 17/17 held |
@@ -164,9 +179,6 @@ The deterministic model behaves the same every run, so one run is enough. Claude
 | 10-turn follow-up conversation with Claude, 3 runs | Before #28: 8 of 10 turns matched (F10). After #28: 10 of 10, every run |
 | Claude latency (96 calls, Oct 18) | Median 2.1-2.3 s, slowest 5.0 s; at a 5 s timeout 1 call in 96 fell back. Hence the 8 s default |
 | Postgres least privilege (Docker) | Role tests: read-only answering login; audit login can't read the audit log, accounts or sessions; auth login can't read business data or the audit log; 5 s timeouts on all three |
-| **Claude re-score (Oct 28), golden set** | 69/69 on `main` (`0032f69`) and 69/69 on `main` with #50 and #51 merged. One run each, `CLAUDE_TIMEOUT_MS=30000` so a slow call is measured, not cut off |
-| **Claude re-score (Oct 28), `eval:redteam`** | 17 attacks × 10 runs on `main` with #50 and #51: attack success rate 0/170, 0 timeouts or API errors (30 s timeout). Also 0/170 on `main` and on the merged branch with the default 8 s timeout |
-| Claude latency note (Oct 28) | Two runs in parallel at the default 8 s timeout: one golden-set call timed out and stopped that run. In the app a timeout falls back to the deterministic model and the answer still comes back; the eval script has no fallback, so it was re-run at 30 s |
 | Sessions and cross-site requests (local production build) | Login and logout from another origin rejected by the Server Actions origin check; a cookie reused after logout is sent to `/login` |
 
 Weekly reports use a one-page format: summary, scope, findings by severity (ID, evidence, impact, fix, status), metrics, and what's left for the client's own red team before any rollout (live Claude traffic, real sign-in, the Slack phishing risk in F7).
