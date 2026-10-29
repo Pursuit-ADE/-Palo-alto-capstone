@@ -98,8 +98,11 @@ describe('3. HTTPS protections are on by default in production', () => {
     expect(httpsSettings({ NODE_ENV: 'development' })).toEqual({ hsts: false, secureCookie: false });
     expect(httpsSettings({ NODE_ENV: 'development', ENABLE_HSTS: 'true' })).toEqual({ hsts: true, secureCookie: true });
   });
-  it('drops Secure only for a direct plain-http demo on loopback or the private LAN', () => {
+  it('drops Secure only for a direct demo on loopback or the private LAN when the scheme is http or missing', () => {
     const production = { NODE_ENV: 'production' };
+    expect(secureCookieForRequest({ host: '192.168.1.20:3000' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '192.168.1.20:3000' }, { ...production, TRUSTED_PROXY_HOPS: '1' })).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com' }, production)).toBe(true);
     expect(secureCookieForRequest({ host: '192.168.1.48:3000', proto: 'http' }, production)).toBe(false);
     expect(secureCookieForRequest({ host: 'localhost:3000', proto: 'http' }, production)).toBe(false);
     expect(secureCookieForRequest({ host: '10.1.2.3', proto: 'http' }, production)).toBe(false);

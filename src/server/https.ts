@@ -1,8 +1,8 @@
 // HTTPS protections that must not depend on someone remembering an environment variable on the deploy.
 // In a production build (`next build` / `next start`) HSTS is on by default. Browsers ignore it on plain http,
 // so it is harmless on a laptop demo.
-// The session cookie stays Secure in production. The one exception is a direct plain-http demo on this machine
-// or the private LAN, with no trusted proxy in front: Safari on a phone at that address drops a Secure cookie,
+// The session cookie stays Secure in production. The one exception is a direct demo on this machine
+// or the private LAN, with no trusted proxy in front, when the scheme is http or missing: Safari on a phone drops a Secure cookie,
 // so sign-in never sticks. A TLS-terminating proxy usually makes the app see plain http too, so that case keeps
 // Secure unless COOKIE_SECURE=false. COOKIE_SECURE=true forces the flag on.
 // With no request to inspect, development stays off unless ENABLE_HSTS=true or COOKIE_SECURE=true.
@@ -46,6 +46,8 @@ export function isLoopbackOrPrivateHost(host: string | null | undefined): boolea
 /**
  * The Secure flag for one request. A forwarded scheme is ignored unless this process has no trusted proxy
  * and the host is loopback or the private LAN: that is the phone demo. Behind a proxy, production stays Secure.
+ * A missing scheme counts as http there, so only https keeps Secure. A client that sends its own Host and
+ * X-Forwarded-Proto only weakens that client's own cookie.
  */
 export function secureCookieForRequest(
   request: { host?: string | null; proto?: string | null } = {},
@@ -55,7 +57,7 @@ export function secureCookieForRequest(
   if (env.COOKIE_SECURE === 'true') return true;
   const hops = Number(env.TRUSTED_PROXY_HOPS || 0);
   const direct = !Number.isInteger(hops) || hops < 1;
-  if (direct && request.proto === 'http' && isLoopbackOrPrivateHost(request.host)) return false;
+  if (direct && isLoopbackOrPrivateHost(request.host) && request.proto !== 'https') return false;
   return httpsSettings(env).secureCookie;
 }
 
