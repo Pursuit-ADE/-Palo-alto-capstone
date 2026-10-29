@@ -17,7 +17,10 @@ Create `.env.local` in the repository root:
 DEMO_INVITE_SECRET=<a long random value>
 AUDIT_HASH_KEY=<a different long random value, 32+ characters>
 ALLOW_EMBEDDED_DB=true
+EMPLOYEE_STATUS=off
 ```
+
+`npm start` is a production start, which refuses to run until `EMPLOYEE_STATUS` is decided: `off` for this demo, or a JSON list of active employees (see the containers section).
 
 Then:
 

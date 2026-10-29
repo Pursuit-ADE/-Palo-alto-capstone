@@ -47,16 +47,17 @@ export const EMPLOYEE_STATUS_WARNING =
   'EMPLOYEE_STATUS is set but has no valid entries; every alert will be held back until it lists active people.';
 
 /**
- * Reads EMPLOYEE_STATUS. Unset or blank means the check is off and only the disabled-account check applies (so the
- * laptop demo still alerts everyone). Set means it is on, even if the value is malformed: a broken list must stop
- * alerts, not quietly turn the check off.
+ * Reads EMPLOYEE_STATUS. Unset, blank or "off" means the check is off and only the disabled-account check applies (so
+ * the laptop demo still alerts everyone). A production start refuses unset or blank, so "off" there is a written choice
+ * (src/server/config.ts). Anything else means it is on, even if the value is malformed: a broken list must stop alerts
+ * and sign-ins, not quietly turn the check off.
  */
 export function createEmployeeDirectory(
   env: Record<string, string | undefined> = process.env,
   warn: (message: string) => void = console.warn,
 ): EmployeeDirectory | undefined {
   const raw = env.EMPLOYEE_STATUS;
-  if (raw === undefined || raw.trim() === '') return undefined;
+  if (raw === undefined || raw.trim() === '' || raw.trim().toLowerCase() === 'off') return undefined;
   const statuses = parseEmployeeStatus(raw);
   if (Object.keys(statuses).length === 0) warn(EMPLOYEE_STATUS_WARNING);
   return staticEmployeeDirectory(statuses);

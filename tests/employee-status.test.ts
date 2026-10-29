@@ -57,10 +57,25 @@ describe('copilot sign-in and sessions follow employee status', () => {
     });
   });
 
-  it('reads EMPLOYEE_STATUS: unset is off, set is on even when malformed', () => {
+  it('reads EMPLOYEE_STATUS: unset or "off" is off, set is on even when malformed', () => {
     expect(createEmployeeDirectory({})).toBeUndefined();
     expect(createEmployeeDirectory({ EMPLOYEE_STATUS: ' ' })).toBeUndefined();
+    expect(createEmployeeDirectory({ EMPLOYEE_STATUS: 'off' })).toBeUndefined();
+    expect(createEmployeeDirectory({ EMPLOYEE_STATUS: ' Off ' })).toBeUndefined();
     expect(createEmployeeDirectory({ EMPLOYEE_STATUS: 'not json' }, () => {})).toBeDefined();
+  });
+
+  it('refuses sign-up for someone who has left before creating the account, so the invite is not spent', async () => {
+    const database = await openDatabase();
+    try {
+      const invite = inviteCode('u_ts_east', SECRET);
+      const input = { username: 'jordan.t', password: 'a-long-enough-pass-1', invite };
+      await expect(signUp(database.authDb, input, SECRET, new Date(), null, staticEmployeeDirectory({ u_ts_east: 'inactive' }))).rejects.toMatchObject({ code: 'employee_inactive', message: 'That invite code is not valid.' });
+      // Nothing was created, so the same invite still works once the person is active.
+      expect(await signUp(database.authDb, input, SECRET, new Date(), null, staticEmployeeDirectory({ u_ts_east: 'active' }))).toMatchObject({ userId: 'u_ts_east' });
+    } finally {
+      await database.close();
+    }
   });
 
   it('uses the same employee-status code as the alerts app', () => {

@@ -78,7 +78,7 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   }
   const database = await getDatabase();
   try {
-    const { userId } = await signUp(database.authDb, { username: username.data, password: password.data, invite: invite.data });
+    const { userId } = await signUp(database.authDb, { username: username.data, password: password.data, invite: invite.data }, undefined, undefined, undefined, getEmployeeDirectory());
     const previous = await readSessionCookie();
     const { token, sessionId } = await logIn(database.authDb, username.data, password.data, new Date(), getEmployeeDirectory());
     // Only after a successful log-in: end this browser's previous session, if any.

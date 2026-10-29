@@ -68,11 +68,12 @@ describe('employee status directory (client ask, Oct 23)', () => {
     for (const bad of ['not json', '[]', '"active"', 'null', '', undefined]) expect(parseEmployeeStatus(bad)).toEqual({});
   });
 
-  it('is off when EMPLOYEE_STATUS is unset or blank, and on for any other value', async () => {
+  it('is off when EMPLOYEE_STATUS is unset, blank or "off", and on for any other value', async () => {
     const warnings: string[] = [];
     const warn = (m: string) => warnings.push(m);
     expect(createEmployeeDirectory({}, warn)).toBeUndefined();
     expect(createEmployeeDirectory({ EMPLOYEE_STATUS: '   ' }, warn)).toBeUndefined();
+    expect(createEmployeeDirectory({ EMPLOYEE_STATUS: 'off' }, warn)).toBeUndefined();
     expect(warnings).toEqual([]);
     const on = createEmployeeDirectory({ EMPLOYEE_STATUS: '{"a":"active"}' }, warn);
     expect(await on?.statusOf('a')).toBe('active');

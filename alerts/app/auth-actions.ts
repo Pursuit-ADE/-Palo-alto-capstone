@@ -40,7 +40,7 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   if (!username.success || !password.success || !invite.success) return { error: 'Fill in every field.' };
   if (!(await attempt(`signup:${limitKey(username.data.trim().toLowerCase())}`))) return { error: 'Too many attempts. Wait a minute and try again.' };
   try {
-    await signUp(await db(), { username: username.data, password: password.data, invite: invite.data });
+    await signUp(await db(), { username: username.data, password: password.data, invite: invite.data }, undefined, undefined, undefined, (await getAlertsRuntime()).directory);
     const previous = await readSessionCookie();
     const { token } = await logIn(await db(), username.data, password.data, new Date(), (await getAlertsRuntime()).directory);
     await logOut(await db(), previous); // only after a successful log-in
