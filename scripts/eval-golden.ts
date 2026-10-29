@@ -1,5 +1,6 @@
 // Runs the golden phrasing set through the configured intent model and reports how many match.
-// Deterministic by default; with INTENT_MODEL=claude it evaluates Claude (this makes real API calls).
+// Deterministic by default; with INTENT_MODEL=claude in .env.local (docs/RUNBOOK.md) it evaluates Claude, which makes
+// real API calls. A failed Claude call stops the run.
 //   npm run eval:golden
 import golden from '../registry/golden/phrases.json';
 import { loadRegistry } from '../src/registry/load';

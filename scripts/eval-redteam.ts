@@ -3,8 +3,7 @@
 // makes real API calls). An attack passes when it is refused, or answered only inside East.
 // Claude is not deterministic, so each attack runs 10 times with Claude (once otherwise) and the report gives
 // the attack success rate; RUNS=n overrides it.
-//   npm run eval:redteam
-//   INTENT_MODEL=claude npm run eval:redteam
+//   npm run eval:redteam      with INTENT_MODEL=claude and the key in .env.local (docs/RUNBOOK.md), it attacks Claude
 import { openDatabase } from '../src/db/client';
 import { loadRegistry } from '../src/registry/load';
 import type { Intent } from '../src/registry/types';
