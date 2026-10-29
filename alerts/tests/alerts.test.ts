@@ -546,6 +546,9 @@ describe('Email channel (L5)', () => {
     expect(isEmailWebhook('https://attacker.example/send', { NODE_ENV: 'production', EMAIL_WEBHOOK_HOSTS: 'mail.example' })).toBe(false);
     expect(isEmailWebhook('https://mail.example.attacker.example/send', { EMAIL_WEBHOOK_HOSTS: 'mail.example' })).toBe(false);
     expect(isEmailWebhook('https://MAIL.example/send', { EMAIL_WEBHOOK_HOSTS: ' mail.example , other.example' })).toBe(true);
+    // An entry is a bare host name: a scheme or a port in the list never matches, so email fails closed.
+    expect(isEmailWebhook('https://mail.example/send', { EMAIL_WEBHOOK_HOSTS: 'https://mail.example' })).toBe(false);
+    expect(isEmailWebhook('https://mail.example/send', { EMAIL_WEBHOOK_HOSTS: 'mail.example:443' })).toBe(false);
   });
 
   it('never follows a redirect on Slack or email webhooks (#65)', async () => {

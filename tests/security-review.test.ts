@@ -151,6 +151,15 @@ describe('7. flagged questions reach the security channel', () => {
     expect(await notifySecurity(event, { SECURITY_SLACK_WEBHOOK_URL: hook }, post, 1_010_000)).toBe(false);
     expect(await notifySecurity({ ...event, outcome: 'refused_locked' }, { SECURITY_SLACK_WEBHOOK_URL: hook }, post, 1_020_000)).toBe(true);
   });
+  it('never follows a redirect off hooks.slack.com (#65)', async () => {
+    const seen: (RequestRedirect | undefined)[] = [];
+    const post = (async (_url: string, init: RequestInit) => {
+      seen.push(init.redirect);
+      return { ok: true } as Response;
+    }) as unknown as typeof fetch;
+    expect(await notifySecurity({ ...event, userId: 'u_test_redirect' }, { SECURITY_SLACK_WEBHOOK_URL: hook }, post, 2_000_000)).toBe(true);
+    expect(seen).toEqual(['error']);
+  });
   it('sends nothing without a Slack webhook URL', async () => {
     const post = (async () => {
       throw new Error('should not be called');
