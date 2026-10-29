@@ -282,9 +282,11 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const retry = items.filter((i) => i.attempts < MAX_ATTEMPTS).map((i) => i.id);
     if (retry.length) await db.update(alertDeliveries).set({ status: 'failed' }).where(mine(retry));
     if (spent.length) {
-      await db.update(alertDeliveries).set({ status: 'undelivered' }).where(mine(spent));
+      // Report only the rows this sender actually marked: a sender whose claim was taken over changes nothing here,
+      // and must not report alerts the newer sender may still deliver (PR #90 review).
+      const marked = await db.update(alertDeliveries).set({ status: 'undelivered' }).where(mine(spent)).returning({ id: alertDeliveries.id });
       // The operator's signal (evaluator F-05). Ids only: no account names or alert text in the log.
-      (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: spent });
+      if (marked.length) (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: marked.map((m) => m.id) });
     }
   }
 }

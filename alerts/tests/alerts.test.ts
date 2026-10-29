@@ -210,6 +210,27 @@ describe('retries', () => {
     expect(JSON.stringify(reported)).not.toContain(row!.title);
   });
 
+  it('reports undelivered alerts only when this sender still holds the claim (PR #90 review)', async () => {
+    await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
+    await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
+    await runAlerts(database.db, rules, recorder(), SINCE, DAY);
+    const down: Channels = { async deliver() { return false; } };
+    // Use up all but the last attempt.
+    for (let day = 0; day < MAX_ATTEMPTS - 1; day++) await flushDigests(database.db, rules, down, new Date(DAY.getTime() + day * 24 * 3600_000));
+    const reported: string[][] = [];
+    let release!: (ok: boolean) => void;
+    const slow: Channels = { deliver: () => new Promise<boolean>((r) => { release = r; }) };
+    const lastTry = new Date(DAY.getTime() + 10 * 24 * 3600_000);
+    const oldSender = flushDigests(database.db, rules, slow, lastTry, { reportUndelivered: (e) => reported.push(e.ids) });
+    await new Promise((r) => setTimeout(r, 200)); // the old sender is now waiting on its channel
+    // A newer sender takes over the stale claim and delivers.
+    await flushDigests(database.db, rules, recorder(), new Date(lastTry.getTime() + STALE_CLAIM_MS + 60_000));
+    release(false); // the old sender's last attempt fails, after its claim was taken over
+    await oldSender;
+    expect(reported).toEqual([]);
+    expect((await deliveries('u_ts_east'))[0]!.status).toBe('delivered');
+  });
+
   it('does not use up attempts while the employee directory cannot answer, then delivers (F-05)', async () => {
     await addCase(database.db, 'case_t1', 'P2', new Date('2026-10-08T09:00:00Z'));
     await database.db.insert(alertSubscriptions).values(sub('u_ts_east', 'high_severity_case', { frequency: 'digest' }));
