@@ -53,7 +53,7 @@ usage (#59), and the independent evaluator in its own repository (S8).
 |---|---|---|
 | CI not running (GitHub billing, Oct 26) | High | Org owner fixes billing; until then, run the suites locally and merge nothing that touches code |
 | Comparison-question fixes (#50–#52) stall | High | Owner pairs with a reviewer this week; if not merged by Sun Nov 1, the demo avoids those questions and says so |
-| Claude re-score not run before the dry run | Medium | Run it right after #50–#52 merge; the deterministic model stays the default if Claude regresses |
+| Claude regresses after #50–#52 merge | Medium | Re-scored Oct 28 (69/69 golden, 0/170 attacks, #91); run it again once #50–#52 are on main. The deterministic model stays the default if Claude regresses |
 | Alex's answers on distribution lists and the 2x line come late | Low | Both are design-only or display-only; keep our assumption and label it |
 | Code and deck freeze on Mon Nov 2 (Pursuit) | High | Sun Nov 1 is the last merge day; anything not merged by then is cut (list below), not squeezed in after the freeze. Alex's dry run happens before the freeze |
 

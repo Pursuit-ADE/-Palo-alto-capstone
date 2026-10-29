@@ -45,7 +45,7 @@ day. The answering path keeps its Postgres read-only role, statement timeout and
 | `app_users`, `regions` | User, UserRole or territory |
 | `account_team` | AccountTeamMember / OpportunityTeamMember |
 | `quotas` | ForecastingQuota (or the team's own quota table) |
-| `contacts`, `engagements` | Contact, CampaignMember |
+| `contacts`, `engagements` | Contact; CampaignMember is our guess for engagements (contact, type, asset, time, CXO flag), to confirm with Alex |
 | `support_cases` | Case (severity, status, created date) |
 | `product_usage` | The usage source PANW already reports on (not in Salesforce; to confirm with Alex) |
 
@@ -56,14 +56,15 @@ tables are synthetic.
 
 | Identity | Can do | Cannot do |
 |---|---|---|
-| Loader service account | `BigQuery Data Viewer` on the replica dataset, `BigQuery Job User`, write a new snapshot through the owner login | Reach the app, read the audit log |
+| Loader service account | `BigQuery Data Viewer` on the replica dataset, `BigQuery Job User`, and its own `app_loader` database login: INSERT on the snapshot tables only | Reach the app, read the audit log, accounts or sessions, change grants |
+| Setup job (deploy time only) | The owner login, for migrations and grants, run once per release | Run during normal operation |
 | Copilot service account | Connect to Cloud SQL as `app_readonly`, `app_audit`, `app_auth` | Any BigQuery access, migrations, grants |
 | Alerts service account | Its own database logins; post to Slack and email | BigQuery access |
-| Trends agent job | `app_readonly`: the two count views only | Read `query_audit` or any question text |
+| Trends agent job | `app_readonly`, reading only the two count views (the login can also read the governed tables) | Read `query_audit` or any question text |
 | Evaluator | Read a pinned copy of the code in its own repository | Write to the product repository (PRD S8) |
 
 The copilot never holds a BigQuery credential, so a bug or a prompt injection in the answering path can't reach the
-replica. Cloud SQL uses private IP only, and the migration (owner) login lives only in the loader job.
+replica. Cloud SQL uses private IP only, and the migration (owner) login lives only in the setup job that runs at deploy time; the loader has its own insert-only login.
 
 ### The model
 
@@ -88,8 +89,8 @@ Evaluator H-07 (#85). Not built for Demo Day; this is the plan for a rollout.
 
 A restore drill once a quarter: restore the latest backup into a scratch Cloud SQL instance, run `npm run db:setup`
 against it (migrations are append-only, so it only applies what's new), and check that the audit log, accounts and
-pending alerts are intact. Retention (`npm run purge`) still applies after a restore, so a backup can't bring back audit
-rows older than 90 days into daily use.
+pending alerts are intact. Point-in-time recovery is also how a mistaken purge is undone: rows still inside the 90-day
+window come back and stay; rows already past it are deleted again by the next `npm run purge`, as they would have been.
 
 ### Why the compiler can stay Postgres
 

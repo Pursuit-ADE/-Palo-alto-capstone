@@ -1,6 +1,6 @@
 # Governed AI Analytics Copilot: Product Requirements
 
-**v1.2** · v1 approved by Alex Sanginov on Oct 7, 2026 · updated Oct 26 after his Oct 15 answers and the Oct 24 call
+**v1.2** · v1 approved by Alex Sanginov on Oct 7, 2026 · updated Oct 28 after his Oct 15 answers, the Oct 24 call and the team's review
 (see [change log](#9-change-log)) · Palo Alto Networks Customer Analytics × Team ALTO PALS (Pursuit L3) · Demo Day Nov 9, 2026
 
 This is the living copy of the PRD. It replaces the v1 PDF in this folder, which stays for history. When is in the
@@ -97,7 +97,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | L4 | Private routing: one shared rule evaluated per user; no alert reveals another user's accounts; access re-checked at send time. | Must | Done |
 | L5 | **Channels by urgency** (Oct 24): Slack for urgent alerts (P1, for example an executive or production dashboard is broken), email for status updates and digests. | Must: one channel; Should: both | Both channels done; urgency mapping open |
 | L6 | Alert explains why it fired and links to the copilot. | Should | Done |
-| L7 | **Active employees only** (Oct 24): check employee status before routing and again before every send, standing in for Active Directory. People who leave get nothing and are signed out. The check is on when the status list is set (off in the plain demo). If the directory is down or can’t tell, the alert is held and retried, never dropped; only a confirmed “inactive” is final. | Must | Done (#55) |
+| L7 | **Active employees only** (Oct 24): check employee status before routing and again before every send, standing in for Active Directory. People who leave get no alerts and are signed out of the alerts app (#55); the copilot does the same in #89. The check is on when the status list is set (off in the plain demo). If the directory is down or can’t tell, the alert is held and retried; today that uses the same 5 attempts as a channel failure, and #90 makes it wait without using them. Only a confirmed “inactive” is final. | Must | Done in alerts (#55); copilot #89 and outages #90 open |
 | L8 | Distribution lists (Oct 24 question): a list expands to members, and each member passes the same checks. | Could | Design only, waiting on Alex |
 
 ### Security and governance
@@ -108,7 +108,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | S2 | Social-engineering defenses: pleas, fake authority, a role claimed mid-chat, gradual escalation. | Must | Done |
 | S3 | Suspicious prompts flagged and logged as security events; repeated attempts lock the session. | Should | Done |
 | S4 | Audit log of every question: who, which metric version and filters, which snapshot. A keyed fingerprint of the question, never its words, and no raw rows. | Must | Done |
-| S5 | Repo hygiene: dependency, static analysis and secret scanning in CI. | Must | Done |
+| S5 | Repo hygiene: dependency, static analysis and secret scanning in CI. | Must | Done (the workflows); CI jobs blocked by GitHub billing since Oct 26 |
 | S6 | Red-team test suite in CI. | Must | Done (deterministic); the run against Claude is still to do |
 | S7 | Read-only analytics database role; scoped aggregates only, never raw rows to the model. | Must | Done |
 | S8 | **Independent evaluator** (Oct 24): agents outside the product repo, with no write access to product code, rate findings Low, Medium or High. Findings go to the code's author as issues, fixed by normal reviewed PRs. | Must | Done (separate evaluator repo) |
@@ -167,7 +167,7 @@ bottom of the Should and Could items first. Timing and the cut order are in the 
 | Oct 5 | Technical seller is the primary persona. No internal data; a public Salesforce-style sample. Code goes through PANW infosec review. If scope is too big, document assumptions and cut. |
 | Oct 7 | PRD and roadmap approved ("Looks good"). No fixed limit on follow-ups; add a context layer. Weekly email updates. Impact model. |
 | Oct 15 | Synthetic data is OK. Low usage is option (a): under 20% of what was bought, six months after purchase. Any AI provider is fine for this exercise. Real onboarding would be Active Directory and SSO; demo sign-up is fine. He asked for an architecture document. |
-| Oct 24 | Coverage target 3x. Executives want one sentence, and no 3D graphs. Check employee status (Active Directory) before alerting. Slack for urgent alerts, email for status. An independent evaluator rating findings Low/Medium/High, outside the repo, with no write access. Real deployment would be GCP reading a BigQuery replica of Salesforce. Guardrails alone won't scale: give the agent context and system rules. Log questions so another agent can find trends. Dry run the week of Nov 2. He has read access to the repo. |
+| Oct 24 | Coverage target 3x. Executives want one sentence, and no 3D graphs. Check employee status (Active Directory) before alerting. Slack for urgent alerts, email for status. An independent evaluator rating findings Low/Medium/High, outside the repo, with no write access. Real deployment would be GCP reading a BigQuery replica of Salesforce. Guardrails alone won't scale: give the agent context and system rules. Log questions so another agent can find trends. Dry run the week of Nov 2, which we're moving to by Sun Nov 1 because Pursuit freezes code on Nov 2. He has read access to the repo. |
 
 **Our working assumptions**
 
@@ -179,7 +179,7 @@ bottom of the Should and Could items first. Timing and the cut order are in the 
 
 1. Do alerts need distribution lists, or is one person per alert enough for now? (L8)
 2. Is the 2x boundary for red and amber right, or does he use a different one? (A11)
-3. Which day and time works for a 30-minute dry run the week of Nov 2?
+3. Which day and time works for a 30-minute dry run by Sun Nov 1, before Pursuit's code freeze on Nov 2?
 4. May we name Palo Alto Networks at Demo Day? (He was checking with Pursuit, Oct 15.)
 5. Which alerts count as urgent (Slack) beyond a P1 dashboard outage? (L5)
 
@@ -191,3 +191,4 @@ bottom of the Should and Could items first. Timing and the cut order are in the 
 | Oct 7 | Alex approved v1. A5 follow-ups with no fixed limit, A9 context layer, email cadence, impact model |
 | Oct 8 | v1.1 after team review: quota and account-team data, ambiguity and long-conversation tests, mid-chat role and escalation red-team cases, repeatability via documented script |
 | Oct 26 | v1.2 from Alex's Oct 15 answers and the Oct 24 call: A10 executive-first answers, A11 3x coverage target, L2 low usage confirmed as option (a), L5 channels by urgency, L7 active employees only, L8 distribution lists (question), S8 independent evaluator, S9 agent rules, S10 question trends, D2 GCP and BigQuery design, analyst and executive users, status column, new open questions. Moved from Word to this file so it is updated with the code |
+| Oct 28 | Team review (Adedoyin, Mofazzal): CSM row names the large-deal stretch; L7 says what holds on `main` today and points at #89 and #90; L7 joins the never-cut list; S5 notes the CI billing block; the dry run moves to by Sun Nov 1 for Pursuit's Nov 2 freeze |
