@@ -7,7 +7,8 @@ import { openDatabase } from '@/db/client';
 import { AuthError, inviteCode, logIn, sessionInfo, signUp } from '@/server/auth';
 import { createEmployeeDirectory, staticEmployeeDirectory, type EmployeeDirectory } from '@/server/employee-status';
 
-const SECRET = 'test-invite-secret-at-least-32-characters-long';
+// The same fixture the other auth tests use. A long random-looking value is flagged by the secret scan.
+const SECRET = 'test-only-invite-secret';
 
 async function withAccount(run: (db: Awaited<ReturnType<typeof openDatabase>>['authDb']) => Promise<void>) {
   const database = await openDatabase();
