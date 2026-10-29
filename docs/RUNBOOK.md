@@ -55,7 +55,7 @@ docker compose run --rm copilot-setup npx tsx scripts/invites.ts   # invite code
 
 For email alerts, also put `EMAIL_USER_ADDRESSES` and an HTTPS `EMAIL_WEBHOOK_URL` in `.env`: this stack runs in production mode, which refuses a localhost mail catcher.
 
-To show the employee-status check (alerts go only to active employees, and a person marked inactive can't sign in to alerts), put `EMPLOYEE_STATUS` in `.env`, for example `EMPLOYEE_STATUS={"u_ts_east":"active","u_ts_west":"inactive","u_darcel_schlecht":"active","u_mgr_melvin_marxen":"active","u_analyst":"active"}`. The values are synthetic. Left empty, the check is off. Anyone not listed counts as inactive, so list every demo person you want to keep.
+To show the employee-status check (alerts go only to active employees, and a person marked inactive can't sign in to either app or keep a session), put `EMPLOYEE_STATUS` in `.env`; both apps read it, for example `EMPLOYEE_STATUS={"u_ts_east":"active","u_ts_west":"inactive","u_darcel_schlecht":"active","u_mgr_melvin_marxen":"active","u_analyst":"active"}`. The values are synthetic. Left empty, the check is off. Anyone not listed counts as inactive, so list every demo person you want to keep.
 
 This starts Postgres, runs `copilot-setup` and `alerts-setup` once as the owner login, and then starts the copilot on http://localhost:3000 and alerts on http://localhost:3001. The two servers only get their least-privilege logins. Both listen on 127.0.0.1 only and use plain http, so cookies are not `Secure` here. Behind a real HTTPS proxy, set `COOKIE_SECURE=true`, `ENABLE_HSTS=true` and `TRUSTED_PROXY_HOPS=1` in `.env`. The `docker` workflow in CI runs this same stack on every pull request. `docker compose --profile app down` stops it.
 

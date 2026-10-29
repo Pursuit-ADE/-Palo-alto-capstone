@@ -1,6 +1,7 @@
 // Employee-status check (client ask, Oct 23): an alert goes only to someone whose status is "active", and a person who
-// has left can't sign in to read old alerts. The demo reads a synthetic status list from EMPLOYEE_STATUS; a real
-// rollout would read Active Directory or HR behind the same interface. Server-only. No real people or HR data here.
+// has left can't sign in to either app or keep a session (evaluator D-06). The demo reads a synthetic status list from
+// EMPLOYEE_STATUS; a real rollout would read Active Directory or HR behind the same interface. Server-only. No real
+// people or HR data here. Two identical copies: alerts/src/alerts/ and src/server/ (a test keeps them the same).
 
 /**
  * What the directory knows. "unknown" means it could not tell (an outage), which is not the same as "inactive": the

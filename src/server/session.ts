@@ -2,7 +2,7 @@
 import { cookies } from 'next/headers';
 import { httpsSettings } from './https';
 import { sessionInfo, SESSION_HOURS, type SessionInfo } from './auth';
-import { getDatabase } from './runtime';
+import { getDatabase, getEmployeeDirectory } from './runtime';
 
 export const SESSION_COOKIE = 'alto_session';
 
@@ -15,7 +15,7 @@ export async function currentUserId(): Promise<string | undefined> {
 export async function currentSession(): Promise<SessionInfo | undefined> {
   const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return undefined;
-  return sessionInfo((await getDatabase()).authDb, token);
+  return sessionInfo((await getDatabase()).authDb, token, new Date(), getEmployeeDirectory());
 }
 
 export async function setSessionCookie(token: string) {

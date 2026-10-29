@@ -1,8 +1,9 @@
 import { openDatabase, type Database } from '../db/client';
 import { loadRegistry, type Registry } from '../registry/load';
+import { createEmployeeDirectory, type EmployeeDirectory } from './employee-status';
 
 // One embedded database and registry per server process (in memory, re-seeded deterministically on start).
-const g = globalThis as unknown as { __db?: () => Promise<Database>; __reg?: Registry };
+const g = globalThis as unknown as { __db?: () => Promise<Database>; __reg?: Registry; __dir?: { directory: EmployeeDirectory | undefined } };
 
 /**
  * Runs `init` once and shares the result. If it fails (say the database was briefly unreachable), the failure
@@ -27,4 +28,10 @@ export function getDatabase(): Promise<Database> {
 export function getRegistry(): Registry {
   g.__reg ??= loadRegistry();
   return g.__reg;
+}
+
+/** One employee directory per process, read from EMPLOYEE_STATUS: sign-in and every session read ask the same one. */
+export function getEmployeeDirectory(): EmployeeDirectory | undefined {
+  g.__dir ??= { directory: createEmployeeDirectory() };
+  return g.__dir.directory;
 }

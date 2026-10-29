@@ -11,7 +11,7 @@ import { questionFingerprint } from '@/semantic/answer';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
 import { addressLimit, clientAddress } from '@/server/client-address';
 import { dbSessionGuard } from '@/server/limits';
-import { getDatabase } from '@/server/runtime';
+import { getDatabase, getEmployeeDirectory } from '@/server/runtime';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/server/session';
 
 export type AuthState = { error?: string } | null;
@@ -80,7 +80,7 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
   try {
     const { userId } = await signUp(database.authDb, { username: username.data, password: password.data, invite: invite.data });
     const previous = await readSessionCookie();
-    const { token, sessionId } = await logIn(database.authDb, username.data, password.data);
+    const { token, sessionId } = await logIn(database.authDb, username.data, password.data, new Date(), getEmployeeDirectory());
     // Only after a successful log-in: end this browser's previous session, if any.
     await logOut(database.authDb, previous);
     // Audit first: if the row can't be written, no cookie is set and nobody is left signed in.
@@ -109,7 +109,7 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
   const database = await getDatabase();
   try {
     const previous = await readSessionCookie();
-    const { token, userId, sessionId } = await logIn(database.authDb, username.data, password.data);
+    const { token, userId, sessionId } = await logIn(database.authDb, username.data, password.data, new Date(), getEmployeeDirectory());
     // Only after a successful log-in, so a wrong password doesn't sign this browser out.
     await logOut(database.authDb, previous);
     await auditAuth('login', name, 'ok', undefined, userId, sessionId);
