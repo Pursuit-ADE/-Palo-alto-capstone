@@ -237,6 +237,24 @@ describe('intent validation and injection', () => {
     ).rejects.toBeInstanceOf(IntentError);
   });
 
+  // System rule 9 (docs/SYSTEM-CARD.md): the schema and validateIntent enforce regions and quarters, whatever the model proposes.
+  it('refuses a region or quarter that is not in the data, whatever the model proposes', async () => {
+    const propose = (filters: Record<string, unknown>) => answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters, groupBy: [] });
+    await expect(propose({ regions: ['north'] })).rejects.toBeInstanceOf(IntentError);
+    await expect(propose({ period: 'FY27-Q3' })).rejects.toBeInstanceOf(IntentError);
+    await expect(propose({ period: 'Q3 2025' })).rejects.toBeInstanceOf(IntentError);
+  });
+
+  // System rule 6, coverage case: a filter quota isn't split by is refused, never dropped to answer for everything.
+  it('refuses coverage filtered by deal size, product, account or sector instead of dropping the filter', async () => {
+    const coverage = (filters: Record<string, unknown>) =>
+      answerIntent(database, reg, 'u_analyst', { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1', ...filters }, groupBy: [] });
+    const sector = data.accounts[0]!.sector;
+    for (const filters of [{ amount: { min: 100000 } }, { products: [data.products[0]!.id] }, { accounts: [data.accounts[0]!.name] }, { sectors: [sector] }]) {
+      await expect(coverage(filters)).rejects.toThrow("because quota isn't split that way");
+    }
+  });
+
   it('applies a stage filter on open pipeline', async () => {
     const r = await answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: { stages: ['Engaging'] }, groupBy: [] });
     expect(r.rows[0]!.value).toBeCloseTo(sum(open.filter((o) => o.stage === 'Engaging')), 2);
