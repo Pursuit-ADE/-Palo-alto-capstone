@@ -53,10 +53,14 @@ function metricFacts(thisWeek: TrendCount[]): Fact[] {
 }
 
 /** The five biggest topics among unanswered questions, with the change from the week before. */
+// Unmet demand is what people asked and the copilot couldn't answer yet. A refused question (scope, injection, lock,
+// invalid request) is not demand for its topic: it goes in the refused fact instead (PR #71 review).
+const UNMET = new Set(['clarify', 'unsupported']);
+
 function topicFacts(topics: TopicCount[], current: string, previous: string | null): Fact[] {
   const totals = (w: string | null) => {
     const m = new Map<string, number>();
-    for (const t of topics) if (t.week === w) m.set(t.topic, (m.get(t.topic) ?? 0) + t.count);
+    for (const t of topics) if (t.week === w && UNMET.has(t.outcome)) m.set(t.topic, (m.get(t.topic) ?? 0) + t.count);
     return m;
   };
   const before = totals(previous);
@@ -80,8 +84,12 @@ export function plainSummary(f: TrendFacts): string {
   return lines.join('\n');
 }
 
-// The model's whole output. Words only: any digit is refused, so every number in the report comes from code.
+// The model's whole output. Words only: any numeral is refused, ASCII or not (fullwidth, superscript, other scripts),
+// so every number in the report comes from code (PR #71 review).
+// The schema sent to the model keeps the plain 0-9 pattern (JSON Schema has no Unicode classes); the check below
+// refuses every other numeral after parsing.
 const NoDigits = z.string().max(300).regex(/^[^0-9]*$/, 'no digits');
+const NUMERAL = /\p{N}/u;
 const AgentOutput = z.object({
   headline: NoDigits,
   points: z.array(z.object({ factId: z.string().max(40), why: NoDigits })).max(5),
@@ -118,6 +126,8 @@ export async function agentSummary(f: TrendFacts, client: Anthropic): Promise<{ 
     });
     const parsed = response.parsed_output ? AgentOutput.safeParse(response.parsed_output) : null;
     if (!parsed?.success) return { text: plainSummary(f), by: 'code' };
+    const words = [parsed.data.headline, parsed.data.suggestion, ...parsed.data.points.map((p) => p.why)];
+    if (words.some((w) => NUMERAL.test(w))) return { text: plainSummary(f), by: 'code' };
     return { text: renderAgentSummary(f, parsed.data), by: 'claude' };
   } catch {
     return { text: plainSummary(f), by: 'code' };

@@ -99,6 +99,13 @@ describe('trends agent facts', () => {
     expect(text.refused).toContain('1 question refused');
   });
 
+  it('counts only clarify and unsupported as unmet demand; refusals stay in the refused fact (PR #71 review)', () => {
+    const withRefusals: TopicCount[] = [...topics, { week: '2026-10-19', topic: 'support_cases', outcome: 'refused_injection', count: 7 }];
+    const text = Object.fromEntries(trendFacts(counts, withRefusals).facts.map((x) => [x.id, x.text]));
+    expect(text.topic_support_cases).toBe('3 unanswered questions about support cases, up from 1 the week before.');
+    expect(text.topic_other).toBeUndefined();
+  });
+
   it('says so when there are no questions', () => {
     expect(plainSummary(trendFacts([], []))).toBe('Question trends: no questions yet.');
   });
@@ -121,6 +128,13 @@ describe('trends agent with a model', () => {
     const r = await agentSummary(f, fakeClient(out));
     expect(r.by).toBe('claude');
     expect(r.text).toContain('3 unanswered questions about support cases, up from 1 the week before. Sellers want case data');
+  });
+
+  it('falls back when the model writes a numeral in any script, not only 0-9 (PR #71 review)', async () => {
+    for (const headline of ['Support questions tripled to ３００.', 'Support questions doubled².', 'Up by ٣ this week.']) {
+      const out = { headline, points: [{ factId: 'topic_support_cases', why: 'x' }], suggestion: 'y' };
+      expect(await agentSummary(f, fakeClient(out))).toEqual({ text: plainSummary(f), by: 'code' });
+    }
   });
 
   it('falls back to the plain summary when the model writes a number', async () => {

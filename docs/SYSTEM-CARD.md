@@ -60,8 +60,8 @@ Client guidance (Oct 24): log every question so another agent can find trends.
   unanswered questions). The read-only app login can read the views and still cannot read `query_audit`.
 - The **trends agent** (`npm run trends:agent`, `src/audit/trends-agent.ts`) reads only those views. Code works out
   every number as a fact. With `TRENDS_AGENT=claude`, Claude picks which facts matter and says why, in words with no
-  digits; any output with a number, or a fact it was not given, falls back to the plain summary. Analysts see the same
-  summary on `/trends`.
+  digits; any output with a number, or a fact it was not given, falls back to the plain summary. On `/trends`, analysts see
+  the plain summary built by code; Claude's wording appears only in the command's output and its `--out` file.
 
 ## Evaluation (Oct 17)
 

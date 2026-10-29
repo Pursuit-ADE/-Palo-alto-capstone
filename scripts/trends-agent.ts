@@ -2,6 +2,8 @@
 // login, so it can't see questions, users or the audit log, and it writes nothing to the database.
 //   npm run trends:agent                       plain summary, worked out by code
 //   TRENDS_AGENT=claude npm run trends:agent   Claude picks what matters (needs ANTHROPIC_API_KEY); numbers still from code
+// npm run trends:agent reads .env.local if there is one (DATABASE_URL, ANTHROPIC_API_KEY); a variable already set in the
+// shell wins over the file.
 //   add -- --out reports/trends/2026-10-26.md  to save the summary as a file
 // Postgres: set DATABASE_URL (the app login). The laptop demo keeps the log in the running server: open /trends.
 import fs from 'node:fs';
@@ -16,9 +18,10 @@ import type { Db } from '../src/db/client';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
-  console.log('Set DATABASE_URL (the app login) to run the trends agent against Postgres.');
-  console.log('The laptop demo keeps this log in the running server: sign in as the analyst and open http://localhost:3000/trends.');
-  process.exit(0);
+  // Non-zero, so a weekly scheduler shows the run as failed instead of quietly writing nothing (PR #71 review).
+  console.error('Set DATABASE_URL (the app login) to run the trends agent against Postgres.');
+  console.error('The laptop demo keeps this log in the running server: sign in as the analyst and open http://localhost:3000/trends.');
+  process.exit(1);
 }
 
 const pool = new pg.Pool({ connectionString: url, max: 1, connectionTimeoutMillis: 5000 });
