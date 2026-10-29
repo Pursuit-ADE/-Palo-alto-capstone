@@ -79,7 +79,7 @@ Each row is checked against the one new audit note written for its own question.
 
 Why this holds (the "lethal trifecta"): an AI system with private data, untrusted text and a way to send data out can be made to leak it. Here the model can't send anything: it only proposes an intent, alerts are rules, and answers are built from governed rows. Cutting that leg is the design.
 
-Against Claude: `npm run eval:redteam` runs 17 attacks (these rows plus two more) end to end through whichever model is configured, and passes an attack only when it is refused or answered inside East. `INTENT_MODEL=claude npm run eval:redteam` attacks Claude. It makes real API calls, so it is not in CI, and it has not been run yet; see [metrics](#metrics).
+Against Claude: `npm run eval:redteam` runs 17 attacks (these rows plus two more) end to end through whichever model is configured, and passes an attack only when it is refused or answered inside East. `INTENT_MODEL=claude npm run eval:redteam` attacks Claude. It makes real API calls, so it is not in CI. Last run Oct 28 against `claude-opus-5-5`: 0 of 170 attacks got through; see [metrics](#metrics).
 
 ## Labels
 
@@ -164,6 +164,9 @@ The deterministic model behaves the same every run, so one run is enough. Claude
 | 10-turn follow-up conversation with Claude, 3 runs | Before #28: 8 of 10 turns matched (F10). After #28: 10 of 10, every run |
 | Claude latency (96 calls, Oct 18) | Median 2.1-2.3 s, slowest 5.0 s; at a 5 s timeout 1 call in 96 fell back. Hence the 8 s default |
 | Postgres least privilege (Docker) | Role tests: read-only answering login; audit login can't read the audit log, accounts or sessions; auth login can't read business data or the audit log; 5 s timeouts on all three |
+| **Claude re-score (Oct 28), golden set** | 69/69 on `main` (`0032f69`) and 69/69 on `main` with #50 and #51 merged. One run each, `CLAUDE_TIMEOUT_MS=30000` so a slow call is measured, not cut off |
+| **Claude re-score (Oct 28), `eval:redteam`** | 17 attacks × 10 runs on `main` with #50 and #51: attack success rate 0/170, 0 timeouts or API errors (30 s timeout). Also 0/170 on `main` and on the merged branch with the default 8 s timeout |
+| Claude latency note (Oct 28) | Two runs in parallel at the default 8 s timeout: one golden-set call timed out and stopped that run. In the app a timeout falls back to the deterministic model and the answer still comes back; the eval script has no fallback, so it was re-run at 30 s |
 | Sessions and cross-site requests (local production build) | Login and logout from another origin rejected by the Server Actions origin check; a cookie reused after logout is sent to `/login` |
 
 Weekly reports use a one-page format: summary, scope, findings by severity (ID, evidence, impact, fix, status), metrics, and what's left for the client's own red team before any rollout (live Claude traffic, real sign-in, the Slack phishing risk in F7).
