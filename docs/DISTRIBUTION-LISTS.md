@@ -15,23 +15,31 @@ subscribing several people at once. It is never a destination.
    name, an owner, a version and member user ids. It is changed through a reviewed pull request, like the alert rules,
    and has no runtime editing. A real rollout would read the members from an Active Directory group behind the same
    interface as `EmployeeDirectory`.
-2. **A subscription can name a list instead of a person.** `alert_subscriptions` gains a nullable `list_id`. Each
-   member still gets their own frequency, channel and quiet hours from their own preferences, and can opt out alone.
-3. **The engine expands the list into members when it routes an event.** Each member then goes through the existing
-   per-person path in `runAlerts`, unchanged:
+2. **A list subscribes its members; it doesn't replace them.** `alert_subscriptions` keeps its key (user plus rule).
+   Subscribing a list to a rule writes one ordinary row per member, with a nullable `list_id` that records where the
+   row came from. A member who already has their own row for that rule keeps it and its preferences.
+3. **Preferences.** A row a list creates starts with the safest defaults: the in-app inbox, real time, no quiet hours
+   and no critical bypass. It never starts on Slack or email, a channel the person didn't choose. The member can change
+   it like any other subscription.
+4. **Opting out is a stored row, not a file edit.** A member who opts out keeps their row with an `opted_out_at` time.
+   Re-expanding the list skips them, and `stillEligible` treats an opted-out row like no subscription. That holds even
+   while the list file still names them. Removing someone from the file deletes only the rows the list created for them.
+5. **The engine routes each member like any other subscriber.** Each member then goes through the existing per-person
+   path in `runAlerts`, unchanged:
    - their role must be in the rule's audience;
    - they must be on the account team (`canSeeAccount`);
    - they must be an active employee (`EmployeeDirectory`, #55).
 
    A member who fails any check is skipped, and the others still get the alert.
-4. **One alert per person.** The dedupe key stays (rule, user, event), so someone on two lists, or on a list and
+6. **One alert per person.** The dedupe key stays (rule, user, event), so someone on two lists, or on a list and
    subscribed alone, gets one alert, not two.
-5. **The send-time re-check covers the list too.** `stillEligible` also checks that the person is still on the list
-   (or still subscribed alone). Someone removed from a list stops getting queued digests and retries, the same way a
-   person who leaves does today.
-6. **Delivery goes to each person's own channel.** That means their own Slack webhook or email address. Never a
+7. **The send-time re-check covers the list too.** `stillEligible` also checks that a list-created row's list still
+   names the person, and that the row isn't opted out. Someone removed from a list stops getting queued digests and
+   retries. The employee check stays where it is, in `sendVerdict`, so a person who leaves is still recorded as
+   `suppressed_inactive`, not only dropped as "not on the list".
+8. **Delivery goes to each person's own channel.** That means their own Slack webhook or email address. Never a
    shared mailbox or group channel, because a shared address would reach people the engine never checked.
-7. **The audit trail shows why someone got an alert.** Each `alert_deliveries` row records the list id (or none) that
+9. **The audit trail shows why someone got an alert.** Each `alert_deliveries` row records the list id (or none) that
    put the person in the audience.
 
 ## What it doesn't do
@@ -44,7 +52,7 @@ subscribing several people at once. It is never a destination.
 ## If we build it
 
 - About one week for one person:
-  - a migration for `list_id`;
+  - a migration for `list_id` and `opted_out_at` on subscriptions, and `list_id` on deliveries;
   - the list files and their schema check, like `alerts/rules/`;
   - expansion in `runAlerts`;
   - the list check in `stillEligible`;
@@ -54,6 +62,8 @@ subscribing several people at once. It is never a destination.
   - an inactive member gets nothing;
   - a person on two lists gets one alert;
   - someone removed from a list loses their queued digest;
+  - an opted-out member gets nothing even though the list still names them;
+  - a row a list creates starts on the inbox, never on Slack or email;
   - nothing is sent to an address that isn't a member's own.
 
 ## Questions for Alex

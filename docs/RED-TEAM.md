@@ -9,8 +9,9 @@ Red teaming makes the copilot safer in the areas tested. It does not make it "se
 agents, the 103 checks, the Low/Medium/High rubric and every evaluation report) lives in a separate repository,
 [MITRAKER/governed-analytics-copilot](https://github.com/MITRAKER/governed-analytics-copilot), with no write access to
 this one (client guidance, Oct 24; PRD S8). Its findings arrive here as issues labeled `evaluator`, and they are fixed
-by normal reviewed pull requests. Attack reports and attacker-style prompts don't go in this repo. That repository is
-private: ask Mitra for read access.
+by normal reviewed pull requests. New evaluation reports, and attack prompts that exist only in the evaluator, stay in
+that repository; the regression tests and the matrix on this page stay here. That repository is private: ask Mitra for
+read access.
 
 ## Rules of engagement
 
