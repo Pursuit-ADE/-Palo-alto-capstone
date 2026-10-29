@@ -54,7 +54,7 @@ subscribing several people at once. It is never a destination.
 - About one week for one person:
   - a migration for `list_id` and `opted_out_at` on subscriptions, and `list_id` on deliveries;
   - the list files and their schema check, like `alerts/rules/`;
-  - expansion in `runAlerts`;
+  - expanding a list into subscription rows when it is subscribed, and again when its file changes;
   - the list check in `stillEligible`;
   - a short section in `alerts/README.md`.
 - Tests:
