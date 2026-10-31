@@ -93,6 +93,8 @@ function selectorPhrase(phrase: string): string {
 
 /** A capitalised name with 's ("Jordan's", "Cara Losch's"). */
 const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
+/** Capitalised words before 's that are contractions, not names: "Why's my coverage…", "What's the reason…" (review on #50). */
+const NOT_A_NAME = new Set(['why', 'what', 'how', 'where', 'who', 'when', 'it', 'that', 'there', 'here', 'this', 'everyone', 'let']);
 
 /**
  * "Why is Jordan's coverage 0.52x…": a possessive name that is not a rep, team or region the question resolved.
@@ -101,7 +103,10 @@ const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
  */
 function unknownPossessive(phrase: string, resolved: string[]): string | null {
   for (const m of phrase.matchAll(POSSESSIVE)) {
-    const name = m[1]!;
+    const words = m[1]!.split(/\s+/);
+    while (words.length && NOT_A_NAME.has(words[0]!.toLowerCase())) words.shift();
+    if (!words.length) continue;
+    const name = words.join(' ');
     const lower = name.toLowerCase();
     if (OTHER_FIGURE.test(` ${lower} `)) continue;
     if (resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()))) continue;
@@ -121,7 +126,8 @@ function namedSlice(phrase: string): Intent['filters'] | Clarify {
   const filters: Intent['filters'] = {};
   const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `));
   const unknown = unknownPossessive(phrase, [...regions, ...(read.filters.people ?? []), ...(read.filters.teams ?? [])]);
-  if (unknown) return { kind: 'clarify', question: `I don't know "${unknown}", so I won't explain the figure for everything. Name a sales rep, a manager's team or a region in the data.` };
+  // A fixed sentence: a refusal never repeats typed text back (evaluator B-03, Low).
+  if (unknown) return { kind: 'clarify', question: "I don't know that person or team, so I won't explain the figure for everything. Name a sales rep, a manager's team or a region in the data." };
   if (regions.length) filters.regions = regions;
   if (read.filters.people?.length) filters.people = read.filters.people;
   if (read.filters.teams?.length) filters.teams = read.filters.teams;

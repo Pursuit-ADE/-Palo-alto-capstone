@@ -370,8 +370,25 @@ describe('user test, Oct 29: the client question as the deck words it', () => {
 
   it("asks who an unknown name is instead of explaining the analyst's whole scope", async () => {
     const r = await ask(database, reg, 'u_analyst', "Why is Jordan's coverage 0.52x when the company is 0.65x?");
-    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('"Jordan"') });
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining("I don't know that person or team") });
+    expect(JSON.stringify(r)).not.toContain('Jordan'); // the typed name is never repeated back
   });
+
+  // Review on #50: a contraction at the start of a question ("Why's", "What's") was read as an unknown person.
+  it.each(["Why's my coverage 0.52x when the company is 0.65x?", "What's the reason my coverage is 0.5x when marketing says 3x?", "That's odd: why is my coverage 0.52x when the company is 0.65x?", "There's a gap: why is my coverage 0.52x when the company is 0.65x?"])(
+    '"%s" is explained, not asked back as an unknown name',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_ts_east', phrase));
+      expect(row(e.answer)).toEqual({ numerator: 174325, denominator: 338000, value: 0.5158 });
+    },
+  );
+
+  it.each(["How's my coverage 0.52x when the company is 0.65x?", "It's 0.65x for the company, so why is my coverage 0.52x?", "Where's the gap between my coverage of 0.52x and the company's 0.65x?"])(
+    '"%s" never reads the contraction as a name',
+    async (phrase) => {
+      expect(JSON.stringify(await ask(database, reg, 'u_ts_east', phrase))).not.toContain("I don't know that person or team");
+    },
+  );
 
   it("still compares a named team with the analyst's whole scope", async () => {
     const e = explained(await ask(database, reg, 'u_analyst', "Why is Cara Losch's team's coverage 0.52x when the company is 0.65x?"));
