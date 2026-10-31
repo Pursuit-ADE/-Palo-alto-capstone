@@ -8,6 +8,10 @@ What each version of the Governed Analytics Copilot added. The format follows
 
 Work merged into `main` after v0.5.0 goes here.
 
+### Security
+
+- Alerts and alerts sign-in only for active employees (`EMPLOYEE_STATUS`, standing in for Active Directory). Someone who has left gets no new or queued alerts and can't sign in; a directory outage is retried, not treated as "left" (#55).
+
 ## [0.5.0] - 2026-10-24
 
 Weeks 4 and 5, promoted from `week5` to `main` together. There is no separate v0.4.0: Week 4 was merged into Week 5 before it reached `main`.

@@ -29,6 +29,15 @@ describe('migrations', () => {
     await migrate(db, { migrationsFolder: MIGRATIONS }); // and running it again on start is a no-op
     const cols = await client.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name = 'query_audit'");
     expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(['question_sha256', 'flags', 'model', 'turn']));
+    const purchased = await client.query<{ def: string }>("SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'product_usage_purchased_quantity_positive'");
+    expect(purchased.rows[0]?.def).toContain('purchased_quantity > 0');
+    await client.query(`INSERT INTO query_audit (id, at, request_id, source, user_id, outcome, metric_id) VALUES
+      ('q1', '2026-10-20T12:00:00Z', 'r1', 'question', 'u', 'answered', 'pipeline_coverage'),
+      ('q2', '2026-10-20T12:00:00Z', 'r2', 'dashboard', 'u', 'answered', 'open_pipeline')`);
+    const trends = await client.query<{ week: string; metric: string; outcome: string; count: number }>(
+      "SELECT week::text AS week, metric, outcome, count FROM question_trends",
+    );
+    expect(trends.rows).toEqual([{ week: '2026-10-19', metric: 'pipeline_coverage', outcome: 'answered', count: 1 }]);
     await client.close();
   });
 

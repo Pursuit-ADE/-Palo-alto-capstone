@@ -6,7 +6,7 @@ Team ALTO PALS capstone for Palo Alto Networks Customer Analytics (Pursuit L3, D
 
 A governed AI analytics copilot that sits next to certified dashboards. The AI only picks a registry metric and filters; it never writes SQL or math. Role-based access is enforced below the AI, and every answer states its scope and the data snapshot it came from. Private, rule-based alerts are in `alerts/` (since Week 2); Week 4 adds the scheduler, editable preferences and weekly or monthly digests.
 
-**No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases and engagements are synthetic.
+**No real customer or Palo Alto Networks data.** Sales data is the public-domain [Maven Analytics CRM Sales Opportunities](https://mavenanalytics.io/data-playground/crm-sales-opportunities) sample (a fictional company); quotas, contacts, support cases, engagements and product usage are synthetic.
 
 New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md). Reviewing it for security or AI risk? Start with the [system card](docs/SYSTEM-CARD.md), then the [red-team results](docs/RED-TEAM.md) and [detections](docs/DETECTIONS.md).
 
@@ -43,6 +43,7 @@ phrase -> intent normalizer -> Intent (metric + filters, Zod-validated)
 | `registry/metrics/*.json` | The 3 governed metrics (open pipeline, pipeline coverage, open opportunity count) with synonyms |
 | `registry/dictionary.json`, `registry/glossary.json` | Context layer v1: field dictionary, glossary, period and breakdown phrases, ambiguous terms |
 | `registry/golden/phrases.json` | Golden phrasing set: at least 5 phrasings per metric, plus clarification cases |
+| `registry/golden/metamorphic.json` | Semantic invariance cases (`tests/semantic-invariance.test.ts`): equivalent wordings must give the same request and result, a change of meaning must change it, and a valid but wrong metric counts as a failure |
 | `data/maven-crm/` | The public CRM sample (accounts, opportunities, sales teams, products) |
 | `src/db/schema.ts`, `src/db/seed.ts` | Data model and loader: sample data, date shift, estimates for open deals, synthetic quotas, contacts, cases and engagements |
 | `src/semantic/` | Normalizer (golden-set mock of the AI model), validation, scope and SQL compiler |

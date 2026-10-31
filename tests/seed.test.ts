@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { AS_OF_DATE, buildSeed, demoUsers } from '@/db/seed';
+import { PRODUCT_USAGE_COLUMNS, lowUsageHits, productUsageFixture } from '@/db/product-usage';
 
 const hash = (v: unknown) => createHash('sha256').update(JSON.stringify(v)).digest('hex');
 const data = buildSeed();
@@ -42,5 +44,19 @@ describe('dataset: Maven CRM sample plus synthetic additions', () => {
   it('includes event data for both alert types', () => {
     expect(data.supportCases.length).toBeGreaterThan(0);
     expect(data.engagements.length).toBeGreaterThan(0);
+  });
+
+  it('lets the low-usage rule test the fixture, then the same check against the seed', () => {
+    const fixtureHits = lowUsageHits(productUsageFixture(AS_OF_DATE), AS_OF_DATE);
+    expect(fixtureHits.map((r) => r.accountId)).toEqual(['acct_low']);
+    expect(Object.values(PRODUCT_USAGE_COLUMNS)).toEqual([
+      'account_id', 'product_id', 'purchase_date', 'purchased_quantity', 'usage_month', 'quantity_used', 'source',
+    ]);
+    const seedHits = lowUsageHits(data.productUsage, AS_OF_DATE);
+    expect(seedHits).toHaveLength(1);
+    expect(data.accountTeam.some((t) => t.accountId === seedHits[0]!.accountId)).toBe(true);
+    expect(data.productUsage.every((r) => r.source === 'synthetic')).toBe(true);
+    // The alerts package loads the same contract, so the rule and the seed cannot drift.
+    expect(readFileSync('alerts/src/db/product-usage.ts', 'utf8')).toBe(readFileSync('src/db/product-usage.ts', 'utf8'));
   });
 });
