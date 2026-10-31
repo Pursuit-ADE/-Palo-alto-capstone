@@ -579,7 +579,8 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const finalRegions = regions.length ? regions : (inherit?.filters.regions ?? []);
   if (finalRegions.length) filters.regions = [...finalRegions];
   else delete filters.regions;
-  if (stages.length) filters.stages = stages;
+  const openStages = stages.filter((st): st is 'Prospecting' | 'Engaging' => st === 'Prospecting' || st === 'Engaging');
+  if (openStages.length) filters.stages = openStages;
   else delete filters.stages;
   if (period) filters.period = period;
   else delete filters.period;
