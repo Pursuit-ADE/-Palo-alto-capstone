@@ -112,6 +112,7 @@ Findings are tracked in `docs/RED-TEAM.md` (F1–F25). The ones a reviewer shoul
 - Pattern-based prompt flags are a speed bump; scope enforcement in the database is the real control.
 - Topic labels are coarse: the first matching word list wins, so "use cases" counts as support cases and "will we hit quota" as forecast. Read them as trends, not exact categories.
 - "Why is my number different?" explanations cover pipeline coverage only. They can't check a figure from outside the asker's scope, and say so instead of guessing which reason applies.
+- With Claude on, the deterministic reading checks Claude's choice of metric (`checkMetric()`, `src/semantic/answer.ts`). When they disagree, the user is asked, even if Claude was right and the keyword reader was wrong: a wrong guess costs one extra question, never a wrong number. Filters, period and breakdown are not cross-checked.
 - This is a self-assessment by the team that built it. The client's own red team should test it before any rollout.
 
 ## Retention

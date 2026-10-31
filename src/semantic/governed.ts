@@ -108,23 +108,43 @@ function answerMetric(metric: MetricDefinition): Answer['metric'] {
   };
 }
 
-export async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
+/** Postgres returns sums and counts as strings; only the region, stage and owner columns stay text. */
+function numericRow(r: Record<string, unknown>): Answer['rows'][number] {
+  return Object.fromEntries(
+    Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && k !== 'region' && k !== 'stage' && k !== 'owner' ? Number(v) : (v as string | number | null)]),
+  );
+}
+
+/** The filters the query actually applied, after scoping, for the answer panel. */
+function appliedFilters(intent: Intent, regions: string[]): Answer['filters'] {
+  const f = intent.filters;
+  const period = f.period ? findPeriod(f.period) : undefined;
+  return {
+    period: period ? { label: period.period, start: period.start, end: period.end } : null,
+    regions,
+    stages: f.stages ?? null,
+    groupBy: intent.groupBy,
+    amount: f.amount ?? null,
+    products: f.products?.map(labelProduct) ?? null,
+    accounts: f.accounts ?? null,
+    sectors: f.sectors ?? null,
+    people: f.people ?? null,
+    teams: f.teams ?? null,
+  };
+}
+
+export async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields, pinnedSnapshot?: NonNullable<Awaited<ReturnType<typeof currentSnapshot>>>): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
-  const snapshot = await currentSnapshot(database);
+  const snapshot = pinnedSnapshot ?? await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
   const q = compile(intent, registry, principal, snapshot.id);
   Object.assign(fields, { regions: q.regions, ownerCount: principal.ownerIds?.length ?? null, snapshotId: snapshot.id });
   const res = await database.client.query<Record<string, unknown>>(q.text, q.params);
-  const rows = res.rows.map((r) =>
-    Object.fromEntries(
-      Object.entries(r).map(([k, v]) => [k, typeof v === 'string' && k !== 'region' && k !== 'stage' && k !== 'owner' ? Number(v) : (v as string | number | null)]),
-    ),
-  );
+  const rows = res.rows.map(numericRow);
   const resultHash = sha256(JSON.stringify({ intent, rows, snapshot: snapshot.id })).slice(0, 16);
   fields.resultHash = resultHash;
   const scope = scopeStatement(principal, q.regions);
-  const period = intent.filters.period ? findPeriod(intent.filters.period) : undefined;
   const names = intent.groupBy.includes('owner') ? await ownerNames(database, rows) : null;
   return {
     kind: 'answer',
@@ -132,18 +152,7 @@ export async function run(database: Database, registry: Registry, principal: Pri
     intent,
     rows,
     scope,
-    filters: {
-      period: period ? { label: period.period, start: period.start, end: period.end } : null,
-      regions: q.regions,
-      stages: intent.filters.stages ?? null,
-      groupBy: intent.groupBy,
-      amount: intent.filters.amount ?? null,
-      products: intent.filters.products?.map(labelProduct) ?? null,
-      accounts: intent.filters.accounts ?? null,
-      sectors: intent.filters.sectors ?? null,
-      people: intent.filters.people ?? null,
-      teams: intent.filters.teams ?? null,
-    },
+    filters: appliedFilters(intent, q.regions),
     parts: ratioParts(metric, registry, scope, intent.filters.period),
     narrative: withFilterNote(narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined), intent),
     chart: chartSpec(metric, rows, intent.groupBy, names ?? undefined),

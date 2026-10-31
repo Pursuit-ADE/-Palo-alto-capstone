@@ -4,8 +4,9 @@ import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import type { Database } from '../db/client';
 import { queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
-import { IntentError } from './compile';
+import { IntentError, validateIntent } from './compile';
 import { Intent as IntentSchema, type Intent } from '../registry/types';
+import { normalize, type NormalizeResult } from './normalize';
 import { flagQuestion } from './flags';
 import { notifySecurity } from '../server/security-notify';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
@@ -176,6 +177,20 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
   if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
 }
 
+/**
+ * The deterministic reading is an independent check on the model's choice of metric. When they disagree, or the
+ * reading had to ask which metric is meant, the user is asked; a different metric is never silently substituted.
+ * The question names the two readings from the registry, so it stays current when a metric is added. A reading
+ * that asks about anything else (a missing quarter, say) lets the model's proposal through (#52 review).
+ */
+function checkMetric(proposal: NormalizeResult, expected: NormalizeResult, registry: Registry): NormalizeResult {
+  if (proposal.kind !== 'intent') return proposal;
+  if (expected.kind === 'clarify' && expected.about === 'metric') return expected;
+  if (expected.kind !== 'intent' || proposal.intent.metric === expected.intent.metric) return proposal;
+  const names = [expected.intent.metric, proposal.intent.metric].map((id) => registry.metrics.get(id)?.name).join(' or ');
+  return { kind: 'clarify', question: `Do you mean ${names}?`, about: 'metric' };
+}
+
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
@@ -191,7 +206,11 @@ export function ask(database: Database, registry: Registry, userId: string, phra
       return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields, linked);
     }
     const snapshot = await currentSnapshot(database);
-    const n = await model.propose(phrase, registry, snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10), previous);
+    const asOfDate = snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10);
+    const proposal = await model.propose(phrase, registry, asOfDate, previous);
+    if (proposal.kind === 'intent') validateIntent(proposal.intent, registry);
+    const expected = model === deterministicModel ? proposal : normalize(phrase, registry, asOfDate, previous);
+    const n = checkMetric(proposal, expected, registry);
     if (n.kind !== 'intent') {
       // A reason code and a fingerprint, never the model's text: a model can echo the question back, and the
       // audit log keeps only the question's hash.
@@ -200,6 +219,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     }
     // Scope is resolved again after the model returns: a role or team change made while the model was
     // working applies to this query, not just the next one.
-    return run(database, registry, await principal(), n.intent, fields);
+    if (!snapshot) throw new Error('No data snapshot loaded');
+    return run(database, registry, await principal(), n.intent, fields, snapshot);
   });
 }

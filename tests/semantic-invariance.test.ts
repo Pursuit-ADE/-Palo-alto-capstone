@@ -7,7 +7,7 @@ import cases from '../registry/golden/metamorphic.json';
 import { openDatabase, type Database } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
 import type { Intent } from '@/registry/types';
-import { ask, type Answer } from '@/semantic/answer';
+import { ask } from '@/semantic/answer';
 import { validateIntent } from '@/semantic/compile';
 import { followUpRule, type IntentModel } from '@/semantic/model';
 import { normalize, type NormalizeResult } from '@/semantic/normalize';
@@ -138,18 +138,17 @@ describe('wordings the deterministic model does not read yet', () => {
 });
 
 describe('a valid but wrong metric is a semantic failure, even when access and SQL succeed', () => {
-  it('a model that reads a count question as open pipeline gets an authorized answer, and the verdict still fails it', async () => {
+  it('a model that reads a count question as open pipeline is a wrong metric, and ask() asks instead of answering it', async () => {
     const phrase = 'how many open deals do we have';
     const wrong: Intent = { metric: 'open_pipeline', filters: {}, groupBy: [] };
     const model: IntentModel = { name: 'stub-wrong-metric', propose: async () => ({ kind: 'intent', intent: wrong }) };
-    const r = await ask(database, reg, 'u_ts_east', phrase, { model });
-    // Authorization and compilation are satisfied: the East seller gets an in-scope open pipeline answer.
-    expect(r.kind).toBe('answer');
-    expect((r as Answer).metric.id).toBe('open_pipeline');
-    // The semantic check against the human-reviewed expectation still fails it.
+    // The intent is valid and in scope, so access and SQL alone would answer it. The semantic check fails it.
     const expected = cases.equivalent.find((g) => g.phrases.includes(phrase))!.intent as Intent;
-    expect(semanticVerdict(expected, { kind: 'intent', intent: (r as Answer).intent as Intent })).toBe('wrong_metric');
+    expect(semanticVerdict(expected, { kind: 'intent', intent: wrong })).toBe('wrong_metric');
     expect(semanticVerdict(expected, read(phrase))).toBe('correct');
+    // The deterministic reading disagrees with the model's metric, so the East seller is asked, not answered (#52).
+    const r = await ask(database, reg, 'u_ts_east', phrase, { model });
+    expect(r).toEqual({ kind: 'clarify', question: 'Do you mean Open opportunity count or Open pipeline?', about: 'metric' });
   });
 });
 
