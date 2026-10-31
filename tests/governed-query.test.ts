@@ -276,14 +276,19 @@ describe('intent validation and injection', () => {
     expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
   });
 
-  it('treats a SQL-injection string in a filter as a plain value, not SQL', async () => {
-    const r = await answerIntent(database, reg, 'u_analyst', {
-      metric: 'open_opportunity_count',
-      filters: { stages: ["Engaging' OR '1'='1"] },
-      groupBy: [],
-    });
-    expect(r.rows[0]!.value).toBe(0);
-    const accounts = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
-    expect(accounts.rows[0]!.n).toBe(data.accounts.length);
+  it('refuses a stage that is not an open-deal stage', async () => {
+    const before = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
+    await expect(
+      answerIntent(database, reg, 'u_analyst', {
+        metric: 'open_opportunity_count',
+        filters: { stages: ["Engaging' OR '1'='1"] },
+        groupBy: [],
+      }),
+    ).rejects.toBeInstanceOf(IntentError);
+    await expect(
+      answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: { stages: ['Won'] }, groupBy: [] }),
+    ).rejects.toBeInstanceOf(IntentError);
+    const after = await database.client.query<{ n: number }>('SELECT COUNT(*)::int AS n FROM accounts');
+    expect(after.rows[0]!.n).toBe(before.rows[0]!.n);
   });
 });

@@ -1,0 +1,16 @@
+{
+  "id": "low_usage",
+  "version": 1,
+  "name": "Low product usage on my account",
+  "description": "Usage of a purchased product is under 20% of the quantity bought, at least six months after purchase. Alerts when a month's report shows it. The demo's usage data is synthetic.",
+  "owner": "Customer Analytics (alert steward)",
+  "audience": [
+    "technical_seller",
+    "sales_rep"
+  ],
+  "event": "low_usage",
+  "conditions": {},
+  "criticalSeverities": [],
+  "title": "Low usage of {product} at {account}",
+  "explain": "Fired because {account}, an account on your account team, used {used} of the {purchased} {product} bought on {purchasedOn} ({percent}%) in {month}. That is under the 20% line, more than six months after purchase. Data source: {source}."
+}

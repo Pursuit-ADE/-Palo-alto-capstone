@@ -9,6 +9,7 @@ const Identifier = z.string().regex(/^[a-z_][a-z0-9_]*$/);
 const PLACEHOLDERS = {
   support_case: ['account', 'severity', 'subject', 'when'],
   engagement: ['account', 'contactTitle', 'asset', 'type', 'when'],
+  low_usage: ['account', 'product', 'used', 'purchased', 'percent', 'purchasedOn', 'month', 'source'],
 } as const;
 type Placeholder = (typeof PLACEHOLDERS)[keyof typeof PLACEHOLDERS][number];
 
@@ -42,6 +43,13 @@ export const AlertRule = z.discriminatedUnion('event', [
     title: templateFor('engagement'),
     explain: templateFor('engagement'),
     conditions: z.object({ cxoOnly: z.boolean(), typeIn: z.array(z.enum(['whitepaper_download', 'campaign_response'])).min(1) }).strict(),
+  }).strict(),
+  // No conditions of its own: the 20% line and the six months are fixed in db/product-usage.ts, shared with the seed.
+  Base.extend({
+    event: z.literal('low_usage'),
+    title: templateFor('low_usage'),
+    explain: templateFor('low_usage'),
+    conditions: z.object({}).strict(),
   }).strict(),
 ]);
 export type AlertRule = z.infer<typeof AlertRule>;

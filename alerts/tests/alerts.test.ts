@@ -45,8 +45,8 @@ const deliveries = (userId?: string) =>
   userId ? database.db.select().from(alertDeliveries).where(eq(alertDeliveries.userId, userId)) : database.db.select().from(alertDeliveries);
 
 describe('rule catalog (L1)', () => {
-  it('loads the two versioned rules', () => {
-    expect([...rules.keys()].sort()).toEqual(['cxo_engagement', 'high_severity_case']);
+  it('loads the three versioned rules', () => {
+    expect([...rules.keys()].sort()).toEqual(['cxo_engagement', 'high_severity_case', 'low_usage']);
   });
 
   const loadBad = (file: string, change: (r: { explain?: string; conditions: Record<string, unknown> }) => void) => {
