@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
+import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import { ProvenancePanel } from './provenance-panel';
 import { Chart3D } from './chart3d';
 import { answerCharts, breakdownQuestions } from './chart-data';
@@ -136,12 +137,14 @@ export function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null
   // A single number is shown as large as the dashboard's, with its scope and data date right under it.
   const single = a.filters.groupBy.length === 0 && a.rows.length === 1 ? a.rows[0]! : null;
   const big = single && single.value !== null && single.value !== undefined ? cell('value', single.value, a.metric.unit) : null;
+  const goal = coverageSpec(a.metric);
+  const tone = goal && single && typeof single.value === 'number' ? coverageStanding(single.value, goal).tone : null;
   return (
     <div className="answer">
       <h3>{a.metric.name}</h3>
       {/* The answer in one sentence comes first (client feedback, Oct 24): a leader reads it and can stop there. */}
       <p className="narrative narrative-lead">{a.narrative}</p>
-      {big && <p className="answer-value">{big}</p>}
+      {big && <p className={tone ? `answer-value tone-${tone}` : 'answer-value'}>{big}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
       {charts && (
         // The answer list is a live region; the chart's controls change whenever any graph on the page turns, and

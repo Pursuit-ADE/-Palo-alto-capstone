@@ -8,6 +8,21 @@ import { ask } from '@/semantic/answer';
 
 const enabled = Boolean(process.env.DATABASE_URL && process.env.AUDIT_DATABASE_URL && process.env.AUTH_DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
 
+async function expectAppWritesDenied(app: pg.Client, denied: (c: pg.Client, sql: string) => Promise<void>) {
+  await denied(app, "UPDATE opportunities SET amount = 0 WHERE id = 'x'");
+  await denied(app, 'DELETE FROM accounts');
+  await denied(app, "INSERT INTO regions (id, name) VALUES ('north', 'North')");
+  await denied(app, 'CREATE TABLE stolen (x int)');
+  await denied(app, 'DROP TABLE quotas');
+  await denied(app, 'SELECT * FROM session_guard');
+  await denied(app, "UPDATE session_guard SET hits = '[]'");
+  await denied(app, 'SELECT * FROM contacts');
+  await denied(app, 'SELECT * FROM support_cases');
+  await denied(app, 'SELECT * FROM engagements');
+  await denied(app, 'SELECT * FROM app_accounts');
+  await denied(app, 'SELECT * FROM app_sessions');
+}
+
 describe.skipIf(!enabled)('Postgres least privilege', () => {
   let database: Database;
   let app: pg.Client;
@@ -34,28 +49,19 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await expect(c.query(sql)).rejects.toThrow(/permission denied|read-only transaction/);
   };
 
+  it('the app role can read question counts and still cannot read the audit log', async () => {
+    await app.query('SELECT week, metric, outcome, count FROM question_trends');
+    await denied(app, 'SELECT * FROM query_audit');
+  });
+
   it('answers governed questions through the read-only role and audits them', async () => {
     expect(database.mode).toBe('postgres');
     const r = await ask(database, loadRegistry(), 'u_ts_east', 'What is our open pipeline?');
     expect(r.kind).toBe('answer');
   });
 
-  it('the app role cannot write, change schema or read the audit log', async () => {
-    await denied(app, "UPDATE opportunities SET amount = 0 WHERE id = 'x'");
-    await denied(app, 'DELETE FROM accounts');
-    await denied(app, "INSERT INTO regions (id, name) VALUES ('north', 'North')");
-    await denied(app, 'CREATE TABLE stolen (x int)');
-    await denied(app, 'DROP TABLE quotas');
-    await denied(app, 'SELECT * FROM query_audit');
-    await denied(app, 'SELECT * FROM session_guard');
-    await denied(app, "UPDATE session_guard SET hits = '[]'");
-    // Tables outside the governed query path are not readable either.
-    await denied(app, 'SELECT * FROM contacts');
-    await denied(app, 'SELECT * FROM support_cases');
-    await denied(app, 'SELECT * FROM engagements');
-    // Demo sign-in tables: never readable by the answering login.
-    await denied(app, 'SELECT * FROM app_accounts');
-    await denied(app, 'SELECT * FROM app_sessions');
+  it('the app role cannot write, change schema or read tables outside its grant', async () => {
+    await expectAppWritesDenied(app, denied);
   });
 
   it('the app role has a statement timeout', async () => {
