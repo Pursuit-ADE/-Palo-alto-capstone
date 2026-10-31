@@ -10,13 +10,19 @@ describe('alert summary', () => {
       ['Waiting for digest', 2],
       ['Not sent', 4],
     ]);
-    expect(k[2]!.detail).toBe('1 access removed · 3 channel unavailable');
+    expect(k[2]!.detail).toBe('1 access removed · 3 still retrying · 0 undelivered');
   });
 
   it('counts someone who left the company as not sent, with the access removed (PR #55)', () => {
     const k = alertKpis({ suppressed_no_access: 1, suppressed_inactive: 2, failed: 1 });
     expect(k[2]!.value).toBe(4);
-    expect(k[2]!.detail).toBe('3 access removed · 1 channel unavailable');
+    expect(k[2]!.detail).toBe('3 access removed · 1 still retrying · 0 undelivered');
+  });
+
+  it('shows alerts that ran out of attempts apart from ones still being retried (F-05, #83)', () => {
+    const k = alertKpis({ failed: 2, undelivered: 3 });
+    expect(k[2]!.value).toBe(5);
+    expect(k[2]!.detail).toBe('0 access removed · 2 still retrying · 3 undelivered');
   });
 
   it('missing statuses count as 0', () => {

@@ -5,7 +5,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
-import type { TrendCount } from './question-trends';
+import { ANSWERED_OUTCOMES, type TrendCount } from './question-trends';
 import { topicName } from './topics';
 
 export type TopicCount = { week: string; topic: string; outcome: string; count: number };
@@ -32,7 +32,7 @@ export function trendFacts(counts: TrendCount[], topics: TopicCount[], week?: st
   const previous = weeks.filter((w) => w < current).at(-1) ?? null;
   const thisWeek = counts.filter((c) => c.week === current);
   const asked = sum(thisWeek);
-  const answered = sum(thisWeek.filter((c) => c.outcome === 'answered'));
+  const answered = sum(thisWeek.filter((c) => ANSWERED_OUTCOMES.has(c.outcome)));
   const facts: Fact[] = [
     { id: 'volume', text: `${plural(asked, 'question')} in the week of ${current}; ${answered} answered (${pct(answered, asked)}%).` },
     ...metricFacts(thisWeek),
@@ -48,7 +48,7 @@ const byCountThenName = (a: [string, number], b: [string, number]) => b[1] - a[1
 /** The three most-asked metrics among answered questions. */
 function metricFacts(thisWeek: TrendCount[]): Fact[] {
   const byMetric = new Map<string, number>();
-  for (const c of thisWeek) if (c.outcome === 'answered' && c.metric !== '(no metric)') byMetric.set(c.metric, (byMetric.get(c.metric) ?? 0) + c.count);
+  for (const c of thisWeek) if (ANSWERED_OUTCOMES.has(c.outcome) && c.metric !== '(no metric)') byMetric.set(c.metric, (byMetric.get(c.metric) ?? 0) + c.count);
   return [...byMetric.entries()].sort(byCountThenName).slice(0, 3).map(([metric, n], i) => ({ id: `metric_${i + 1}`, text: `${metric}: ${plural(n, 'answered question')}.` }));
 }
 

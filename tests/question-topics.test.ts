@@ -85,6 +85,28 @@ const topics: TopicCount[] = [
   { week: '2026-10-19', topic: 'other', outcome: 'refused_scope', count: 1 },
 ];
 
+describe('explanations count as answered (#50)', () => {
+  it('stores no topic for a "why is my number different?" explanation, and the view leaves it out', async () => {
+    const database = await openDatabase();
+    try {
+      const r = await ask(database, loadRegistry(), 'u_ts_east', 'Why does marketing say 3x when mine is 0.5x?');
+      expect(r.kind).toBe('explanation');
+      const rows = await database.db.select().from(queryAudit).where(eq(queryAudit.outcome, 'explanation'));
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((x) => x.topic === null)).toBe(true);
+      expect(await database.db.select().from(questionTopicsView)).toEqual([]);
+    } finally {
+      await database.close();
+    }
+  });
+
+  it('counts an explanation as answered in the weekly facts', () => {
+    const f = trendFacts([{ week: '2026-10-26', metric: 'pipeline_coverage', outcome: 'explanation', count: 2 }, { week: '2026-10-26', metric: '(no metric)', outcome: 'unsupported', count: 1 }], []);
+    expect(f.answered).toBe(2);
+    expect(f.facts[0]!.text).toBe('3 questions in the week of 2026-10-26; 2 answered (67%).');
+  });
+});
+
 describe('trends agent facts', () => {
   it('works out the latest week, the answer rate, top metrics and topic changes', () => {
     const f = trendFacts(counts, topics);

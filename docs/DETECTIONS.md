@@ -10,11 +10,11 @@ One row per question, dashboard tile or intent, written by `src/semantic/answer.
 |---|---|
 | `at` | When (UTC, set by the app server's clock) |
 | `request_id`, `turn` | Ties a conversation's turns together |
-| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events) |
+| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events). `comparison_side` is the second figure of a "why is my number different?" comparison: same `request_id` as its question row |
 | `user_id`, `role` | Who, and the role from the database (`sales_rep`, `technical_seller`, `sales_manager`, `analyst`). Sign-in rows with an unknown account use `unknown` |
 | `question_sha256` | Keyed hash of the question. Same text gives the same hash only while `AUDIT_HASH_KEY` stays the same |
 | `intent`, `metric_id`, `metric_version`, `regions`, `snapshot_id`, `result_hash` | What was asked for and answered |
-| `outcome` | Questions: `answered`, `clarify`, `unsupported`, `refused_scope`, `refused_injection`, `refused_intent`, `refused_locked`, `refused_rate`, `error`. Sign-in: `login_ok`, `login_failed`, `signup_ok`, `signup_failed` |
+| `outcome` | Questions: `answered`, `explanation` (a "why is my number different?" reply, with its figures in the row), `clarify`, `unsupported`, `refused_scope`, `refused_injection`, `refused_intent`, `refused_locked`, `refused_rate`, `error`. Sign-in: `login_ok`, `login_failed`, `signup_ok`, `signup_failed` |
 | `reason` | Reason code or refusal message (never the question text) |
 | `flags` | Suspicious-prompt codes: `instruction_override`, `role_claim`, `sql_or_code`, `link`, `pressure`, `social_proof`, `flattery`, `scope_widening` |
 | `model` | `deterministic` or `claude-opus-5-5` |
@@ -68,7 +68,7 @@ A question was flagged and still answered. Usually fine (SQL text in a question 
 ```sql
 SELECT at, user_id, role, flags, metric_id, regions, model
 FROM query_audit
-WHERE outcome = 'answered' AND cardinality(flags) > 0
+WHERE outcome IN ('answered', 'explanation') AND cardinality(flags) > 0
   AND at > now() - interval '24 hours'
 ORDER BY at DESC;
 ```
@@ -104,8 +104,10 @@ A non-analyst got an answer covering more than one region. Scope checks should m
 ```sql
 SELECT at, user_id, role, regions, metric_id, request_id
 FROM query_audit
-WHERE outcome = 'answered' AND role <> 'analyst' AND cardinality(regions) > 1;
+WHERE outcome IN ('answered', 'explanation') AND role <> 'analyst' AND cardinality(regions) > 1;
 ```
+
+D4 and D7 include `explanation` rows since Oct 31 (PR #50 review); `tests/discrepancy-explanation.test.ts` runs D4 from this file.
 
 Checked Oct 17: every query in this file ran against the demo database after simulated attacks. D1, D2, D3, D4 and the shared-question hunt fired as expected; D7 returned nothing.
 

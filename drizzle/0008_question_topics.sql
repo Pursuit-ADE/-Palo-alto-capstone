@@ -12,5 +12,5 @@ CREATE VIEW "question_topics" AS
          "outcome",
          count(*)::int AS "count"
   FROM "query_audit"
-  WHERE "source" = 'question' AND "outcome" <> 'answered'
+  WHERE "source" = 'question' AND "outcome" NOT IN ('answered', 'explanation')
   GROUP BY 1, 2, 3;

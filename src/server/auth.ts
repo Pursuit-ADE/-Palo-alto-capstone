@@ -10,6 +10,7 @@ import { createHash, createHmac, randomBytes, scrypt, timingSafeEqual } from 'no
 import { promisify } from 'node:util';
 import { and, desc, eq, gt, inArray, isNull, lt } from 'drizzle-orm';
 import type { Db } from '../db/client';
+import { employeeStatusOf, type EmployeeDirectory } from './employee-status';
 import { weakPasswordReason } from './passwords';
 import { appAccounts, appSessions } from '../db/schema';
 import { demoUsers, resolveDataDir } from '../db/seed';
@@ -72,7 +73,7 @@ export function userForInvite(code: string, secret: string | undefined, ids: rea
   return undefined;
 }
 
-const USERNAME = /^[a-z0-9._-]{3,32}$/;
+export const USERNAME = /^[a-z0-9._-]{3,32}$/;
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 // Checked when the username doesn't exist, so a wrong username takes as long as a wrong password.
 const DUMMY_HASH = 'scrypt$16384$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
@@ -87,7 +88,7 @@ export function inviteExpiry(raw = process.env.DEMO_INVITE_EXPIRES): Date | null
   return Number.isNaN(d.getTime()) ? 'invalid' : d;
 }
 
-export async function signUp(db: Db, input: { username: string; password: string; invite: string }, secret = process.env.DEMO_INVITE_SECRET, now = new Date(), expiry = inviteExpiry()) {
+export async function signUp(db: Db, input: { username: string; password: string; invite: string }, secret = process.env.DEMO_INVITE_SECRET, now = new Date(), expiry = inviteExpiry(), directory?: EmployeeDirectory) {
   if (!secret || expiry === 'invalid') throw new AuthError('Sign-up is turned off here.', 'signup_off');
   if (expiry && now > expiry) throw new AuthError('Invite codes for this demo have expired.', 'invite_expired');
   const username = input.username.trim().toLowerCase();
@@ -97,6 +98,9 @@ export async function signUp(db: Db, input: { username: string; password: string
   if (weak) throw new AuthError(weak, 'weak_password');
   const userId = userForInvite(input.invite, secret);
   if (!userId) throw new AuthError('That invite code is not valid.', 'bad_invite');
+  // Checked before the account exists, so someone who has left doesn't spend the invite on an account they can't use
+  // (PR #89 review). Same message as a bad code: the form doesn't say why.
+  if ((await employeeStatusOf(directory, userId)) !== 'active') throw new AuthError('That invite code is not valid.', 'employee_inactive');
   // An invite code works once: each demo person has at most one account in this app (a unique index enforces it,
   // so two sign-ups at the same moment can't both win). A leaked code can't create more accounts.
   const inserted = await db
@@ -119,13 +123,15 @@ export const MAX_SESSIONS = 5;
  * Checks the password and starts a session. Returns the raw token for the cookie; only its hash is stored.
  * Each log-in also deletes every expired session, and this account's oldest sessions beyond MAX_SESSIONS.
  */
-export async function logIn(db: Db, usernameRaw: string, password: string, now = new Date()) {
+export async function logIn(db: Db, usernameRaw: string, password: string, now = new Date(), directory?: EmployeeDirectory) {
   const username = usernameRaw.trim().toLowerCase();
   const [account] = USERNAME.test(username) ? await db.select().from(appAccounts).where(eq(appAccounts.username, username)) : [];
   const ok = await verifyPassword(password, account?.passwordHash ?? DUMMY_HASH);
   // A disabled account gets the same message as a wrong password.
   if (!account || !ok) throw new AuthError('The username or password is not right.', 'bad_credentials');
   if (account.disabledAt) throw new AuthError('The username or password is not right.', 'account_disabled');
+  // Someone who has left the company can't sign in, and isn't told why (evaluator D-06; same rule as the alerts app).
+  if ((await employeeStatusOf(directory, account.userId)) !== 'active') throw new AuthError('The username or password is not right.', 'employee_inactive');
   const token = randomBytes(32).toString('base64url');
   await db.delete(appSessions).where(lt(appSessions.expiresAt, now));
   await db.insert(appSessions).values({
@@ -152,8 +158,11 @@ export interface SessionInfo {
   sessionId: string;
 }
 
-/** The account behind a session token, if the session exists, hasn't expired and its account isn't disabled. */
-export async function sessionInfo(db: Db, token: string | undefined, now = new Date()): Promise<SessionInfo | undefined> {
+/**
+ * The account behind a session token, if the session exists, hasn't expired, its account isn't disabled and (when a
+ * directory is set) the person is an active employee. "Unknown" counts as not signed in: nothing is read on a guess.
+ */
+export async function sessionInfo(db: Db, token: string | undefined, now = new Date(), directory?: EmployeeDirectory): Promise<SessionInfo | undefined> {
   if (!token || token.length > 100) return undefined;
   const hash = tokenHash(token);
   const [s] = await db
@@ -161,12 +170,13 @@ export async function sessionInfo(db: Db, token: string | undefined, now = new D
     .from(appSessions)
     .innerJoin(appAccounts, eq(appAccounts.username, appSessions.username))
     .where(and(eq(appSessions.tokenHash, hash), gt(appSessions.expiresAt, now), isNull(appAccounts.disabledAt)));
-  return s ? { ...s, sessionId: hash.slice(0, 16) } : undefined;
+  if (!s || (await employeeStatusOf(directory, s.userId)) !== 'active') return undefined;
+  return { ...s, sessionId: hash.slice(0, 16) };
 }
 
 /** The user id a session token belongs to, if it exists, has not expired and its account is active. */
-export async function sessionUser(db: Db, token: string | undefined, now = new Date()): Promise<string | undefined> {
-  return (await sessionInfo(db, token, now))?.userId;
+export async function sessionUser(db: Db, token: string | undefined, now = new Date(), directory?: EmployeeDirectory): Promise<string | undefined> {
+  return (await sessionInfo(db, token, now, directory))?.userId;
 }
 
 export async function logOut(db: Db, token: string | undefined) {

@@ -11,10 +11,12 @@ export interface AlertKpi {
 export function alertKpis(counts: Record<string, number>): AlertKpi[] {
   const count = (s: string) => counts[s] ?? 0;
   const removed = count('suppressed_no_access') + count('suppressed_inactive');
-  const failed = count('failed');
+  // 'failed' is still being retried; 'undelivered' ran out of attempts and won't be (evaluator F-05, #83).
+  const retrying = count('failed');
+  const undelivered = count('undelivered');
   return [
     { key: 'delivered', label: 'Delivered', value: count('delivered'), note: 'sent to your inbox' },
     { key: 'waiting', label: 'Waiting for digest', value: count('queued_digest'), note: 'held by your digest or quiet-hours setting; shown once delivered' },
-    { key: 'not_sent', label: 'Not sent', value: removed + failed, note: 'access removed or channel unavailable', detail: `${removed} access removed · ${failed} channel unavailable` },
+    { key: 'not_sent', label: 'Not sent', value: removed + retrying + undelivered, note: 'access removed or channel unavailable', detail: `${removed} access removed · ${retrying} still retrying · ${undelivered} undelivered` },
   ];
 }

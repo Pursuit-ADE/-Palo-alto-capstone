@@ -22,6 +22,8 @@ Signed in as **Jordan Lee (Technical seller, East)**, "What is our open pipeline
 - **Provenance:** metric `open_pipeline` version 1, snapshot `snap_alto-pals-v2`, as of **2026-10-08**, plus a short hash of the result.
 - **Intent:** the structured request the system actually ran, which for that question is "open pipeline, no filters, no breakdown."
 
+Asked "why does marketing say coverage is 3x when mine is 0.5x?", Jordan gets **0.52x** ($174,325 of open pipeline against $338,000 of quota for FY27-Q1), the same definition everyone uses (pipeline coverage v1), and the reasons another figure can differ: scope, quarter, filters, data snapshot, or a definition from outside the copilot. Jordan can't see the company-wide figure, so the copilot doesn't fetch it or repeat the "3x". Avery Patel (analyst, all regions) asking the same about Cara Losch's team sees both: 0.52x for the team and 0.65x ($1,963,909 / $3,001,000) for all teams, the same definition with a different scope.
+
 That last line is the whole product idea. The person types English. The system turns it into a small, checked request. It never lets the question write its own math or its own SQL.
 
 ## The path of one question

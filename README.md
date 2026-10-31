@@ -52,6 +52,8 @@ phrase -> intent normalizer -> Intent (metric + filters, Zod-validated)
 
 Registry changes go through pull requests (reviewed, version-controlled); there is no runtime editing.
 
+**"Why is my number different?"** A question like "why does marketing say coverage is 3x when mine is 0.5x?" gets a fixed explanation instead of a model reply (`src/semantic/explain.ts`): the asker's own coverage with its numerator, denominator, scope and snapshot, and the reasons two coverage figures legitimately differ. It never queries, shows or repeats a figure outside the asker's scope. When both figures are inside it ("why is Cara Losch's team's coverage different from the company number?" for an analyst, two named regions, teams or reps against each other, or this quarter against next), it shows them side by side, says whether they differ by scope or by quarter, and checks that each value is its numerator over its denominator. The word "coverage" is optional when a ratio is quoted as the figure itself: "Why does marketing say 3x when mine is 0.5x?" gets the same explanation, while a multiplier ("revenue is 2x higher") does not. A name it doesn't know ("Jordan's coverage", in any case) is asked back, not dropped. When a question has the direction wrong ("Why is A higher than B?" when A is lower), the reply says so first, and only when both figures are named and the asker may see both.
+
 ## Decisions
 
 - **Own registry over Cube** (Oct 9): simpler for 3 metrics on one database; revisit if the catalog grows past 15 to 20 metrics.
