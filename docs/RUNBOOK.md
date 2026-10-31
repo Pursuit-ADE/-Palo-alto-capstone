@@ -141,8 +141,20 @@ Every number in the summary comes from code. Claude may only choose facts and ex
 
 ```bash
 npm test
-npm run eval:golden                            # 66 phrasings, deterministic model
-INTENT_MODEL=claude npm run eval:golden        # only with an Anthropic key; report the score first
+npm run eval:golden                            # 69 phrasings, deterministic model
+npm run eval:golden                            # again with INTENT_MODEL=claude in .env.local: Claude
+npm run eval:redteam                           # 17 attacks, through whichever model .env.local selects
 ```
+
+### Using Claude (where the API key goes)
+
+The key never goes in the repo, a commit, a PR, a chat or a slide. Put it in a file git ignores:
+
+- **Laptop (`npm run dev`) and the eval scripts:** in `.env.local` at the repo root, two lines: `INTENT_MODEL=claude` and `ANTHROPIC_API_KEY=` followed by the key. Next.js and `npm run eval:golden` / `eval:redteam` read it. Restart `npm run dev` after editing it.
+- **Docker (`docker compose --profile app up`):** the same two lines in `.env` at the repo root (Compose reads `.env`, not `.env.local`), then `docker compose --profile app up -d copilot` to restart the copilot with them.
+- **Check it took:** run `npm run eval:golden`. An error on the first question (an authentication error or a timeout) means the key was missing or rejected; the script stops there. `Model: claude-opus-5-5` appears only at the end of a run that finished. `Model: deterministic` means the process didn't see `INTENT_MODEL=claude`. The audit log records the model for every question (`query_audit.model`).
+- **Start from a clean shell.** The file never replaces a variable that's already set in the shell, so an old `ANTHROPIC_API_KEY` or `INTENT_MODEL` exported earlier wins over `.env.local`. Open a new terminal, or unset both first.
+- **Only these commands read `.env.local`:** the app (`npm run dev`, `npm start`), `npm run eval:golden` and `npm run eval:redteam` (and `npm run trends:agent` once #71 lands). `npm run invites` and `npm run accounts` don't, so pass anything they need in the shell.
+- Both files are in `.gitignore` (`.env`, `.env.*`). Run `git status` before committing: neither should ever appear.
 
 CI runs the tests, a build, dependency and secret scans, CodeQL, the Postgres login tests, and a fresh-install check that starts both apps and loads their sign-in pages.
