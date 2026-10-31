@@ -26,13 +26,24 @@ export interface EngineOptions {
   testIdentityInLinks?: boolean;
   /** Employee status. When set, only people it reports as active get an alert (client ask, Oct 23). Unset: check off. */
   directory?: EmployeeDirectory;
+  /** Called when alerts run out of channel attempts. Default: one console.error line for the operator. */
+  reportUndelivered?: (e: { userId: string; channel: string; ids: string[] }) => void;
 }
 
-export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'suppressed_inactive' | 'failed';
+/** The default operator signal for alerts that ran out of attempts: ids only, never account names or alert text. */
+export function reportUndelivered(e: { userId: string; channel: string; ids: string[] }) {
+  console.error(`alerts: ${e.ids.length} alert(s) undelivered after ${MAX_ATTEMPTS} attempts (user ${e.userId}, channel ${e.channel}): ${e.ids.join(', ')}`);
+}
+
+export type DeliveryStatus = 'pending' | 'sending' | 'delivered' | 'queued_digest' | 'suppressed_no_access' | 'suppressed_inactive' | 'failed' | 'undelivered';
 
 /** A claim older than this is treated as a send that was cut off, and may be taken over. */
 export const STALE_CLAIM_MS = 10 * 60 * 1000;
-/** A failed alert is retried up to this many attempts in total, waiting 2^attempts minutes between tries. */
+/**
+ * A failed alert is retried up to this many channel attempts in total, waiting 2^attempts minutes between tries. Then it
+ * is marked 'undelivered' and reported to the operator, never dropped silently (evaluator F-05, #83). A directory that
+ * can't answer doesn't use up attempts: the alert waits for it.
+ */
 export const MAX_ATTEMPTS = 5;
 
 function when(d: Date): string {
@@ -258,15 +269,27 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     for (const r of group) {
       const verdict = await sendVerdict(db, rules, r, opts.directory);
       if (verdict === 'send') items.push(r);
-      // A directory that could not answer is a failed send, so it keeps its retries; "left the company" is final.
+      // A directory that could not answer is retried without using up an attempt, so a long outage delays the alert
+      // instead of dropping it (evaluator F-05); "left the company" is final.
+      else if (verdict === 'retry') await db.update(alertDeliveries).set({ status: 'failed', attempts: sql`${alertDeliveries.attempts} - 1` }).where(mine([r.id]));
       else await db.update(alertDeliveries).set({ status: VERDICT_STATUS[verdict] }).where(mine([r.id]));
     }
     if (items.length === 0) continue;
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
-    await db
-      .update(alertDeliveries)
-      .set(ok ? { status: 'delivered', deliveredAt: now, digestId: digestId ?? null } : { status: 'failed' })
-      .where(mine(items.map((i) => i.id)));
+    if (ok) {
+      await db.update(alertDeliveries).set({ status: 'delivered', deliveredAt: now, digestId: digestId ?? null }).where(mine(items.map((i) => i.id)));
+      continue;
+    }
+    const spent = items.filter((i) => i.attempts >= MAX_ATTEMPTS).map((i) => i.id);
+    const retry = items.filter((i) => i.attempts < MAX_ATTEMPTS).map((i) => i.id);
+    if (retry.length) await db.update(alertDeliveries).set({ status: 'failed' }).where(mine(retry));
+    if (spent.length) {
+      // Report only the rows this sender actually marked: a sender whose claim was taken over changes nothing here,
+      // and must not report alerts the newer sender may still deliver (PR #90 review).
+      const marked = await db.update(alertDeliveries).set({ status: 'undelivered' }).where(mine(spent)).returning({ id: alertDeliveries.id });
+      // The operator's signal (evaluator F-05). Ids only: no account names or alert text in the log.
+      if (marked.length) (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: marked.map((m) => m.id) });
+    }
   }
 }
 
