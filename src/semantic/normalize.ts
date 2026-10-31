@@ -98,6 +98,49 @@ function findNames(text: string, kind: Hit['kind'], names: string[]): Hit[] {
 }
 
 /**
+ * Nouns that make the word before them a name: "for zephyra deals", "from zephyra's team". Only with one of these does a
+ * lower-case word count as a name, because "for planning" and "for review" look the same as "for zephyra" without a
+ * dictionary (a word-list version asked back 1 in 3 ordinary questions, review Oct 31).
+ */
+const NAME_NOUN = /^(deal|deals|team|teams|account|accounts|pipeline|pipelines|opportunity|opportunities|quota|quotas|book|territory|portfolio|customers|clients|reps)$/;
+/** Words that can sit before those nouns without being a name: "for open deals", "for the team", "of big accounts". */
+const PLAIN_BEFORE_NOUN = new Set(
+  ('the a an my our your his her their its this that these those each every all any both some no me us them everyone ' +
+    'open closed won lost active stalled new old big large small largest biggest top key whole entire total overall ' +
+    'current next last previous prior early late high low remaining existing other same sales east west central ' +
+    'prospecting engaging enterprise smb mid-market strategic commercial renewal upsell inbound outbound q1 q2 q3 q4 ' +
+    'exec execs executive leadership management marketing finance ops revops field inside channel partner partners ' +
+    'support product regional global direct dream mine ours company everyone everybody manager managers boss vp svp ' +
+    'cro ceo cfo coo board director head lead leader closing pending at-risk risky slipping stuck hot warm cold ' +
+    // The name nouns themselves: "for my team's deals", "for the account team".
+    'deal deals team teams account accounts pipeline pipelines opportunity opportunities quota quotas book territory ' +
+    'portfolio customer customers client clients rep reps').split(' '),
+);
+
+/** A word that starts a name the catalog resolved. findNames records only a name's first mention, so match by words. */
+const startsResolvedName = (text: string, at: number, picked: Hit[]) => picked.some((h) => text.startsWith(` ${words(h.name)} `, at - 1));
+
+/**
+ * A lower-case name used as one, which is neither an ordinary word nor a name the catalog resolved (QA cycle 5, Oct 31;
+ * PRD A2): "for zephyra deals", "for the zephyra account", "from zephyra's team", "the rep named zack". A bare "for
+ * zephyra" is left alone, because it reads the same as "for planning".
+ */
+function unknownLowerName(text: string, picked: Hit[]): boolean {
+  const unknown = (word: string, at: number) =>
+    !PLAIN_BEFORE_NOUN.has(word) && !UNKNOWN_REGIONS.includes(word) && !/^(fy\d{2,4})?(-?q[1-4])?$/.test(word) && !startsResolvedName(text, at, picked);
+  // The 's survives cleaning as " s ": "for zephyra s account". It counts only before a name noun too, so "for
+  // tomorrow's meeting" and "for friday's call" stay ordinary.
+  for (const m of text.matchAll(/ (?:for|from|of|at|with)(?: (?:the|my|our|a|an))? ([a-z][a-z0-9-]*)(?: s)? ([a-z]+)(?= )/g)) {
+    const [word, next] = [m[1]!, m[2]!];
+    if (NAME_NOUN.test(next) && unknown(word, m.index! + m[0].lastIndexOf(` ${word} `) + 1)) return true;
+  }
+  for (const m of text.matchAll(/ (?:named|called) ([a-z][a-z0-9-]*)(?= )/g)) {
+    if (unknown(m[1]!, m.index! + m[0].length - m[1]!.length)) return true;
+  }
+  return false;
+}
+
+/**
  * Filters named in this question. An unknown name, a manager, or a deal size with no comparison is a
  * clarifying question: dropping it would answer for the whole scope (PRD A2).
  */
@@ -165,6 +208,11 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   }
   if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
     return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
+  }
+  // A lower-case name used as one ("for zephyra deals"): NAMED only sees capitalised names, so it was dropped and the
+  // whole scope answered (QA cycle 5, Oct 31; PRD A2).
+  if (unknownLowerName(text, picked)) {
+    return { filters: {}, clarify: "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data." };
   }
   // "open deal value" is a name for the metric. The amount parser also treats "deal value" as a deal size,
   // so the synonym is blanked and a real comparison in the same question still counts.
