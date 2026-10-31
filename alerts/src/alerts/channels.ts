@@ -6,7 +6,7 @@
 import type { alertDeliveries } from '../db/schema';
 
 type Delivery = typeof alertDeliveries.$inferSelect;
-type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal }) => Promise<{ ok: boolean }>;
+type Fetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal; redirect?: 'error' }) => Promise<{ ok: boolean }>;
 
 export type MailMessage = { to: string; subject: string; text: string; html: string };
 export type SendMail = (msg: MailMessage, init: { signal?: AbortSignal }) => Promise<boolean>;
@@ -84,7 +84,7 @@ export function emailHtml(items: Delivery[], isDigest: boolean): string {
 }
 
 export const EMAIL_WEBHOOK_WARNING =
-  'EMAIL_WEBHOOK_URL is missing or not an allowed catcher; email alerts will fail until it is set (HTTPS, or http://127.0.0.1 / localhost with npm run dev).';
+  'EMAIL_WEBHOOK_URL is missing or not an allowed catcher; email alerts will fail until it is set (an HTTPS host listed in EMAIL_WEBHOOK_HOSTS, or http://127.0.0.1 / localhost with npm run dev).';
 
 export function createChannels(opts: {
   slackWebhooks?: Record<string, unknown>;
@@ -107,7 +107,8 @@ export function createChannels(opts: {
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
     if (!isEmailWebhook(emailWebhook, env)) return false;
     try {
-      const res = await doFetch(emailWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(msg), signal: init.signal });
+      // redirect: 'error', so an allowed host can't bounce alert text on to another one (evaluator G-07, #65).
+      const res = await doFetch(emailWebhook, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(msg), signal: init.signal, redirect: 'error' });
       return res.ok;
     } catch {
       return false;
@@ -120,7 +121,7 @@ export function createChannels(opts: {
         const url = webhooks[userId];
         if (!url) return false;
         try {
-          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
+          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
           return res.ok;
         } catch {
           return false;
@@ -167,13 +168,21 @@ export function isUserEmail(value: unknown): value is string {
   return /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(value);
 }
 
-/** HTTPS catcher, or http://127.0.0.1 / localhost in development. No credentials in the URL. */
+/** The HTTPS hosts email alerts may go to (EMAIL_WEBHOOK_HOSTS, comma-separated, exact host names). Empty: none. */
+export function emailWebhookHosts(env: Record<string, string | undefined> = process.env): Set<string> {
+  return new Set((env.EMAIL_WEBHOOK_HOSTS ?? '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * An HTTPS catcher on a host listed in EMAIL_WEBHOOK_HOSTS, or http://127.0.0.1 / localhost in development. No
+ * credentials in the URL. Any other HTTPS host is refused, the way Slack is pinned to hooks.slack.com (evaluator G-07, #65).
+ */
 export function isEmailWebhook(value: unknown, env: Record<string, string | undefined> = process.env): value is string {
   if (typeof value !== 'string') return false;
   try {
     const url = new URL(value);
     if (url.username || url.password) return false;
-    if (url.protocol === 'https:') return true;
+    if (url.protocol === 'https:') return emailWebhookHosts(env).has(url.hostname.toLowerCase());
     const local = url.hostname === '127.0.0.1' || url.hostname === 'localhost';
     return url.protocol === 'http:' && local && env.NODE_ENV !== 'production';
   } catch {
