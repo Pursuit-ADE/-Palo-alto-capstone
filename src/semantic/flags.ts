@@ -95,10 +95,21 @@ function joinSpacedDots(text: string): string {
 }
 
 /**
+ * Characters of a question that are checked. Questions over 300 characters are refused (MAX_QUESTION_LENGTH), so
+ * every accepted question is checked whole. 3,000 matches the longest paste the question form accepts, so a long
+ * override paste is still flagged and counts towards the lock (bug hunt, Oct 31); at 3,000 dotted characters the link
+ * pattern takes about 0.1 s, against 1.2 s at 10,000.
+ */
+export const MAX_SCAN = 3000;
+
+/**
  * Reason codes for a question. "scope_widening" is only raised for someone whose scope is narrower than the
  * whole company, so an analyst asking about all regions is not flagged.
  */
-export function flagQuestion(question: string, canSeeEverything = false): string[] {
+export function flagQuestion(fullQuestion: string, canSeeEverything = false): string[] {
+  // The link pattern backtracks on long dotted runs, and ask() flags a question before refusing it as too long, so a
+  // caller that sends more than the form allows stays cheap (review, Oct 31).
+  const question = fullQuestion.slice(0, MAX_SCAN);
   // Invisible characters are tried both removed ("ig\u200Bnore") and as spaces ("Ignore\u200Ball\u200Bprevious").
   const cleaned = [fold(question, ''), fold(question, ' ')];
   const variants = cleaned.flatMap((c) => [c, unLeet(c), joinSplitLetters(c), joinSplitLetters(unLeet(c))]);
