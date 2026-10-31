@@ -90,6 +90,11 @@ Client guidance (Oct 24): log every question so another agent can find trends.
 
 Details and definitions are in `docs/RED-TEAM.md` (metrics).
 
+**Claude re-score, Oct 28** (`docs/RED-TEAM.md`, metrics): golden set 69/69 in each of 2 passes on `main` and on a local merge of
+#50 and #51, with a 30 s timeout (not yet the 10-pass rate); red team with Claude, attack success rate 0/170 with 0
+model errors. At the default 8 s timeout the eval script stops on a slow call, where the app falls back. The table
+below is the Oct 17 record, when the golden set had 66 phrasings.
+
 | Check | Result |
 |---|---|
 | Same question, same number (golden set, 66 phrasings), deterministic | 66/66 |
