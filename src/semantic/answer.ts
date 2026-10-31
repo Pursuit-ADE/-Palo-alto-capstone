@@ -28,7 +28,7 @@ export interface RatioPart {
 export interface Answer {
   kind: 'answer';
   /** Registry definition, so the panel shows exactly what was counted. */
-  metric: { id: string; name: string; version: number; unit: string; definition: string; notes: string | null; owner: string };
+  metric: { id: string; name: string; version: number; unit: string; definition: string; notes: string | null; owner: string; target: number | null; caution: number | null };
   intent: unknown;
   rows: Record<string, string | number | null>[];
   scope: string;
@@ -158,6 +158,20 @@ function ratioParts(metric: MetricDefinition, registry: Registry, scope: string,
   };
 }
 
+function answerMetric(metric: MetricDefinition): Answer['metric'] {
+  return {
+    id: metric.id,
+    name: metric.name,
+    version: metric.version,
+    unit: metric.unit,
+    definition: metric.description,
+    notes: metric.notes ?? null,
+    owner: metric.owner,
+    target: metric.kind === 'ratio' ? (metric.target ?? null) : null,
+    caution: metric.kind === 'ratio' ? (metric.caution ?? null) : null,
+  };
+}
+
 async function run(database: Database, registry: Registry, principal: Principal, rawIntent: unknown, fields: AuditFields): Promise<Answer> {
   const { intent, metric } = validateIntent(rawIntent, registry);
   Object.assign(fields, { intent, metricId: metric.id, metricVersion: metric.version });
@@ -178,15 +192,7 @@ async function run(database: Database, registry: Registry, principal: Principal,
   const names = intent.groupBy.includes('owner') ? await ownerNames(database, rows) : null;
   return {
     kind: 'answer',
-    metric: {
-      id: metric.id,
-      name: metric.name,
-      version: metric.version,
-      unit: metric.unit,
-      definition: metric.description,
-      notes: metric.notes ?? null,
-      owner: metric.owner,
-    },
+    metric: answerMetric(metric),
     intent,
     rows,
     scope,
