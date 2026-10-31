@@ -170,6 +170,23 @@ function compared(a: Answer, b: Answer, verdict: Verdict): { summary: string; re
   }
 }
 
+/**
+ * "Why is A higher than B?" when A is not higher (user test, Oct 31): the first sentence says which way the figures
+ * really go, from the rows. Null when the question has it right, or when the two figures are the same rows, which the
+ * summary already says. `byPeriod` names each figure by its quarter instead of its slice.
+ */
+export function premiseCorrection(subject: Answer, object: Answer, saidHigher: boolean, byPeriod: boolean): string | null {
+  const [s, o] = [parts(subject)?.v, parts(object)?.v];
+  if (s == null || o == null || JSON.stringify(subject.rows) === JSON.stringify(object.rows)) return null;
+  const label = (a: Answer) => (byPeriod ? (a.filters.period?.label ?? '') : sliceLabel(a));
+  const [said, really] = saidHigher ? ['higher', 'lower'] : ['lower', 'higher'];
+  if (s.toFixed(2) === o.toFixed(2)) {
+    return `Coverage for ${label(subject)} and for ${label(object)} rounds to the same figure, ${s.toFixed(2)}x, so neither is clearly ${said}.`;
+  }
+  if (s > o === saidHigher) return null;
+  return `Coverage for ${label(subject)} is ${really} than for ${label(object)}, not ${said}: ${s.toFixed(2)}x against ${o.toFixed(2)}x.`;
+}
+
 /** The explanation's sentences and checks. Figures come only from the answers' rows. */
 export function explanationText(a: Answer, b: Answer | null, verdict: Verdict | null, numerators: boolean[]) {
   const text = b && verdict ? compared(a, b, verdict) : ownScope(a);

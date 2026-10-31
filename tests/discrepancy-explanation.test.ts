@@ -7,7 +7,7 @@ import { appUsers, queryAudit } from '@/db/schema';
 import { loadRegistry } from '@/registry/load';
 import { answerIntent, ask, InjectionRefused, type Answer, type Reply } from '@/semantic/answer';
 import { isDiscrepancyQuestion, type Explanation } from '@/semantic/explain';
-import { classify, reconciles } from '@/semantic/explain-text';
+import { classify, premiseCorrection, reconciles } from '@/semantic/explain-text';
 import type { IntentModel } from '@/semantic/model';
 import type { Intent } from '@/registry/types';
 import { ScopeViolation } from '@/semantic/scope';
@@ -393,5 +393,53 @@ describe('user test, Oct 29: the client question as the deck words it', () => {
   it("still compares a named team with the analyst's whole scope", async () => {
     const e = explained(await ask(database, reg, 'u_analyst', "Why is Cara Losch's team's coverage 0.52x when the company is 0.65x?"));
     expect([row(e.answer).value, row(e.other!).value]).toEqual([0.5158, 0.6544]);
+  });
+});
+
+describe('user test, Oct 31: a comparison that has the direction wrong is corrected first', () => {
+  const COMPANY = 'all of Central, East and West regions, all teams';
+
+  it.each([
+    ['u_mgr_melvin_marxen', "Why is Darcel Schlecht's coverage higher than Niesha Huffines's?", 'Coverage for Darcel Schlecht is lower than for Niesha Huffines, not higher: 0.70x against 0.92x.'],
+    ['u_analyst', "Why is West's coverage lower than East's this quarter?", 'Coverage for West region is higher than for East region, not lower: 0.75x against 0.43x.'],
+    ['u_analyst', 'how much higher is east coverage than west this quarter?', 'Coverage for East region is lower than for West region, not higher: 0.43x against 0.75x.'],
+    ['u_analyst', "Why is Cara Losch's team's coverage higher than the company's?", `Coverage for Cara Losch's team is lower than for ${COMPANY}, not higher: 0.52x against 0.65x.`],
+    ['u_analyst', 'Why is coverage higher this quarter than next quarter?', 'Coverage for FY27-Q1 is lower than for FY27-Q2, not higher: 0.65x against 1.00x.'],
+    ['u_analyst', 'Why is coverage lower next quarter than this quarter?', 'Coverage for FY27-Q2 is higher than for FY27-Q1, not lower: 1.00x against 0.65x.'],
+  ])('%s: "%s"', async (user, phrase, correction) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect(e.summary.startsWith(`${correction} Both figures use`)).toBe(true);
+  });
+
+  it.each([
+    ['u_mgr_melvin_marxen', "Why is Niesha Huffines's coverage higher than Darcel Schlecht's?"],
+    ['u_analyst', "Why is East's coverage lower than West's this quarter?"],
+    ['u_analyst', "Why is the company's coverage higher than Cara Losch's team's?"],
+    ['u_analyst', 'why is east coverage higher in FY27-Q2 than FY27-Q1?'],
+    ['u_analyst', 'Why is east coverage so different from west this quarter?'],
+  ])('%s: "%s" has the direction right, or names none, so nothing is corrected', async (user, phrase) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect(e.summary.startsWith('Both figures use')).toBe(true);
+  });
+
+  it("never checks a direction against a figure the asker can't see", async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "Why is my coverage higher than the company's?"));
+    expect(e.other).toBeNull();
+    expect(e.summary).not.toMatch(/not higher|not lower|0\.65/);
+  });
+
+  it('adds nothing when both figures are the same slice, which the summary already says', async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "Why is Cara Losch's team's coverage lower than mine?"));
+    expect(e.summary.startsWith('Both figures use')).toBe(true);
+  });
+
+  it('says the figures round to the same value instead of calling one lower (pure)', async () => {
+    const r = await ask(database, reg, 'u_analyst', "pipeline coverage this quarter for Cara Losch's team");
+    if (r.kind !== 'answer') throw new Error(r.kind);
+    const nudged: Answer = { ...r, rows: [{ numerator: 174326, denominator: 338000, value: 0.5158 + 0.00003 }] };
+    expect(premiseCorrection(r, nudged, true, false)).toBe(
+      "Coverage for Cara Losch's team and for Cara Losch's team rounds to the same figure, 0.52x, so neither is clearly higher.",
+    );
+    expect(premiseCorrection(r, r, true, false)).toBeNull();
   });
 });

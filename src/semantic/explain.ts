@@ -6,7 +6,7 @@ import type { Database } from '../db/client';
 import { catalog, QUOTA_PERIODS } from '../db/seed';
 import type { Registry } from '../registry/load';
 import type { Intent } from '../registry/types';
-import { classify, explanationText, type Verdict } from './explain-text';
+import { classify, explanationText, premiseCorrection, type Verdict } from './explain-text';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
 import { findPeriods, quotaBlocked, readSelectors } from './normalize';
 import { resolvePeriod } from './periods';
@@ -195,6 +195,60 @@ async function numeratorMatches(database: Database, registry: Registry, principa
 
 const sameQuarter = (a: Answer, b: Answer) => a.filters.period?.label === b.filters.period?.label;
 
+type Half = 'before' | 'after' | null;
+
+/**
+ * Whether the first figure is the one before "than", from where each figure's names are. A figure with no names of its
+ * own (the asker's whole scope) is placed by the other one. Both on the same side says nothing about which is which.
+ */
+function namedFirst(a: Half, b: Half): boolean | null {
+  if (a === 'before' && b !== 'before') return true;
+  if (b === 'before' && a !== 'before') return false;
+  if (a === 'after' && b !== 'after') return false;
+  if (b === 'after' && a !== 'after') return true;
+  return null;
+}
+
+const HIGHER = / (higher|bigger|greater|more|better|stronger) /;
+const LOWER = / (lower|smaller|less|worse|weaker) /;
+
+/**
+ * Which figure "Why is A higher than B?" says is higher or lower: the one named before "than". Each figure is found by
+ * its own names (region, rep, team) or, when the two differ by quarter, by its quarter. Null when the question has no
+ * single "than", no direction word before it, or names the figures in a way that doesn't say which is which.
+ */
+function claimed(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer): { subject: Answer; object: Answer; higher: boolean } | null {
+  const halves = clean(phrase).split(' than ');
+  if (halves.length !== 2) return null;
+  const [before, after] = [`${halves[0]} `, ` ${halves[1]}`];
+  const [up, down] = [HIGHER.test(before), LOWER.test(before)];
+  if (up === down) return null;
+  const byPeriod = !sameQuarter(a, b);
+  const named = (side: Answer, text: string) => {
+    if (byPeriod) return findPeriods(text, registry.glossary, asOfDate).labels.has(side.filters.period?.label ?? '');
+    const f = (side.intent as Intent).filters;
+    return [...(f.regions ?? []), ...(f.people ?? []), ...(f.teams ?? [])].some((n) => text.includes(clean(n)));
+  };
+  const half = (side: Answer): Half => {
+    const [x, y] = [named(side, before), named(side, after)];
+    if (x === y) return null;
+    return x ? 'before' : 'after';
+  };
+  const aFirst = namedFirst(half(a), half(b));
+  if (aFirst === null) return null;
+  return aFirst ? { subject: a, object: b, higher: up } : { subject: b, object: a, higher: up };
+}
+
+/**
+ * A wrong direction in the question ("higher" when it is lower), corrected before anything else. Only between two
+ * figures the asker may see, and only when both reconcile: a failed check is the first thing to say then.
+ */
+function directionCorrection(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer, verdict: Verdict): string | null {
+  if (verdict !== 'same_definition_different_scope' && verdict !== 'different_period') return null;
+  const claim = claimed(phrase, registry, asOfDate, a, b);
+  return claim ? premiseCorrection(claim.subject, claim.object, claim.higher, verdict === 'different_period') : null;
+}
+
 /** Answers a discrepancy question (see isDiscrepancyQuestion). Called inside the audited request in ask(). */
 export async function explainDiscrepancy(
   database: Database,
@@ -224,5 +278,7 @@ export async function explainDiscrepancy(
   // The second figure gets its own audit row (same request id), so each side of a comparison can be replayed from
   // the log: intent, metric version, regions, snapshot and result hash (PR #50 review).
   if (other) linked.push({ ...second, role: fields.role, reason: 'explanation:second_figure' });
-  return { kind: 'explanation', answer, other, verdict, ...explanationText(answer, other, verdict, numerators) };
+  const text = explanationText(answer, other, verdict, numerators);
+  const correction = other && verdict ? directionCorrection(phrase, registry, snapshot.asOfDate, answer, other, verdict) : null;
+  return { kind: 'explanation', answer, other, verdict, ...text, summary: correction ? `${correction} ${text.summary}` : text.summary };
 }
