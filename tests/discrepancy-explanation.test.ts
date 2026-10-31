@@ -340,3 +340,41 @@ describe('PR #51 review: "how much higher… than" is a discrepancy question too
     expect([(e.answer.intent as Intent).filters.regions, (e.other!.intent as Intent).filters.regions]).toEqual([['east'], ['west']]);
   });
 });
+
+describe('user test, Oct 29: the client question as the deck words it', () => {
+  // Without the word "coverage" this was NOT ANSWERED, and "when the company is 0.65x" asked for a quarter.
+  const DECK_QUESTION = 'Why does marketing say 3x when mine is 0.5x?';
+
+  it.each([
+    [DECK_QUESTION, true],
+    ['Why is my coverage 0.52x when the company is 0.65x?', true],
+    ['why is my coverage low when marketing says it is fine?', true],
+    ['why is my coverage so low?', false],
+    ['why is my pipeline 3x bigger than last quarter?', false],
+    ['why is my open opportunity count 3x when the company has more?', false],
+  ])('"%s" -> %s', (phrase, expected) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(expected);
+  });
+
+  it.each([DECK_QUESTION, 'Why is my coverage 0.52x when the company is 0.65x?'])(
+    '"%s" gives the seller their own figure and repeats neither quoted ratio',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_ts_east', phrase));
+      expect(e.other).toBeNull();
+      expect(row(e.answer)).toEqual({ numerator: 174325, denominator: 338000, value: 0.5158 });
+      expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+      // 0.52x is the seller's own figure and is shown; the quoted ratios and the company figure never are.
+      expect(JSON.stringify(e)).not.toMatch(/\b3x|0\.5x|0\.65|1,963,909/);
+    },
+  );
+
+  it("asks who an unknown name is instead of explaining the analyst's whole scope", async () => {
+    const r = await ask(database, reg, 'u_analyst', "Why is Jordan's coverage 0.52x when the company is 0.65x?");
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('"Jordan"') });
+  });
+
+  it("still compares a named team with the analyst's whole scope", async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', "Why is Cara Losch's team's coverage 0.52x when the company is 0.65x?"));
+    expect([row(e.answer).value, row(e.other!).value]).toEqual([0.5158, 0.6544]);
+  });
+});

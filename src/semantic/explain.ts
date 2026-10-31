@@ -38,6 +38,8 @@ const HOW_MUCH = / how much (higher|lower|bigger|smaller|more|less|better|worse)
 const DIFFERENCE =
   / (different|differ|differs|difference|discrepancy|mismatch|match|matches|higher|lower|bigger|smaller|than|versus|vs|say|says|said|show|shows|showing|see|sees|seeing|get|gets|got|report|reports|reported) /;
 const THIS_NUMBER = / (this|that|my|our|the) (number|figure|ratio|result) /;
+/** "Why is mine 0.52x when the company is 0.65x?" sets two figures side by side without a comparison word (user test, Oct 29). */
+const SET_AGAINST = / (when|while|whereas|but) /;
 /** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
 const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*x\b/gi;
 /** The same pattern without the g flag, so .test() keeps no state between calls. */
@@ -61,10 +63,17 @@ function clean(phrase: string): string {
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
   const text = clean(phrase);
-  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !DIFFERENCE.test(text)) return false;
-  const metric = registry.metrics.get(EXPLAINED_METRIC);
-  const names = metric ? [metric.name.toLowerCase(), ...metric.synonyms.map((s) => s.toLowerCase())] : [];
-  if (names.some((n) => text.includes(` ${n} `))) return true;
+  const compared = DIFFERENCE.test(text) || (SET_AGAINST.test(text) && pointsElsewhere(phrase));
+  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !compared) return false;
+  const names = (id: string) => {
+    const m = registry.metrics.get(id);
+    return m ? [m.name.toLowerCase(), ...m.synonyms.map((s) => s.toLowerCase())] : [];
+  };
+  const says = (id: string) => names(id).some((n) => text.includes(` ${n} `));
+  if (says(EXPLAINED_METRIC)) return true;
+  // Coverage is the only metric written as "3x", so a quoted ratio names it, unless the question names another
+  // metric ("my pipeline is 3x bigger", where 3x is a multiplier). The deck's wording has no "coverage" (Oct 29).
+  if (HAS_QUOTED_RATIO.test(phrase) && ![...registry.metrics.keys()].some((id) => id !== EXPLAINED_METRIC && says(id))) return true;
   return previous?.metric === EXPLAINED_METRIC && THIS_NUMBER.test(text);
 }
 
@@ -82,6 +91,25 @@ function selectorPhrase(phrase: string): string {
   return text;
 }
 
+/** A capitalised name with 's ("Jordan's", "Cara Losch's"). */
+const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
+
+/**
+ * "Why is Jordan's coverage 0.52x…": a possessive name that is not a rep, team or region the question resolved.
+ * readSelectors only catches unknown names after "for", "at" and the like, so this one would be dropped and the
+ * analyst's whole scope explained instead (user test, Oct 29; PRD A2). Someone else's figure ("Marketing's") is fine.
+ */
+function unknownPossessive(phrase: string, resolved: string[]): string | null {
+  for (const m of phrase.matchAll(POSSESSIVE)) {
+    const name = m[1]!;
+    const lower = name.toLowerCase();
+    if (OTHER_FIGURE.test(` ${lower} `)) continue;
+    if (resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()))) continue;
+    return name;
+  }
+  return null;
+}
+
 /** The slice the question names inside the asker's scope (regions, reps, a manager's team), or a clarifying question. */
 function namedSlice(phrase: string): Intent['filters'] | Clarify {
   const text = clean(phrase);
@@ -92,6 +120,8 @@ function namedSlice(phrase: string): Intent['filters'] | Clarify {
   if (blocked) return { kind: 'clarify', question: blocked };
   const filters: Intent['filters'] = {};
   const regions = ALL_REGIONS.filter((r): r is Region => text.includes(` ${r} `));
+  const unknown = unknownPossessive(phrase, [...regions, ...(read.filters.people ?? []), ...(read.filters.teams ?? [])]);
+  if (unknown) return { kind: 'clarify', question: `I don't know "${unknown}", so I won't explain the figure for everything. Name a sales rep, a manager's team or a region in the data.` };
   if (regions.length) filters.regions = regions;
   if (read.filters.people?.length) filters.people = read.filters.people;
   if (read.filters.teams?.length) filters.teams = read.filters.teams;
