@@ -8,6 +8,10 @@ What each version of the Governed Analytics Copilot added. The format follows
 
 Work merged into `main` after v0.5.0 goes here.
 
+### Documentation
+
+- PRD and roadmap v1.2 as living Markdown in `docs/product/`, updated with the client's Oct 15 answers and Oct 24 call, plus the rule for keeping them current. GCP and BigQuery deployment design in `docs/DEPLOYMENT-GCP.md`.
+
 ### Security
 
 - Alerts and alerts sign-in only for active employees (`EMPLOYEE_STATUS`, standing in for Active Directory). Someone who has left gets no new or queued alerts and can't sign in; a directory outage is retried, not treated as "left" (#55).
