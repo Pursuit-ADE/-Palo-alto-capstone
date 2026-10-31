@@ -129,6 +129,8 @@ async function applyGrants(owner: pg.Pool) {
     -- Only the tables the governed query path reads. Contacts, support cases, engagements and the audit log
     -- are not readable, so a bug above the database can't reach them through this login.
     GRANT SELECT ON data_snapshots, regions, app_users, products, accounts, account_team, opportunities, quotas TO app_readonly;
+    -- Counts of questions only (migration 0007). The answering login still cannot read query_audit itself.
+    GRANT SELECT ON question_trends TO app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
     REVOKE SELECT ON session_guard FROM app_readonly;
     GRANT SELECT, INSERT, UPDATE, DELETE ON session_guard TO app_audit;

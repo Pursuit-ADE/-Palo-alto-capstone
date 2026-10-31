@@ -37,6 +37,7 @@ export interface ChartData {
   ordered?: boolean; // the categories have a real order (deal stages): line and area
   parts?: boolean; // the values are sums or counts that add up to a whole: donut, and stacked for two breakdowns
   compare?: boolean; // two series, the second the target of the first (pipeline vs quota): bullet
+  prefer?: ChartKind; // open in this type when it fits, until the person picks another
   grid?: boolean; // two breakdowns: heatmap
   total?: { value: number; display: string; label: string }; // a governed total (the tile's number), shown in the donut's hole
 }

@@ -43,6 +43,7 @@ phrase -> intent normalizer -> Intent (metric + filters, Zod-validated)
 | `registry/metrics/*.json` | The 3 governed metrics (open pipeline, pipeline coverage, open opportunity count) with synonyms |
 | `registry/dictionary.json`, `registry/glossary.json` | Context layer v1: field dictionary, glossary, period and breakdown phrases, ambiguous terms |
 | `registry/golden/phrases.json` | Golden phrasing set: at least 5 phrasings per metric, plus clarification cases |
+| `registry/golden/metamorphic.json` | Semantic invariance cases (`tests/semantic-invariance.test.ts`): equivalent wordings must give the same request and result, a change of meaning must change it, and a valid but wrong metric counts as a failure |
 | `data/maven-crm/` | The public CRM sample (accounts, opportunities, sales teams, products) |
 | `src/db/schema.ts`, `src/db/seed.ts` | Data model and loader: sample data, date shift, estimates for open deals, synthetic quotas, contacts, cases and engagements |
 | `src/semantic/` | Normalizer (golden-set mock of the AI model), validation, scope and SQL compiler |
