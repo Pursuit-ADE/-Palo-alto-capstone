@@ -38,6 +38,12 @@ const HOW_MUCH = / how much (higher|lower|bigger|smaller|more|less|better|worse)
 const DIFFERENCE =
   / (different|differ|differs|difference|discrepancy|mismatch|match|matches|higher|lower|bigger|smaller|than|versus|vs|say|says|said|show|shows|showing|see|sees|seeing|get|gets|got|report|reports|reported) /;
 const THIS_NUMBER = / (this|that|my|our|the) (number|figure|ratio|result) /;
+/**
+ * "How's my coverage compared to the company?", "Where's the gap…": a how/where question is a discrepancy question only
+ * with a comparison word, so "How is coverage calculated?" stays a plain question (review on #50, Oct 31).
+ */
+const HOW_OPENER = / (how|where) (s|is|does|do) /;
+const HOW_COMPARED = / (compare|compared|comparing|comparison|against|versus|vs|relative|stack|stacks|gap|different|differ|differs|difference|higher|lower|bigger|smaller|than) /;
 /** "Why is mine 0.52x when the company is 0.65x?" sets two figures side by side without a comparison word (user test, Oct 29). */
 const SET_AGAINST = / (when|while|whereas|but) /;
 /** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
@@ -102,8 +108,11 @@ function namesOtherMetric(text: string, registry: Registry): boolean {
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
   const text = withCoverageWords(clean(phrase), registry);
-  const compared = DIFFERENCE.test(text) || (SET_AGAINST.test(text) && pointsElsewhere(phrase));
-  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !compared || BREAKDOWN.test(text)) return false;
+  // Two quoted figures with someone else's ("0.65x for the company, so why is mine 0.52x?") are a comparison too.
+  const setAgainst = (SET_AGAINST.test(text) || (phrase.match(QUOTED_RATIO)?.length ?? 0) > 1) && pointsElsewhere(phrase);
+  const compared = DIFFERENCE.test(text) || / gap /.test(text) || setAgainst;
+  const asks = ((WHY.test(text) || HOW_MUCH.test(text)) && compared) || (HOW_OPENER.test(text) && (HOW_COMPARED.test(text) || setAgainst));
+  if (!asks || BREAKDOWN.test(text)) return false;
   if (text.includes(' coverage ')) return true;
   // Coverage is the only metric written as "3x", so a ratio quoted as the figure names it, unless the question names
   // another metric ("my pipeline is 3x bigger", where 3x is a multiplier).

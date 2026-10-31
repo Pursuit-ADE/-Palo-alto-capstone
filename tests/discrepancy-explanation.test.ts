@@ -384,10 +384,25 @@ describe('user test, Oct 29: the client question as the deck words it', () => {
     },
   );
 
-  it.each(["How's my coverage 0.52x when the company is 0.65x?", "It's 0.65x for the company, so why is my coverage 0.52x?", "Where's the gap between my coverage of 0.52x and the company's 0.65x?"])(
-    '"%s" never reads the contraction as a name',
-    async (phrase) => {
-      expect(JSON.stringify(await ask(database, reg, 'u_ts_east', phrase))).not.toContain("I don't know that person or team");
+  // Review on #50 (mofazzal, Oct 31): these only checked that no name was read; they asked "which quarter?" instead.
+  it.each([
+    "How's my coverage 0.52x when the company is 0.65x?",
+    "It's 0.65x for the company, so why is my coverage 0.52x?",
+    "Where's the gap between my coverage of 0.52x and the company's 0.65x?",
+    "How's my coverage compared to the company?",
+    "Where's my coverage compared with the company number?",
+    "How does my coverage stack up against the company's?",
+  ])('"%s" is explained with the seller\'s own figure', async (phrase) => {
+    const e = explained(await ask(database, reg, 'u_ts_east', phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer)).toEqual({ numerator: 174325, denominator: 338000, value: 0.5158 });
+    expect(JSON.stringify(e)).not.toMatch(/0\.65|1,963,909/);
+  });
+
+  it.each(['How is coverage calculated?', 'How does my coverage get worked out?', "How's my coverage this quarter?", 'How does coverage compare by region this quarter?'])(
+    '"%s" is a plain question, not an explanation',
+    (phrase) => {
+      expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
     },
   );
 
