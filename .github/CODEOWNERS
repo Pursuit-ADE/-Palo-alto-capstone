@@ -1,5 +1,8 @@
 # Changes to governed definitions need review from the metric and alert stewards (T-10).
 # Pair with branch protection on main ("Require review from Code Owners").
+# Catch-all first (evaluator G-10, #79): every path has an owner. GitHub uses the LAST pattern that matches a file,
+# so broad lines go above narrow ones, and a narrower line further down can name a different owner.
+*                     @brovaset @MITRAKER
 /registry/        @brovaset @MITRAKER
 /alerts/rules/    @brovaset @MITRAKER
 /src/semantic/    @brovaset @MITRAKER
@@ -9,6 +12,9 @@
 /src/server/          @brovaset @MITRAKER
 /src/db/              @brovaset @MITRAKER
 /alerts/src/          @brovaset @MITRAKER
+# The app pages, then the server actions inside them (narrower, so listed after).
+/app/                 @brovaset @MITRAKER
+/alerts/app/          @brovaset @MITRAKER
 /alerts/app/*actions.ts @brovaset @MITRAKER
 /app/*actions.ts      @brovaset @MITRAKER
 /drizzle/             @brovaset @MITRAKER
@@ -25,3 +31,8 @@
 /scripts/             @brovaset @MITRAKER
 /onboarding/          @brovaset @MITRAKER
 /SECURITY.md          @brovaset @MITRAKER
+# Agent instructions and settings, and the tests that prove the rules (evaluator G-10, #79).
+/.claude/             @brovaset @MITRAKER
+/CLAUDE.md            @brovaset @MITRAKER
+/tests/               @brovaset @MITRAKER
+/alerts/tests/        @brovaset @MITRAKER
