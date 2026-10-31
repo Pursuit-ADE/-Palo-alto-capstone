@@ -8,7 +8,7 @@ import { ask, InjectionRefused } from '@/semantic/answer';
 import { flagQuestion, normalizeForFlags } from '@/semantic/flags';
 import { CLARIFY_TEXT, toResult, UNSUPPORTED_TEXT, type IntentModel } from '@/semantic/model';
 import { AuthError, signUp } from '@/server/auth';
-import { httpsSettings } from '@/server/https';
+import { httpsSettings, secureCookieForRequest } from '@/server/https';
 import { assertNoTestIdentitiesInProduction, testIdentitiesEnabled } from '@/server/identity';
 import { weakPasswordReason } from '@/server/passwords';
 import { notifySecurity, securityMessage } from '@/server/security-notify';
@@ -97,6 +97,24 @@ describe('3. HTTPS protections are on by default in production', () => {
   it('stays off in development unless asked for', () => {
     expect(httpsSettings({ NODE_ENV: 'development' })).toEqual({ hsts: false, secureCookie: false });
     expect(httpsSettings({ NODE_ENV: 'development', ENABLE_HSTS: 'true' })).toEqual({ hsts: true, secureCookie: true });
+  });
+  it('drops Secure only for a direct demo on loopback or the private LAN when the scheme is http or missing', () => {
+    const production = { NODE_ENV: 'production' };
+    expect(secureCookieForRequest({ host: '192.168.1.20:3000' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '192.168.1.20:3000' }, { ...production, TRUSTED_PROXY_HOPS: '1' })).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '192.168.1.48:3000', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: 'localhost:3000', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '10.1.2.3', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '172.16.0.4', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '[::1]', proto: 'http' }, production)).toBe(false);
+    expect(secureCookieForRequest({ host: '172.15.0.4', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '172.32.0.4', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com', proto: 'http' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '192.168.1.48', proto: 'https' }, production)).toBe(true);
+    expect(secureCookieForRequest({ host: '10.0.0.5', proto: 'http' }, { ...production, TRUSTED_PROXY_HOPS: '1' })).toBe(true);
+    expect(secureCookieForRequest({ host: '192.168.1.48', proto: 'http' }, { ...production, COOKIE_SECURE: 'true' })).toBe(true);
+    expect(secureCookieForRequest({ host: 'app.example.com', proto: 'https' }, { COOKIE_SECURE: 'false' })).toBe(false);
   });
 });
 
