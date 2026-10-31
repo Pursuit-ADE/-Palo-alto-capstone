@@ -1,7 +1,8 @@
 'use client';
 
 // A governed number as a graph. It rests as an ordinary flat chart (server-rendered SVG, from the same rows as the
-// Numbers view). Drag it, or the page around it, and every graph on the page turns together and becomes 3D: the
+// Numbers view). 3D is opt-in (client feedback, Oct 24): only after "3D view" or the 3 key does dragging the graph, or
+// the page around it, turn every graph on the page together. In 3D the
 // backdrop goes to the dark PANW stage and the bars become glass. The values stay in a table for screen readers,
 // and "Show numbers" puts that table on screen. Shared byte-for-byte by both apps.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
@@ -243,7 +244,7 @@ function installSurfaceDrag() {
     return !!t.closest('[data-c3d-surface]') && !t.closest(OWN_POINTER) && !overText(e.clientX, e.clientY);
   };
   document.addEventListener('pointerdown', (e) => {
-    if (e.pointerType === 'touch' || e.button !== 0 || reduced() || forced() || lives.size === 0 || !startsTurn(e)) return;
+    if (e.pointerType === 'touch' || e.button !== 0 || reduced() || forced() || lives.size === 0 || orbitFor(PAGE).flat || !startsTurn(e)) return;
     e.preventDefault(); // no text selection while turning
     // That also stops the press from doing what a press on the page normally does: blur a focused field and clear a
     // selection. Do both here.
@@ -553,7 +554,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
   const chart = charts[Math.min(which, charts.length - 1)]!;
   const offered = useMemo(() => kindsFor(chart), [chart]);
   const want = picked[chart.id];
-  const kind: ChartKind = want && offered.includes(want) ? want : defaultKind(chart);
+  const kind: ChartKind = want && offered.includes(want) ? want : chart.prefer && offered.includes(chart.prefer) ? chart.prefer : defaultKind(chart);
   const L = useMemo(() => layout2D(chart, kind), [chart, kind]);
   // Phones: a narrower layout, so the text is not shrunk to half size. Both are rendered; CSS shows the one that fits.
   const N = useMemo(() => (hasNarrow(chart, kind) ? layout2D(chart, kind, true) : null), [chart, kind]);
@@ -843,6 +844,11 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
       return;
     }
     if (!g.dragging) {
+      // Flat graphs stay flat: a drag only turns a graph someone already put in 3D. A tap still shows its tooltip.
+      if (orbit().flat) {
+        if (!g.touch) hoverAt(e.clientX, e.clientY);
+        return;
+      }
       const dx = e.clientX - g.sx;
       const dy = e.clientY - g.sy;
       if (g.touch) {
@@ -882,6 +888,8 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (forced() && e.key !== 'Escape' && e.key !== 'Home' && e.key !== '0') return;
     const o = orbit();
+    // Arrow keys turn a graph only once it is in 3D; the 3 key is the keyboard's way in.
+    if (o.flat && e.key.startsWith('Arrow')) return;
     const big = e.shiftKey ? 3 : 1;
     const by = (dy: number, dt: number) => springTo(o, clampPose({ yaw: (o.mode === 'spring' ? o.target : o.pose).yaw + dy * big, tilt: (o.mode === 'spring' ? o.target : o.pose).tilt + dt * big }), 18);
     if (e.key === 'ArrowLeft') by(-7, 0);
@@ -1008,7 +1016,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
       </div>
       {chart.note && <p className="c3d-note">{chart.note}</p>}
       <p id={descId} className="visually-hidden">
-        {chart.summary} Shown as {kindName.toLowerCase()}. Drag the chart, or use the arrow keys, to turn it into 3D. Escape flattens it. The values are in the table that follows.
+        {chart.summary} Shown as {kindName.toLowerCase()}. Press 3D view, or the 3 key, to show it in 3D, then drag or use the arrow keys to turn it. Escape flattens it. The values are in the table that follows.
       </p>
       <NumbersTable chart={chart} id={tableId} shown={tableShown} />
     </figure>

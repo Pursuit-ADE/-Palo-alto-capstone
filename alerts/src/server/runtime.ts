@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { openDatabase, type Database, type Db } from '../db/client';
 import { alertCursor, alertSubscriptions } from '../db/schema';
 import { createChannels } from '../alerts/channels';
+import { createEmployeeDirectory, type EmployeeDirectory } from '../alerts/employee-status';
 import { DEMO_NOW, DEMO_SINCE, DEMO_SUBSCRIPTIONS } from '../alerts/demo';
 import { loadRules, type AlertRule } from '../alerts/rules';
 import { startScheduler, tick } from '../alerts/scheduler';
@@ -12,7 +13,7 @@ import { testIdentitiesEnabled } from './identity';
 // - ALERTS_SCHEDULER=true: a tick every ALERTS_TICK_SECONDS (default 60) with the real clock, resuming from
 //   the cursor stored in the database. instrumentation.ts starts it when the server starts, so it runs
 //   without anyone opening a page.
-type Runtime = { database: Database; rules: Map<string, AlertRule> };
+type Runtime = { database: Database; rules: Map<string, AlertRule>; directory: EmployeeDirectory | undefined };
 const g = globalThis as unknown as { __alerts?: () => Promise<Runtime>; __stopScheduler?: () => void };
 
 /**
@@ -49,7 +50,9 @@ export function getAlertsRuntime(): Promise<Runtime> {
     const database = await openDatabase();
     const rules = loadRules();
     const channels = createChannels();
-    const opts = { testIdentityInLinks: testIdentitiesEnabled() };
+    // One directory for the process: alerts, sign-in and sessions all ask the same one (PR #55 review).
+    const directory = createEmployeeDirectory();
+    const opts = { testIdentityInLinks: testIdentitiesEnabled(), directory };
     if (process.env.ALERTS_SEED_DEMO_SUBSCRIPTIONS !== 'false') await seedDemoSubscriptionsOnce(database.db);
     if (process.env.ALERTS_SCHEDULER === 'true') {
       const seconds = Math.max(10, Number(process.env.ALERTS_TICK_SECONDS ?? 60) || 60);
@@ -57,7 +60,7 @@ export function getAlertsRuntime(): Promise<Runtime> {
     } else {
       await tick(database.db, rules, channels, DEMO_NOW, DEMO_SINCE, opts);
     }
-    return { database, rules };
+    return { database, rules, directory };
   });
   return g.__alerts();
 }

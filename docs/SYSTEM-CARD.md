@@ -35,7 +35,7 @@ A copilot next to certified pipeline dashboards. A person asks a plain-language 
 | Source | What | Where |
 |---|---|---|
 | Maven Analytics CRM sample (public domain, fictional company) | Accounts, opportunities, sales teams, products | `data/maven-crm/`, `SOURCE.md` |
-| Synthetic | Quotas, contacts, support cases, CXO engagements, technical sellers, analyst | `src/db/seed.ts` |
+| Synthetic | Quotas, contacts, support cases, CXO engagements, product usage, technical sellers, analyst | `src/db/seed.ts` |
 | Second dataset (onboarding demo) | Northstar CRM sample | `data/northstar-crm/`, `docs/ONBOARDING.md` |
 
 Every answer names its snapshot and as-of date (current: `snap_alto-pals-v2`, as of Oct 8, 2026). Field meanings are in `docs/DATA-DICTIONARY.md`, generated from the registry. Metric definitions are versioned JSON in `registry/`; changes go through a reviewed pull request (`.github/CODEOWNERS`).

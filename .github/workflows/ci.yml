@@ -92,8 +92,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # Full-history scan with the pinned, checksum-verified gitleaks CLI. (The gitleaks GitHub
-      # action builds a commit range from the push, which breaks on histories merged from other repos.)
+      # Full history of this checkout. --log-opts=HEAD keeps the scan on this branch: fetch-depth 0
+      # also downloads every other branch, and gitleaks' default walks all of them. The gitleaks
+      # GitHub action builds a commit range from the push, which breaks on histories merged from other repos.
       - name: Secret scan (gitleaks)
         run: |
           V=8.24.3
@@ -101,4 +102,4 @@ jobs:
           curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
           echo "${SHA}  gitleaks.tgz" | sha256sum -c -
           tar -xzf gitleaks.tgz gitleaks
-          ./gitleaks git --redact --verbose .
+          ./gitleaks git --redact --verbose --log-opts=HEAD .

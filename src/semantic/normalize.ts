@@ -2,7 +2,7 @@
 // it maps a phrasing to a registry metric plus filters using the context layer's synonyms and phrases.
 // The real model (Week 3) must produce the same structured Intent and passes the same validation.
 import type { Registry } from '../registry/load';
-import type { Dimension, Intent } from '../registry/types';
+import type { Dimension, Intent, MetricDefinition } from '../registry/types';
 import { catalog, QUOTA_PERIODS } from '../db/seed';
 import type { Glossary } from '../registry/types';
 import { AMOUNT_CLARIFY, parseAmount } from './amount';
@@ -17,6 +17,12 @@ const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|n
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
+/**
+ * "East vs West", "compare east and west", "is east higher than (the) west": two figures wanted, not their sum. A
+ * comparative counts only with a region right after "than", so "deals larger than $50,000" stays a deal-size filter.
+ */
+const COMPARISON =
+  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 // A capitalized name, including a product id whose last token is a number ("GTK 500").
@@ -313,19 +319,105 @@ export type NormalizeResult =
   | { kind: 'clarify'; question: string; resume?: Intent }
   | { kind: 'unsupported'; message: string };
 
-/** The metrics a question names. Longest matching synonym wins, so "pipeline coverage" beats "pipeline". */
-function namedMetrics(text: string, registry: Registry): string[] {
-  let best = 0;
-  let matches: string[] = [];
-  for (const m of registry.metrics.values()) {
-    const len = Math.max(0, ...m.synonyms.filter((s) => text.includes(` ${s.toLowerCase()} `)).map((s) => s.length));
-    if (len === 0) continue;
-    if (len > best) {
-      best = len;
-      matches = [m.id];
-    } else if (len === best) matches.push(m.id);
+// Words for what is being measured. The synonym match picks a metric by its name ("open opportunities"), so a
+// question can name one metric while asking for another's measure ("total value of open opportunities").
+const VALUE_WORDS = / (value|worth|dollar|dollars|amount|how much|sum|money) /;
+const COUNT_WORDS = / (how many|number of|count|counts) /;
+const QUOTA_WORDS = / (quota|quotas|target|targets) /;
+
+/**
+ * A question whose measure words contradict the metric its name matched: a value on a count metric, a count on a
+ * currency metric, or quota on a metric that isn't a ratio of pipeline to quota (semantic invariance suite). Answering
+ * would be a valid query for the wrong metric, so it is asked about instead.
+ */
+function measureContradiction(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
+  const named = (unit: string) => [...registry.metrics.values()].filter((m) => m.unit === unit).map((m) => m.name);
+  const value = VALUE_WORDS.test(text);
+  const count = COUNT_WORDS.test(text);
+  if ((metric.unit === 'count' && value && !count) || (metric.unit === 'currency' && count && !value)) {
+    return `Do you mean ${named('currency').join(' or ')} (the dollar value of open deals) or ${named('count').join(' or ')} (how many open deals)?`;
   }
-  return matches;
+  if (metric.kind !== 'ratio' && QUOTA_WORDS.test(text)) {
+    return `Do you mean ${named('ratio').join(' or ')} (open pipeline divided by quota for a quarter)? For example, "pipeline coverage this quarter".`;
+  }
+  return undefined;
+}
+
+/** Questions that can't be read exactly once the metric is known: contradicting measure words, or leaving something out. */
+function unreadableQuestion(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
+  const contradiction = measureContradiction(text, metric, registry);
+  if (contradiction) return contradiction;
+  // Leaving a region or stage out can't be represented yet.
+  return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
+}
+
+/**
+ * A comparison of two or more named regions is answered region by region, never as one combined figure (PR #51
+ * review). The regions stay as filters, so only the named ones are shown. If region can't be added as a breakdown,
+ * the question is asked back. Applied to both intent models (here and in followUpRule), like the follow-up rule.
+ */
+export function comparedRegions(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const regions = intent.filters.regions ?? [];
+  if (regions.length < 2 || intent.groupBy.includes('region') || !COMPARISON.test(clean(phrase))) return intent;
+  const metric = registry.metrics.get(intent.metric);
+  if (metric?.dimensions.includes('region') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'region'] };
+  const names = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ');
+  return { kind: 'clarify', question: `To compare ${names} I show each region on its own, which leaves room for one other breakdown. Which one do you want?` };
+}
+
+/** The question asked when a phrase names more than one metric. */
+function whichMetric(ids: string[], registry: Registry): string {
+  return `Do you mean ${ids.map((id) => registry.metrics.get(id)?.name).join(' or ')}?`;
+}
+
+/**
+ * The "never a quietly different answer" checks for an intent a model proposed (PR #51 review): the question names
+ * two metrics, or its measure words contradict the proposed metric ("total value of open opportunities" read as the
+ * count). normalize() asks in both cases; followUpRule applies this so the Claude path asks too. The measure check is
+ * against the model's own metric, so "total value of open opportunities" read as open pipeline is still answered.
+ */
+export function proposalQuestion(phrase: string, metricId: string, registry: Registry): string | undefined {
+  const text = clean(phrase);
+  const named = namedMetrics(text, registry);
+  if (named.length > 1) return whichMetric(named, registry);
+  const metric = registry.metrics.get(metricId);
+  return metric ? measureContradiction(text, metric, registry) : undefined;
+}
+
+/** An intent, or the clarifying question a rule returned instead. */
+export const asResult = (x: Intent | { kind: 'clarify'; question: string }): NormalizeResult => ('kind' in x ? x : { kind: 'intent', intent: x });
+
+/** "The pipeline" is also how people say "the open deals", so beside a more specific metric it doesn't name a second one. */
+const GENERIC_METRIC_WORDS = new Set(['pipeline']);
+/** What may sit between a generic word and another metric for the two to be a list ("coverage and pipeline", "coverage, pipeline"). */
+const LISTED = /^(and|plus|with|or|vs|versus)?$/;
+
+/** A generic word listed next to another metric names its own metric too, so the question is asked about (issue #81). */
+function listedWith(h: { at: number; end: number }, others: { at: number; end: number }[], text: string): boolean {
+  return others.some((o) => LISTED.test((o.end <= h.at ? text.slice(o.end, h.at) : text.slice(h.end, o.at)).trim()));
+}
+
+/**
+ * The metrics a question names. Synonyms are taken longest first and may not overlap, so "pipeline coverage" beats
+ * the "pipeline" inside it, but "open pipeline ... open opportunity count" names two metrics and is asked about, never
+ * answered as the longer one (PR #51 review).
+ */
+function namedMetrics(text: string, registry: Registry): string[] {
+  const hits: { id: string; at: number; end: number; generic: boolean }[] = [];
+  for (const m of registry.metrics.values()) {
+    for (const synonym of m.synonyms) {
+      const word = synonym.toLowerCase();
+      for (let at = text.indexOf(` ${word} `); at >= 0; at = text.indexOf(` ${word} `, at + 1)) {
+        hits.push({ id: m.id, at: at + 1, end: at + 1 + word.length, generic: GENERIC_METRIC_WORDS.has(word) });
+      }
+    }
+  }
+  hits.sort((a, b) => b.end - b.at - (a.end - a.at) || a.at - b.at);
+  const picked: typeof hits = [];
+  for (const h of hits) if (!picked.some((p) => h.at < p.end && h.end > p.at)) picked.push(h);
+  const specific = picked.filter((h) => !h.generic);
+  const kept = specific.length ? [...specific, ...picked.filter((h) => h.generic && listedWith(h, specific, text))] : picked;
+  return [...new Set(kept.map((h) => h.id))];
 }
 
 /** The follow-up rule for a question that names a metric: it keeps the previous filters only for the same metric with a follow-up word. */
@@ -398,17 +490,13 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     }
     else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
   }
-  if (matches.length > 1) {
-    const names = matches.map((id) => registry.metrics.get(id)?.name).join(' or ');
-    return { kind: 'clarify', question: `Do you mean ${names}?` };
-  }
+  if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry) };
   const metric = registry.metrics.get(matches[0]!)!;
 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
   // never a quietly different answer.
-  if (EXCLUSION.test(text)) {
-    return { kind: 'clarify', question: "I can't leave out a region or stage yet. Which regions or stages do you want included?" };
-  }
+  const unreadable = unreadableQuestion(text, metric, registry);
+  if (unreadable) return { kind: 'clarify', question: unreadable };
   const read = readSelectors(phrase);
   if (read.clarify) return { kind: 'clarify', question: read.clarify };
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
@@ -491,9 +579,10 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const finalRegions = regions.length ? regions : (inherit?.filters.regions ?? []);
   if (finalRegions.length) filters.regions = [...finalRegions];
   else delete filters.regions;
-  if (stages.length) filters.stages = stages;
+  const openStages = stages.filter((st): st is 'Prospecting' | 'Engaging' => st === 'Prospecting' || st === 'Engaging');
+  if (openStages.length) filters.stages = openStages;
   else delete filters.stages;
   if (period) filters.period = period;
   else delete filters.period;
-  return { kind: 'intent', intent: { metric: metric.id, filters, groupBy } };
+  return asResult(comparedRegions({ metric: metric.id, filters, groupBy }, phrase, registry));
 }

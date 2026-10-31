@@ -56,6 +56,15 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 .kpis.stack { grid-template-columns: minmax(0, 1fr); }
 .coverage .label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; }
 .cov-value { display: block; font-size: 32px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 4px 0; }
+.tone-red { color: var(--bad); }
+.tone-amber { color: var(--warn-text); }
+.tone-green { color: var(--ok); }
+.fill.tone-red { background: var(--bad); }
+.fill.tone-amber { background: var(--warn); }
+.fill.tone-green { background: var(--ok); }
+.answer-value.tone-red { color: var(--bad); }
+.answer-value.tone-amber { color: var(--warn-text); }
+.answer-value.tone-green { color: var(--ok); }
 .coverage h2 { font-size: 14px; margin: 4px 0 12px; }
 .grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }
@@ -63,7 +72,7 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 .card .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 
 form.ask { display: flex; gap: 8px; flex-wrap: wrap; }
-form.ask input { flex: 1 1 260px; font: 15px var(--font); padding: 11px 12px; border: 1px solid var(--field); border-radius: 6px; }
+form.ask input { flex: 1 1 260px; font: 16px var(--font); padding: 11px 12px; border: 1px solid var(--field); border-radius: 6px; }
 form.ask input::placeholder { color: var(--muted); }
 form.ask input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 form.ask button { font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 20px; cursor: pointer; }
@@ -139,6 +148,7 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .page-head .facts { margin: 10px 0 0; }
 .page-head .facts li { background: var(--card); }
 .narrative { margin: 0 0 10px; }
+.narrative-lead { font-size: 1.15rem; line-height: 1.45; font-weight: 600; margin: 4px 0 12px; }
 .chart { margin: 4px 0 12px; overflow-x: auto; }
 .chart svg { width: 100%; max-width: 760px; height: auto; display: block; }
 .chart-bar { fill: var(--orange); }
@@ -149,7 +159,8 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .auth-page { max-width: 460px; }
 .auth-form { display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
 .auth-form label { font-weight: 600; font-size: 14px; }
-.auth-form input { font: 15px var(--font); padding: 10px 12px; border: 1px solid var(--field); border-radius: 6px; min-width: 0; }
+/* 16px so iOS Safari does not zoom the page when a field is focused and hide the rest of the card. */
+.auth-form input { font: 16px var(--font); padding: 10px 12px; border: 1px solid var(--field); border-radius: 6px; min-width: 0; }
 .auth-form input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-form button { margin-top: 8px; font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 16px; cursor: pointer; }
 .auth-form button:disabled { opacity: .6; cursor: default; }

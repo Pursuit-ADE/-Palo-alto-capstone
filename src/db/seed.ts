@@ -4,6 +4,7 @@
 // sellers, quotas, contacts, support cases and engagements (the sample has none of these).
 import fs from 'node:fs';
 import path from 'node:path';
+import { USAGE_CASES, productUsageRows } from './product-usage';
 
 export const DEFAULT_SEED = 'alto-pals-v2';
 export const AS_OF_DATE = '2026-10-08';
@@ -173,8 +174,8 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
     loadedAt: new Date(`${AS_OF_DATE}T06:00:00Z`),
     notes:
       dataDir === path.resolve(DEFAULT_DATA_DIR)
-        ? `Maven Analytics CRM Sales Opportunities sample (public domain, fictional company), dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`
-        : `CRM sample from ${path.relative(process.cwd(), dataDir) || dataDir}, dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements and technical sellers are synthetic.`,
+        ? `Maven Analytics CRM Sales Opportunities sample (public domain, fictional company), dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements, product usage and technical sellers are synthetic.`
+        : `CRM sample from ${path.relative(process.cwd(), dataDir) || dataDir}, dates shifted +${SHIFT_DAYS} days; quotas, contacts, cases, engagements, product usage and technical sellers are synthetic.`,
   };
   const regions = REGIONS.map((r) => ({ ...r }));
 
@@ -317,7 +318,20 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
       occurredAt: new Date(`${addDays('2026-09-01', int(0, 37))}T${String(int(0, 23)).padStart(2, '0')}:00:00Z`),
     }));
 
-  return { snapshot, regions, users, products, accounts, accountTeam, contacts, opportunities, quotas, supportCases, engagements };
+  const usageProduct = [...products].sort((a, b) => a.id.localeCompare(b.id))[0];
+  const usageAccounts = [...new Set(accountTeam.map((t) => t.accountId))].sort();
+  // The low-usage rule routes to the account team, so these accounts are ones that already have a team.
+  const productUsage = usageProduct && usageAccounts.length >= USAGE_CASES.length
+    ? productUsageRows(snapshotId, USAGE_CASES.map((c, i) => ({
+        accountId: usageAccounts[i]!,
+        productId: usageProduct.id,
+        monthsAgo: c.monthsAgo,
+        purchasedQuantity: c.purchasedQuantity,
+        quantityUsed: c.quantityUsed,
+      })), AS_OF_DATE)
+    : [];
+
+  return { snapshot, regions, users, products, accounts, accountTeam, contacts, opportunities, quotas, supportCases, engagements, productUsage };
 }
 
 /** Identities for the demo picker, in display order. */
