@@ -107,7 +107,20 @@ describe('O3: production settings are checked at start-up', () => {
     expect(bad.join(' ')).toMatch(/AUDIT_HASH_KEY/);
     expect(bad.join(' ')).toMatch(/DEMO_INVITE_SECRET/);
     expect(bad.join(' ')).toMatch(/DEMO_INVITE_EXPIRES/);
-    expect(productionConfigProblems({ NODE_ENV: 'production', AUDIT_HASH_KEY: 'k'.repeat(32), DEMO_INVITE_SECRET: 's'.repeat(16) })).toEqual([]);
-    expect(productionConfigProblems({ NODE_ENV: 'production' }, 'alerts')).toEqual([]);
+    expect(productionConfigProblems({ NODE_ENV: 'production', AUDIT_HASH_KEY: 'k'.repeat(32), DEMO_INVITE_SECRET: 's'.repeat(16), EMPLOYEE_STATUS: 'off' })).toEqual([]);
+    expect(productionConfigProblems({ NODE_ENV: 'production', EMPLOYEE_STATUS: 'off' }, 'alerts')).toEqual([]);
+  });
+
+  it('refuses a production start until employee status is decided, in both apps (evaluator D-06, #82)', () => {
+    const base = { NODE_ENV: 'production', AUDIT_HASH_KEY: 'k'.repeat(32) };
+    for (const app of ['copilot', 'alerts'] as const) {
+      for (const EMPLOYEE_STATUS of [undefined, '', '  ', '{"u_ts_east":"inactive"}', '{}', 'not json', '["active"]']) {
+        expect(productionConfigProblems({ ...base, EMPLOYEE_STATUS }, app).join(' ')).toMatch(/EMPLOYEE_STATUS/);
+      }
+      for (const EMPLOYEE_STATUS of ['off', ' OFF ', '{"u_ts_east":"active","u_ts_west":"inactive"}']) {
+        expect(productionConfigProblems({ ...base, EMPLOYEE_STATUS }, app)).toEqual([]);
+      }
+    }
+    expect(productionConfigProblems({ NODE_ENV: 'development' }, 'alerts')).toEqual([]);
   });
 });

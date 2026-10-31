@@ -5,6 +5,7 @@ import { askCopilot, type AskResult } from './actions';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
+import { ExplanationView } from './explanation-panel';
 import { ProvenancePanel } from './provenance-panel';
 import { Chart3D } from './chart3d';
 import { answerCharts, breakdownQuestions } from './chart-data';
@@ -20,6 +21,17 @@ interface Turn {
 // The browser keeps only what it displays plus the last answer's structured intent. The server re-validates
 // that intent and re-checks scope on every turn, so editing it can't widen access.
 const MAX_TURNS_SHOWN = 20;
+
+/** The conversation state the next question sends, after this reply. A refusal leaves it as it was. */
+function nextPrevious(result: AskResult, current: unknown): unknown {
+  if (result?.kind === 'answer') return result.intent;
+  // A follow-up after an explanation continues from the asker's own figure.
+  if (result?.kind === 'explanation') return result.answer.intent;
+  // A clarification waits on a partial request (e.g. coverage with no quarter); the reply finishes it.
+  // A clarification with nothing to resume clears the state, so a bare reply can't continue an older question.
+  if (result?.kind === 'clarify') return result.resume ?? null;
+  return current;
+}
 
 export function AskPanel({
   user,
@@ -55,10 +67,7 @@ export function AskPanel({
       try {
         const result = await askCopilot(null, fd);
         setTurns((t) => [...t, { id: Date.now(), question: q, result }].slice(-MAX_TURNS_SHOWN));
-        if (result?.kind === 'answer') setPrevious(result.intent);
-        // A clarification waits on a partial request (e.g. coverage with no quarter); the reply finishes it.
-        // A clarification with nothing to resume clears the state, so a bare reply can't continue an older question.
-        else if (result?.kind === 'clarify') setPrevious(result.resume ?? null);
+        setPrevious((current: unknown) => nextPrevious(result, current));
         if (inputRef.current) inputRef.current.value = '';
         // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
         if (refocus) inputRef.current?.focus();
@@ -123,6 +132,7 @@ interface GraphsView {
 function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView | null }) {
   if (!result) return null;
   if (result.kind === 'answer') return <AnswerView a={result} graphs={graphs} />;
+  if (result.kind === 'explanation') return <ExplanationView e={result} />;
   // A clarifying question is the copilot asking back, not a refusal, so it gets its own look.
   if (result.kind === 'clarify') return <div className="answer notice clarify" role="status"><span className="notice-tag">Question</span>{result.question}</div>;
   return <div className="answer notice refused" role="status"><span className="notice-tag">Not answered</span>{result.message}</div>;

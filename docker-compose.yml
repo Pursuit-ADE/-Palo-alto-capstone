@@ -54,6 +54,7 @@ services:
       ENABLE_HSTS: ${ENABLE_HSTS:-false}
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       INTENT_MODEL: ${INTENT_MODEL:-}
+      EMPLOYEE_STATUS: ${EMPLOYEE_STATUS:-off}   # "off" on purpose for the demo; a real deploy lists active employees
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SECURITY_SLACK_WEBHOOK_URL: ${SECURITY_SLACK_WEBHOOK_URL:-}
     ports:
@@ -89,7 +90,7 @@ services:
       EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}
       EMAIL_WEBHOOK_HOSTS: ${EMAIL_WEBHOOK_HOSTS:-}
       # Employee-status check (#55). Compose only forwards variables it names, so without this line the check is always off here.
-      EMPLOYEE_STATUS: ${EMPLOYEE_STATUS:-}
+      EMPLOYEE_STATUS: ${EMPLOYEE_STATUS:-off}   # "off" on purpose for the demo; a real deploy lists active employees
     ports:
       - "127.0.0.1:3001:3000"
     depends_on:
