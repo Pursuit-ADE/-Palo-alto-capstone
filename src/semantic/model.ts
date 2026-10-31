@@ -80,7 +80,7 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
 }
 
 /** Claude as the intent model. Used only when INTENT_MODEL=claude; needs Anthropic credentials. */
-// A question should fail fast to the deterministic fallback rather than hang: 5 s, no retry (see also the
+// A question should fail fast to the deterministic fallback rather than hang: one timeout, no retry (see also the
 // circuit breaker in src/server/ask.ts).
 // How long one question waits for Claude before the deterministic model answers. Measured Oct 17-18: median about
 // 2.2 s, slowest about 5 s, so 8 s by default; CLAUDE_TIMEOUT_MS (1-60 s) overrides it.
