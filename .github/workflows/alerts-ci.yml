@@ -23,7 +23,19 @@ concurrency:
 
 jobs:
   test:
+    # Also runs the Postgres roles check, which as its own job was billed a minute minimum (review, Oct 31).
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: copilot_owner
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: copilot
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U copilot_owner"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     defaults:
       run:
         working-directory: alerts
@@ -40,35 +52,14 @@ jobs:
       - run: npm run build
       - name: Dependency scan
         run: npm audit --audit-level=high
-
-  alerts-postgres:
-    # Persistent mode with the least-privilege alerts login (docker/init-roles.sql).
-    runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: copilot_owner
-          POSTGRES_PASSWORD: ci_only
-          POSTGRES_DB: copilot
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U copilot_owner"
-          --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/alerts
-      ALERTS_DATABASE_URL: postgres://alerts_app:alerts_local_dev@localhost:5432/alerts
-    defaults:
-      run:
-        working-directory: alerts
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: alerts/package-lock.json
-      - run: npm ci
+      # Persistent mode with the least-privilege alerts login (docker/init-roles.sql). The URLs are set on these steps
+      # only, so npm test above keeps using the embedded database.
       - name: Create roles and database
+        if: ${{ !cancelled() }}
         run: psql "postgres://copilot_owner:ci_only@localhost:5432/copilot" -v ON_ERROR_STOP=1 -f ../docker/init-roles.sql
-      - run: npx vitest run tests/postgres-roles.test.ts
+      - name: Postgres roles
+        if: ${{ !cancelled() }}
+        env:
+          MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/alerts
+          ALERTS_DATABASE_URL: postgres://alerts_app:alerts_local_dev@localhost:5432/alerts
+        run: npx vitest run tests/postgres-roles.test.ts

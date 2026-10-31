@@ -85,7 +85,7 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 | SQL from allowlisted names only, values as bound parameters, grouped results capped at 500 rows | `src/semantic/compile.ts` | injection test in `tests/governed-query.test.ts` |
 | Unknown users and unrecognized roles fail closed | `resolvePrincipal()` | `tests/audit-and-limits.test.ts` |
 | Audit row for every question and dashboard query, including refusals; question stored as a hash; no answer if the audit write fails | `src/semantic/answer.ts`, `query_audit` | `tests/audit-and-limits.test.ts` |
-| Read-only app role, insert-only audit role, statement timeout | `src/db/client.ts`, `docker/init-roles.sql` | `tests/postgres-roles.test.ts` (CI job `postgres-roles`) |
+| Read-only app role, insert-only audit role, statement timeout | `src/db/client.ts`, `docker/init-roles.sql` | `tests/postgres-roles.test.ts` (the "Postgres roles" step of CI's `test` job) |
 | Question length limit and per-user rate limit (20 per minute) | `src/semantic/answer.ts`, `src/server/limits.ts` | `tests/audit-and-limits.test.ts` |
 | Intent arrays bounded (3 regions, 10 stages, 2 unique breakdowns) | `src/registry/types.ts` | `tests/governed-query.test.ts` |
 | Questions sent by POST (Server Action), never in the URL | `app/actions.ts`, `app/ask-panel.tsx` | |
