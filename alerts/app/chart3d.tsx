@@ -554,7 +554,7 @@ export function Chart3D({ charts, kinds }: { charts: ChartData[]; kinds?: Record
   const chart = charts[Math.min(which, charts.length - 1)]!;
   const offered = useMemo(() => kindsFor(chart), [chart]);
   const want = picked[chart.id];
-  const kind: ChartKind = want && offered.includes(want) ? want : defaultKind(chart);
+  const kind: ChartKind = want && offered.includes(want) ? want : chart.prefer && offered.includes(chart.prefer) ? chart.prefer : defaultKind(chart);
   const L = useMemo(() => layout2D(chart, kind), [chart, kind]);
   // Phones: a narrower layout, so the text is not shrunk to half size. Both are rendered; CSS shows the one that fits.
   const N = useMemo(() => (hasNarrow(chart, kind) ? layout2D(chart, kind, true) : null), [chart, kind]);
