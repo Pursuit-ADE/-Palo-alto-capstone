@@ -74,3 +74,12 @@ describe('one figure', () => {
     expect(at('class="answer-value"')).toBeLessThan(at('Scope and data date'));
   });
 });
+
+describe('PR #50 review, Oct 31: the heading matches the figures', () => {
+  it('two figures that are the same are not headed as differing', async () => {
+    const { e, html } = await render('u_ts_east', "why is Cara Losch's team coverage different from mine this quarter?");
+    expect(e.other).not.toBeNull();
+    expect(html).not.toContain('Why these two coverage figures differ');
+    expect(html).toContain('These two coverage figures are the same');
+  });
+});

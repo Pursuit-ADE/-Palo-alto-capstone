@@ -1,6 +1,7 @@
 // "Why is my number different?" for coverage (readiness audit slice): the asker's own figure with a fixed
 // explanation, a comparison only between figures the asker may see, and arithmetic checks that catch a planted defect.
-import { eq } from 'drizzle-orm';
+import { readFileSync } from 'node:fs';
+import { desc, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase, type Database } from '@/db/client';
 import { appUsers, queryAudit } from '@/db/schema';
@@ -441,5 +442,162 @@ describe('user test, Oct 31: a comparison that has the direction wrong is correc
       "Coverage for Cara Losch's team and for Cara Losch's team rounds to the same figure, 0.52x, so neither is clearly higher.",
     );
     expect(premiseCorrection(r, r, true, false)).toBeNull();
+  });
+});
+
+// Adversarial review of #50 on Oct 31: each case below was reproduced by one reviewer and confirmed by another.
+describe('PR #50 review, Oct 31: routing', () => {
+  const coverageQ1 = { metric: 'pipeline_coverage', filters: { period: 'FY27-Q1' }, groupBy: [] };
+
+  it('a follow-up that names another metric is not a coverage explanation', () => {
+    expect(isDiscrepancyQuestion('Why is the number of open deals for Darcel Schlecht higher than Niesha Huffines?', reg, coverageQ1)).toBe(false);
+    expect(isDiscrepancyQuestion('Why is my number of open opportunities lower than the dashboard?', reg, coverageQ1)).toBe(false);
+    expect(isDiscrepancyQuestion('Why is the figure for open pipeline higher than last quarter?', reg, coverageQ1)).toBe(false);
+    expect(isDiscrepancyQuestion('why is this number different?', reg, coverageQ1)).toBe(true);
+  });
+
+  it.each([
+    'Why does finance say revenue is 2x higher than mine?',
+    'Why is my win rate 2x lower than the team?',
+    'Why is my ARR 1.5x what finance reports?',
+    'Why does marketing say bookings grew 2x?',
+    'Why does the dashboard show 2x more deals than I see?',
+    'Why does finance say revenue is 2x?',
+  ])('"%s": a multiplier or another quantity is not a coverage ratio', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+
+  it.each(['Why does marketing say 3x when mine is 0.5x?', 'Why do I see 0.5x when marketing says 3x?', "Why does marketing say we're at 3x?", 'Why is mine 0.5x when the dashboard says 3x?'])(
+    '"%s": a ratio that is itself the figure still means coverage',
+    (phrase) => {
+      expect(isDiscrepancyQuestion(phrase, reg)).toBe(true);
+    },
+  );
+
+  it.each([
+    'Explain pipeline coverage by region this quarter and show the numbers',
+    'Explain coverage by rep this quarter, and show me who is lowest',
+    'Why is my pipeline vs quota so low?',
+    'Explain pipeline vs quota by region',
+  ])('"%s": a breakdown request or the definition itself is not a comparison', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+});
+
+describe('PR #50 review, Oct 31: names', () => {
+  it.each(["why is jordan's coverage lower than the company's?", "WHY IS JORDAN'S COVERAGE LOWER THAN THE COMPANY'S?", 'Why is Jordan’S coverage lower than the company’s?'])(
+    '"%s": an unknown name in any case is asked back, not dropped',
+    async (phrase) => {
+      const r = await ask(database, reg, 'u_analyst', phrase);
+      expect(r).toMatchObject({ kind: 'clarify' });
+      expect(JSON.stringify(r)).not.toMatch(/jordan/i);
+    },
+  );
+
+  it.each([
+    ['u_analyst', "why is cara losch's team's coverage lower than the company's?"],
+    ['u_mgr_melvin_marxen', "Why is my team's coverage lower than everyone's this quarter?"],
+    ['u_analyst', "why is east's coverage lower than the company's this quarter?"],
+  ])('%s: "%s" still gets an explanation', async (user, phrase) => {
+    expect((await ask(database, reg, user, phrase)).kind).toBe('explanation');
+  });
+});
+
+describe('PR #50 review, Oct 31: what is compared', () => {
+  it.each([
+    ['u_mgr_melvin_marxen', "Why is Darcel Schlecht's coverage higher than the company's?", 0.6981],
+    ['u_mgr_melvin_marxen', "How much higher is Darcel Schlecht's coverage than the company's?", 0.6981],
+  ])('%s: "%s" explains the rep alone: the company is outside a manager\'s scope', async (user, phrase, value) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer).value).toBe(value);
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+    expect(e.summary).not.toMatch(/not higher|not lower|0\.78/);
+  });
+
+  it.each([
+    ['u_analyst', 'why is east coverage this quarter higher than west next quarter?'],
+    ['u_mgr_melvin_marxen', "Why is Darcel Schlecht's coverage next quarter lower than Niesha Huffines's this quarter?"],
+    ['u_analyst', "Why is Cara Losch's team's coverage next quarter lower than the company's this quarter?"],
+    ['u_ts_east', "Why is my coverage this quarter lower than the company's next quarter?"],
+  ])('%s: "%s" names two quarters and two figures, so it is asked back instead of merged', async (user, phrase) => {
+    const r = await ask(database, reg, user, phrase);
+    expect(r).toEqual({ kind: 'clarify', question: 'I can compare one slice across two quarters, or two slices in the same quarter. Which do you want?' });
+  });
+
+  it('"why is this number higher than west?" compares the previous answer with West', async () => {
+    const previous = { metric: 'pipeline_coverage', filters: { regions: ['central'], period: 'FY27-Q1' }, groupBy: [] };
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is this number higher than west?', { previous }));
+    expect([(e.answer.intent as Intent).filters, (e.other!.intent as Intent).filters]).toEqual([
+      { regions: ['central'], period: 'FY27-Q1' },
+      { regions: ['west'], period: 'FY27-Q1' },
+    ]);
+  });
+
+  it('"why is this number higher than this quarter?" after a next-quarter answer compares that answer with this quarter', async () => {
+    const previous = { metric: 'pipeline_coverage', filters: { teams: ['Cara Losch'], period: 'FY27-Q2' }, groupBy: [] };
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is this number higher than this quarter?', { previous }));
+    expect([(e.answer.intent as Intent).filters, (e.other!.intent as Intent).filters]).toEqual([
+      { teams: ['Cara Losch'], period: 'FY27-Q2' },
+      { teams: ['Cara Losch'], period: 'FY27-Q1' },
+    ]);
+  });
+
+  it('a refused comparison leaves no answered figure in its audit row', async () => {
+    await expect(ask(database, reg, 'u_ts_east', 'why is coverage higher in east than west?')).rejects.toBeInstanceOf(ScopeViolation);
+    const [last] = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_ts_east')).orderBy(desc(queryAudit.at)).limit(1);
+    expect(last).toMatchObject({ outcome: 'refused_scope', resultHash: null });
+    expect((last!.intent as Intent).filters.regions).toEqual(['west']);
+  });
+});
+
+describe('PR #50 review, Oct 31: the direction is only corrected when the question compares two coverage figures', () => {
+  it.each([
+    ['u_analyst', "Why is Cara Losch's team's coverage higher than 0.4x?"],
+    ['u_analyst', "Why is Cara Losch's team's coverage higher than expected?"],
+    ['u_mgr_melvin_marxen', 'Why does Darcel Schlecht have more pipeline than Niesha Huffines but lower coverage?'],
+    ['u_analyst', 'Why does East have more quota than West but lower coverage?'],
+    ['u_analyst', "Why is East coverage higher than marketing's number?"],
+    ['u_analyst', 'Why is east coverage higher than the 3x finance reports?'],
+  ])('%s: "%s"', async (user, phrase) => {
+    const r = await ask(database, reg, user, phrase);
+    expect(JSON.stringify(r)).not.toMatch(/not higher|not lower/);
+  });
+});
+
+describe('PR #50 review, Oct 31: wording', () => {
+  it('two separate reps with the same figure are not said to cover the same pipeline', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is coverage for Elizabeth Anderson different from Natalya Ivanova?'));
+    expect(e.summary).not.toContain('cover the same pipeline and quota');
+    expect(e.summary).toContain('have the same figure');
+  });
+
+  it('a filtered follow-up lists its filter instead of "Yours has none"', async () => {
+    const previous = { metric: 'pipeline_coverage', filters: { regions: ['west'], period: 'FY27-Q1' }, groupBy: [] };
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is this number different from what finance says?', { previous }));
+    expect(e.reasons.find((r) => r.startsWith('Filters:'))).toContain('West region');
+  });
+
+  it("a region a rep can only see their own deals in is labelled as the rep's whole scope, not the region", async () => {
+    const e = explained(await ask(database, reg, 'u_darcel_schlecht', 'Why is Central coverage different from Darcel Schlecht?'));
+    expect(e.summary).not.toMatch(/Central region is \d/);
+    expect(e.summary).toContain('all of Central region, your own deals');
+  });
+});
+
+describe('PR #50 review, Oct 31: the detection rules see explanations', () => {
+  /** A query from docs/DETECTIONS.md, run as written, so the doc and the outcome codes can't drift apart. */
+  function detection(id: string): string {
+    const doc = readFileSync('docs/DETECTIONS.md', 'utf8');
+    const sql = doc.slice(doc.indexOf(`### ${id}.`)).match(/```sql\n([\s\S]*?)```/)?.[1];
+    if (!sql) throw new Error(`no SQL for ${id}`);
+    return sql;
+  }
+
+  it('D4 "flagged but answered" lists a flagged explanation', async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "why is Cara Losch's team coverage different from the whole company?"));
+    const rows = (await database.client.query<{ user_id: string; flags: string[] }>(detection('D4'))).rows;
+    expect(rows.some((r) => r.user_id === 'u_ts_east' && r.flags.includes('scope_widening'))).toBe(true);
+    expect(e.kind).toBe('explanation');
   });
 });

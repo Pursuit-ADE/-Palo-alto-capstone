@@ -60,21 +60,57 @@ function clean(phrase: string): string {
   return ` ${phrase.replace(QUOTED_RATIO, ' ').toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
+/** Asks for coverage split by something ("by region"): a breakdown request, not a comparison (#50 review, Oct 31). */
+const BREAKDOWN = / (by|per|for each|across) (region|regions|rep|reps|owner|owners|team|teams|stage|stages|manager|managers) /;
+/** Words right before a quoted ratio that make it the figure itself: "marketing says 3x", "mine is 0.5x", "we're at 3x". */
+const RATIO_LEAD = /^(say|says|said|show|shows|showed|showing|report|reports|reported|see|sees|saw|get|gets|got|quote|quotes|quoted|claim|claims|claimed|at|of|is|was|are|be)$/;
+/** Who may sit before "is 3x" for the ratio to be a coverage figure: "mine is", "the dashboard is", not "revenue is". */
+const RATIO_SUBJECT = /^(mine|ours|yours|theirs|it|that|this|we|i|you|they|coverage|ratio|number|figure|one)$/;
+/** Words right after a quoted ratio that make it a multiplier: "2x higher", "2x more deals", "1.5x what finance reports". */
+const MULTIPLIER = /^(higher|lower|more|less|bigger|smaller|greater|larger|than|what|as|times|the|growth|faster|slower|better|worse)$/;
+
+/**
+ * A quoted ratio that is itself a coverage figure (Oct 29: the deck's "marketing say 3x when mine is 0.5x" has no
+ * "coverage"). Not a multiplier ("2x higher", "grew 2x") or a ratio of something else ("revenue is 2x", "my ARR 1.5x").
+ */
+function quotesCoverage(phrase: string): boolean {
+  const words = phrase.toLowerCase().replace(/(\d)\s+x\b/g, '$1x').replace(/['’]re\b/g, ' are').replace(/['’]s\b/g, ' is').split(/[^a-z0-9.]+/).filter(Boolean);
+  return words.some((w, i) => {
+    if (!/^\d+(?:\.\d+)?x$/.test(w)) return false;
+    const [before, after] = [words[i - 1] ?? '', words[i + 1] ?? ''];
+    if (MULTIPLIER.test(after) || !RATIO_LEAD.test(before)) return false;
+    if (!/^(is|was|are|be)$/.test(before)) return true;
+    const subject = words[i - 2] ?? '';
+    return RATIO_SUBJECT.test(subject) || OTHER_FIGURE.test(` ${subject} `);
+  });
+}
+
+/** The cleaned question with every coverage synonym written as "coverage", so "pipeline vs quota" is not read as "vs". */
+function withCoverageWords(text: string, registry: Registry): string {
+  const m = registry.metrics.get(EXPLAINED_METRIC);
+  const names = m ? [m.name.toLowerCase(), ...m.synonyms.map((x) => x.toLowerCase())].sort((a, b) => b.length - a.length) : [];
+  return names.reduce((t, n) => t.split(` ${n} `).join(' coverage '), text);
+}
+
+/** Whether the question names a governed metric other than coverage ("the number of open deals", "open pipeline"). */
+function namesOtherMetric(text: string, registry: Registry): boolean {
+  return [...registry.metrics.values()].some(
+    (m) => m.id !== EXPLAINED_METRIC && [m.name, ...m.synonyms].some((n) => text.includes(` ${n.toLowerCase()} `)),
+  );
+}
+
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
-  const text = clean(phrase);
+  const text = withCoverageWords(clean(phrase), registry);
   const compared = DIFFERENCE.test(text) || (SET_AGAINST.test(text) && pointsElsewhere(phrase));
-  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !compared) return false;
-  const names = (id: string) => {
-    const m = registry.metrics.get(id);
-    return m ? [m.name.toLowerCase(), ...m.synonyms.map((s) => s.toLowerCase())] : [];
-  };
-  const says = (id: string) => names(id).some((n) => text.includes(` ${n} `));
-  if (says(EXPLAINED_METRIC)) return true;
-  // Coverage is the only metric written as "3x", so a quoted ratio names it, unless the question names another
-  // metric ("my pipeline is 3x bigger", where 3x is a multiplier). The deck's wording has no "coverage" (Oct 29).
-  if (HAS_QUOTED_RATIO.test(phrase) && ![...registry.metrics.keys()].some((id) => id !== EXPLAINED_METRIC && says(id))) return true;
-  return previous?.metric === EXPLAINED_METRIC && THIS_NUMBER.test(text);
+  if (!(WHY.test(text) || HOW_MUCH.test(text)) || !compared || BREAKDOWN.test(text)) return false;
+  if (text.includes(' coverage ')) return true;
+  // Coverage is the only metric written as "3x", so a ratio quoted as the figure names it, unless the question names
+  // another metric ("my pipeline is 3x bigger", where 3x is a multiplier).
+  const other = namesOtherMetric(text, registry);
+  if (quotesCoverage(phrase) && !other) return true;
+  // "Why is the number of open deals…" after a coverage answer is about open deals, not "this number" (#50 review).
+  return previous?.metric === EXPLAINED_METRIC && THIS_NUMBER.test(text) && !other;
 }
 
 /**
@@ -93,24 +129,35 @@ function selectorPhrase(phrase: string): string {
 
 /** A capitalised name with 's ("Jordan's", "Cara Losch's"). */
 const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
+/** Any single word with 's, in any case ("jordan's", "JORDAN'S", "Jordan’S"); everyday words are skipped below. */
+const ANY_POSSESSIVE = /\b([a-z][a-z.-]*)['’]s\b/gi;
 /** Capitalised words before 's that are contractions, not names: "Why's my coverage…", "What's the reason…" (review on #50). */
 const NOT_A_NAME = new Set(['why', 'what', 'how', 'where', 'who', 'when', 'it', 'that', 'there', 'here', 'this', 'everyone', 'let']);
+/** Everyday words that take 's in a coverage question and are not people: "my team's", "this quarter's", "the board's". */
+const EVERYDAY = new Set(
+  ('team teams company everyone everybody anyone someone somebody nobody quarter quarters year month week today region regions ' +
+    'rep reps manager managers boss board deck slide sheet chart dashboard report spreadsheet number figure coverage pipeline quota data ' +
+    'org organization department group division unit segment territory sector industry customer customers account accounts partner ' +
+    'market business forecast plan target goal one other he she').split(' '),
+);
 
 /**
  * "Why is Jordan's coverage 0.52x…": a possessive name that is not a rep, team or region the question resolved.
  * readSelectors only catches unknown names after "for", "at" and the like, so this one would be dropped and the
  * analyst's whole scope explained instead (user test, Oct 29; PRD A2). Someone else's figure ("Marketing's") is fine.
+ * Lower-case and all-caps names count too (#50 review, Oct 31).
  */
 function unknownPossessive(phrase: string, resolved: string[]): string | null {
+  const known = (lower: string) =>
+    OTHER_FIGURE.test(` ${lower} `) || resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()));
   for (const m of phrase.matchAll(POSSESSIVE)) {
     const words = m[1]!.split(/\s+/);
     while (words.length && NOT_A_NAME.has(words[0]!.toLowerCase())) words.shift();
-    if (!words.length) continue;
-    const name = words.join(' ');
-    const lower = name.toLowerCase();
-    if (OTHER_FIGURE.test(` ${lower} `)) continue;
-    if (resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()))) continue;
-    return name;
+    if (words.length && !known(words.join(' ').toLowerCase())) return words.join(' ');
+  }
+  for (const m of phrase.matchAll(ANY_POSSESSIVE)) {
+    const lower = m[1]!.toLowerCase();
+    if (!NOT_A_NAME.has(lower) && !EVERYDAY.has(lower) && !known(lower)) return m[1]!;
   }
   return null;
 }
@@ -149,37 +196,74 @@ function namedPieces(slice: Intent['filters'], text: string): Piece[] {
   return pieces.sort((a, b) => a.at - b.at).map((p) => p.piece);
 }
 
-/** The one or two coverage requests to run. Both are re-scoped by the compiler, so neither can leave the asker's scope. */
-function plan(phrase: string, registry: Registry, asOfDate: string, previous?: Intent): { first: Intent; second: Intent | null } | Clarify {
-  const periods = findPeriods(clean(phrase), registry.glossary, asOfDate);
-  if (periods.unsupported || periods.labels.size > 2) {
-    return { kind: 'clarify', question: `I can only explain coverage for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which do you mean?` };
+const coverageIntent = (filters: Intent['filters']): Intent => ({ metric: EXPLAINED_METRIC, filters, groupBy: [] });
+type Plan = { first: Intent; second: Intent | null };
+
+/**
+ * "Why is this number higher than West / than this quarter?" right after a coverage answer: that answer against the
+ * figure the question names, not the named figure against everything (#50 review, Oct 31). Null when it names neither.
+ */
+function thisNumberPlan(previous: Intent, pieces: Piece[], label: string | undefined, current: string | undefined): Plan | null {
+  const prev = { ...previous.filters, period: previous.filters.period ?? current };
+  const [piece] = pieces;
+  if (pieces.length === 1 && piece) return { first: coverageIntent(prev), second: coverageIntent({ ...piece, period: label ?? prev.period }) };
+  if (!pieces.length && label && label !== prev.period) return { first: coverageIntent(prev), second: coverageIntent({ ...previous.filters, period: label }) };
+  return null;
+}
+
+/**
+ * Questions that name more figures than one explanation compares. Two named slices ("east than west") are compared
+ * with each other in the order named (PR #50 review), but three or more are asked back. So are two quarters with two
+ * figures ("east this quarter than west next quarter", "mine this quarter than the company's next"): merging them
+ * would explain figures nobody named (#50 review, Oct 31).
+ */
+function askBack(pieces: Piece[], twoQuarters: boolean, phrase: string): Clarify | null {
+  if (pieces.length > 2) return { kind: 'clarify', question: 'I can explain coverage for two slices at a time. Which two do you want to compare?' };
+  if (twoQuarters && (pieces.length > 1 || pointsElsewhere(phrase))) {
+    return { kind: 'clarify', question: 'I can compare one slice across two quarters, or two slices in the same quarter. Which do you want?' };
   }
-  const slice = namedSlice(phrase);
+  return null;
+}
+
+/** The one or two coverage requests to run. Both are re-scoped by the compiler, so neither can leave the asker's scope. */
+function plan(phrase: string, registry: Registry, asOfDate: string, previous?: Intent): Plan | Clarify {
+  const text = clean(phrase);
+  const periods = findPeriods(text, registry.glossary, asOfDate);
+  const slice = periods.unsupported || periods.labels.size > 2 ? null : namedSlice(phrase);
+  if (!slice) return { kind: 'clarify', question: `I can only explain coverage for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which do you mean?` };
   if (isClarify(slice)) return slice;
   const named = Object.keys(slice).length > 0;
+  const pieces = namedPieces(slice, text);
+  const [p1, p2] = [...periods.labels].sort();
+  const tooMany = askBack(pieces, Boolean(p2), phrase);
+  if (tooMany) return tooMany;
+  const current = resolvePeriod('current', asOfDate);
+  if (previous?.metric === EXPLAINED_METRIC && THIS_NUMBER.test(text) && !p2) {
+    const followUp = thisNumberPlan(previous, pieces, p1, current);
+    if (followUp) return followUp;
+  }
   // A "why is this number different?" follow-up explains the previous coverage answer, with its filters.
   const base: Intent['filters'] = !named && previous?.metric === EXPLAINED_METRIC ? { ...previous.filters } : slice;
-  const coverage = (filters: Intent['filters']): Intent => ({ metric: EXPLAINED_METRIC, filters, groupBy: [] });
-  const [p1, p2] = [...periods.labels].sort();
-  if (p1 && p2) return { first: coverage({ ...base, period: p1 }), second: coverage({ ...base, period: p2 }) };
-  const current = resolvePeriod('current', asOfDate);
+  return planFor(base, pieces, named, [p1, p2], current, phrase);
+}
+
+/**
+ * The figures for a question whose slices and quarters are known: two quarters, this quarter against another, two
+ * slices, or a slice against the asker's whole scope.
+ */
+function planFor(base: Intent['filters'], pieces: Piece[], named: boolean, [p1, p2]: (string | undefined)[], current: string | undefined, phrase: string): Plan | Clarify {
+  if (p1 && p2) return { first: coverageIntent({ ...base, period: p1 }), second: coverageIntent({ ...base, period: p2 }) };
   const period = p1 ?? base.period ?? current;
   if (!period) return { kind: 'clarify', question: 'Pipeline coverage needs a period. Which quarter do you mean?' };
   // "Why is coverage different next quarter?" compares the current quarter with the named one, inside the same slice.
   // Not when the question points at someone else's figure: then the named quarter is just the asker's own figure.
   if (p1 && current && p1 !== current && !named && !pointsElsewhere(phrase)) {
-    return { first: coverage({ ...base, period: current }), second: coverage({ ...base, period: p1 }) };
+    return { first: coverageIntent({ ...base, period: current }), second: coverageIntent({ ...base, period: p1 }) };
   }
-  // Two named slices ("east than west", two teams, two reps) are compared with each other in the order named, not
-  // combined into one slice and compared with everything (PR #50 review). An explanation compares two figures, so
-  // three or more are asked back.
-  const pieces = namedPieces(slice, clean(phrase));
-  if (pieces.length > 2) return { kind: 'clarify', question: 'I can explain coverage for two slices at a time. Which two do you want to compare?' };
   const [s1, s2] = pieces;
-  if (s1 && s2) return { first: coverage({ ...s1, period }), second: coverage({ ...s2, period }) };
+  if (s1 && s2) return { first: coverageIntent({ ...s1, period }), second: coverageIntent({ ...s2, period }) };
   // A named slice is compared with the asker's whole scope; both are figures the asker may already see.
-  return { first: coverage({ ...base, period }), second: named ? coverage({ period }) : null };
+  return { first: coverageIntent({ ...base, period }), second: named ? coverageIntent({ period }) : null };
 }
 
 /** The coverage numerator recomputed as its own governed metric, for the same slice and quarter. */
@@ -197,43 +281,63 @@ const sameQuarter = (a: Answer, b: Answer) => a.filters.period?.label === b.filt
 
 type Half = 'before' | 'after' | null;
 
-/**
- * Whether the first figure is the one before "than", from where each figure's names are. A figure with no names of its
- * own (the asker's whole scope) is placed by the other one. Both on the same side says nothing about which is which.
- */
+/** Whether the first figure is the one before "than". Both figures must be placed, on different sides, or it's unclear. */
 function namedFirst(a: Half, b: Half): boolean | null {
-  if (a === 'before' && b !== 'before') return true;
-  if (b === 'before' && a !== 'before') return false;
-  if (a === 'after' && b !== 'after') return false;
-  if (b === 'after' && a !== 'after') return true;
+  if (a === 'before' && b === 'after') return true;
+  if (a === 'after' && b === 'before') return false;
   return null;
 }
 
 const HIGHER = / (higher|bigger|greater|more|better|stronger) /;
 const LOWER = / (lower|smaller|less|worse|weaker) /;
+/** A direction word about another quantity ("more pipeline than", "more quota than") is not a claim about coverage. */
+const OTHER_QUANTITY = / (pipeline|quota|deal|deals|opportunity|opportunities|revenue|bookings|amount|count|value|dollars) /;
+/** Words that name the asker's whole scope as a figure: "the company's", "everyone's", "mine". */
+const WHOLE = / (company|companys|everyone|everybody|overall|whole|total|everything|all teams|all regions|mine|ours|my team|our team) /;
+/** Words that make the other side someone else's figure or no figure at all: "marketing's number", "than expected". */
+const NOT_OURS =
+  / (marketing|finance|sales|leadership|dashboard|report|reports|reported|spreadsheet|someone|somebody|they|their|them|manager|boss|say|says|said|expected|expect|target|goal|plan|forecast|thought) /;
+
+/** The asker's whole scope as one side of "than": only with a WHOLE word and nothing that makes it someone else's figure. */
+function wholeHalf(before: string, after: string): Half {
+  const here = (t: string) => WHOLE.test(t) && !NOT_OURS.test(t);
+  return sideOf(here(before), here(after));
+}
+
+/** Which side of "than" names this figure: in only one half, or neither when both or none do. */
+const sideOf = (inBefore: boolean, inAfter: boolean): Half => {
+  if (inBefore === inAfter) return null;
+  return inBefore ? 'before' : 'after';
+};
+
+/** Where a figure is named: by its quarter when the two differ by quarter, else by its own names or "the company". */
+function placeSide(side: Answer, before: string, after: string, byPeriod: boolean, registry: Registry, asOfDate: string): Half {
+  if (byPeriod) {
+    const label = side.filters.period?.label ?? '';
+    const [x, y] = [before, after].map((t) => findPeriods(t, registry.glossary, asOfDate).labels.has(label));
+    return sideOf(Boolean(x), Boolean(y));
+  }
+  const f = (side.intent as Intent).filters;
+  const names = [...(f.regions ?? []), ...(f.people ?? []), ...(f.teams ?? [])].map((n) => clean(n));
+  if (!names.length) return wholeHalf(before, after);
+  const [x, y] = [before, after].map((t) => names.some((n) => t.includes(n)));
+  return sideOf(Boolean(x), Boolean(y));
+}
 
 /**
  * Which figure "Why is A higher than B?" says is higher or lower: the one named before "than". Each figure is found by
- * its own names (region, rep, team) or, when the two differ by quarter, by its quarter. Null when the question has no
- * single "than", no direction word before it, or names the figures in a way that doesn't say which is which.
+ * its own names (region, rep, team), by its quarter when the two differ by quarter, or, for the asker's whole scope, by a
+ * word such as "company". Null unless the question has one "than", a direction word about coverage before it, and
+ * names both figures on different sides of it (#50 review, Oct 31: "than expected", "than 0.4x", "more pipeline than").
  */
 function claimed(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer): { subject: Answer; object: Answer; higher: boolean } | null {
-  const halves = clean(phrase).split(' than ');
+  const halves = withCoverageWords(clean(phrase), registry).split(' than ');
   if (halves.length !== 2) return null;
   const [before, after] = [`${halves[0]} `, ` ${halves[1]}`];
   const [up, down] = [HIGHER.test(before), LOWER.test(before)];
-  if (up === down) return null;
+  if (up === down || !before.includes(' coverage ') || OTHER_QUANTITY.test(before) || OTHER_QUANTITY.test(after)) return null;
   const byPeriod = !sameQuarter(a, b);
-  const named = (side: Answer, text: string) => {
-    if (byPeriod) return findPeriods(text, registry.glossary, asOfDate).labels.has(side.filters.period?.label ?? '');
-    const f = (side.intent as Intent).filters;
-    return [...(f.regions ?? []), ...(f.people ?? []), ...(f.teams ?? [])].some((n) => text.includes(clean(n)));
-  };
-  const half = (side: Answer): Half => {
-    const [x, y] = [named(side, before), named(side, after)];
-    if (x === y) return null;
-    return x ? 'before' : 'after';
-  };
+  const half = (side: Answer) => placeSide(side, before, after, byPeriod, registry, asOfDate);
   const aFirst = namedFirst(half(a), half(b));
   if (aFirst === null) return null;
   return aFirst ? { subject: a, object: b, higher: up } : { subject: b, object: a, higher: up };
@@ -247,6 +351,18 @@ function directionCorrection(phrase: string, registry: Registry, asOfDate: strin
   if (verdict !== 'same_definition_different_scope' && verdict !== 'different_period') return null;
   const claim = claimed(phrase, registry, asOfDate, a, b);
   return claim ? premiseCorrection(claim.subject, claim.object, claim.higher, verdict === 'different_period') : null;
+}
+
+const hasSlice = (f: Intent['filters']) => Boolean(f.regions?.length || f.people?.length || f.teams?.length);
+
+/**
+ * The second figure to run, if any. A named slice compared with "the company" by someone who can't see the company
+ * (a seller or manager) is explained alone: their own whole scope is not the company's figure (#50 review, Oct 31).
+ */
+function secondFigure(p: Plan, principal: Principal, phrase: string): Intent | null {
+  const companyWide = principal.ownerIds === null && principal.regions.length === ALL_REGIONS.length;
+  if (p.second && !hasSlice(p.second.filters) && hasSlice(p.first.filters) && !companyWide && pointsElsewhere(phrase)) return null;
+  return p.second;
 }
 
 /** Answers a discrepancy question (see isDiscrepancyQuestion). Called inside the audited request in ask(). */
@@ -265,7 +381,7 @@ export async function explainDiscrepancy(
   if (isClarify(p)) return p;
   const answer = await run(database, registry, principal, p.first, fields);
   const second: AuditFields = {};
-  const run2 = p.second ? await run(database, registry, principal, p.second, second) : null;
+  const run2 = await runSecond(database, registry, principal, secondFigure(p, principal, phrase), second, fields);
   // A named slice that is the asker's whole scope ("Cara Losch's team" for someone who sees only that team), compared
   // with someone else's figure ("the whole company"), means that figure is outside the scope: explain the asker's own
   // figure instead of comparing the slice with itself. Compared with "mine", the same figure is the right answer.
@@ -281,4 +397,19 @@ export async function explainDiscrepancy(
   const text = explanationText(answer, other, verdict, numerators);
   const correction = other && verdict ? directionCorrection(phrase, registry, snapshot.asOfDate, answer, other, verdict) : null;
   return { kind: 'explanation', answer, other, verdict, ...text, summary: correction ? `${correction} ${text.summary}` : text.summary };
+}
+
+/**
+ * Runs the second figure. If it is refused, the request's audit row records the refused figure, not the first figure
+ * that was already computed: a refused comparison must not look answered in the log (#50 review, Oct 31).
+ */
+async function runSecond(database: Database, registry: Registry, principal: Principal, intent: Intent | null, second: AuditFields, fields: AuditFields): Promise<Answer | null> {
+  if (!intent) return null;
+  try {
+    return await run(database, registry, principal, intent, second);
+  } catch (e) {
+    for (const key of ['resultHash', 'regions', 'ownerCount', 'snapshotId'] as const) delete fields[key];
+    Object.assign(fields, { intent: second.intent ?? intent });
+    throw e;
+  }
 }

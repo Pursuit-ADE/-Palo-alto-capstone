@@ -42,11 +42,18 @@ export function classify(a: Answer, b: Answer, numerators: boolean[] = [true, tr
   return JSON.stringify(a.rows) === JSON.stringify(b.rows) ? 'same_inputs' : 'reconciliation_failure';
 }
 
-/** The slice a figure covers, in the asker's own terms: a named team, rep or region, or their whole scope. */
+const regionText = (regions: string[]) => `${regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ')} region`;
+
+/**
+ * The slice a figure covers, in the asker's own terms: a named team, rep or region, or their whole scope. A seller or
+ * manager sees one region only through their own deals or team, so a region they name is their whole scope, not the
+ * region (#50 review, Oct 31: "Central region" was shown with one rep's figure).
+ */
 function sliceLabel(a: Answer): string {
   const named = (a.intent as { filters?: { regions?: string[] } }).filters?.regions;
+  const wholeRegion = scopeOf(a).endsWith('all teams');
   const bits = [
-    ...(named?.length ? [`${named.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ')} region`] : []),
+    ...(named?.length && wholeRegion ? [regionText(named)] : []),
     ...(a.filters.teams ?? []).map((t) => `${t}'s team`),
     ...(a.filters.people ?? []),
   ];
@@ -123,7 +130,9 @@ const COMBINING = "Coverage is total open pipeline over total quota. A combined 
 /** One figure: the asker's own, with the reasons any two coverage figures can legitimately differ. */
 function ownScope(a: Answer): { summary: string; reasons: string[] } {
   const f = a.filters;
-  const filters = [...(f.teams ?? []).map((t) => `${t}'s team`), ...(f.people ?? [])];
+  // A region named in the question (or the previous answer) is a filter too, not "none" (#50 review, Oct 31).
+  const regions = sliceOf(a).regions;
+  const filters = [...(regions?.length ? [regionText(regions)] : []), ...(f.teams ?? []).map((t) => `${t}'s team`), ...(f.people ?? [])];
   return {
     summary: [
       `${a.narrative} It covers ${scopeOf(a)}.`,
@@ -147,8 +156,9 @@ function compared(a: Answer, b: Answer, verdict: Verdict): { summary: string; re
   switch (verdict) {
     case 'same_definition_different_scope':
       if (JSON.stringify(a.rows) === JSON.stringify(b.rows)) {
-        const summary = `${same}, the same quarter and ${data}. ${sliceLabel(a)} and ${sliceLabel(b)} cover the same pipeline and quota, so the figure is the same: ${figure(a)}.`;
-        return { summary, reasons: [] };
+        // Only a slice that contains the other covers the same deals; two separate reps can just have equal figures.
+        const how = contains(a, b) || contains(b, a) ? 'cover the same pipeline and quota, so the figure is the same' : 'have the same figure';
+        return { summary: `${same}, the same quarter and ${data}. ${sliceLabel(a)} and ${sliceLabel(b)} ${how}: ${figure(a)}.`, reasons: [] };
       }
       return {
         summary: `${same}, the same quarter (${a.filters.period?.label}) and ${data}. They differ only in scope: ${sliceLabel(a)} is ${figure(a)}, and ${sliceLabel(b)} is ${figure(b)}.`,

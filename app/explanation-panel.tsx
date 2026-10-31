@@ -50,12 +50,19 @@ function SideBySide({ a, b }: { a: Answer; b: Answer }) {
   );
 }
 
+/** The heading says what the summary says: two figures that differ, two that are the same, or the asker's own one. */
+function heading(e: Explanation): string {
+  if (!e.other) return 'Your coverage, and what can make another figure differ';
+  const same = e.verdict === 'same_inputs' || JSON.stringify(e.answer.rows) === JSON.stringify(e.other.rows);
+  return same ? 'These two coverage figures are the same' : 'Why these two coverage figures differ';
+}
+
 export function ExplanationView({ e }: { e: Explanation }) {
   const a = e.answer;
   return (
     <div className="answer explanation">
       {/* One figure means the other number is outside the asker's scope or wasn't named: say so, don't promise a reason. */}
-      <h3>{e.other ? 'Why these two coverage figures differ' : 'Your coverage, and what can make another figure differ'}</h3>
+      <h3>{heading(e)}</h3>
       {/* The client asked for the one-sentence answer first; with one figure it also says the other wasn't checked. */}
       <p className="narrative">{e.summary}</p>
       {!e.other && <p className="answer-value">{format(part(a, 'value'), 'ratio')}</p>}
