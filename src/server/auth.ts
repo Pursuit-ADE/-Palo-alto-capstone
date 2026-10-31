@@ -73,7 +73,7 @@ export function userForInvite(code: string, secret: string | undefined, ids: rea
   return undefined;
 }
 
-const USERNAME = /^[a-z0-9._-]{3,32}$/;
+export const USERNAME = /^[a-z0-9._-]{3,32}$/;
 const tokenHash = (token: string) => createHash('sha256').update(token).digest('hex');
 // Checked when the username doesn't exist, so a wrong username takes as long as a wrong password.
 const DUMMY_HASH = 'scrypt$16384$AAAAAAAAAAAAAAAAAAAAAA==$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
