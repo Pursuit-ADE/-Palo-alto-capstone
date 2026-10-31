@@ -81,9 +81,23 @@ Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compo
 | `DATASET_DIR` | copilot | A confirmed second dataset (see [ONBOARDING.md](ONBOARDING.md)). The alerts app refuses anything but Maven. |
 | `ALERTS_SCHEDULER`, `ALERTS_TICK_SECONDS`, `ALERTS_LATE_WINDOW_HOURS` | alerts | Background evaluation every N seconds, looking back N hours for late events. |
 | `SLACK_USER_WEBHOOKS` | alerts | JSON map of user id to that person's own `https://hooks.slack.com/services/...` webhook. |
-| `ENABLE_HSTS`, `COOKIE_SECURE` | both | On by default with `npm start`, read when the server starts (no rebuild needed). Set `COOKIE_SECURE=false` only for a plain-http demo in a browser that drops Secure cookies on localhost. |
+| `ENABLE_HSTS`, `COOKIE_SECURE` | both | HSTS is on by default with `npm start`, read when the server starts (no rebuild needed). The session cookie stays Secure in production. It is left off only for a direct demo on localhost or a private LAN address (127.x, 10.x, 192.168.x, 172.16–31.x) when `TRUSTED_PROXY_HOPS` is unset and the scheme is http or missing, so a phone on that address keeps the sign-in. A load balancer still gets a Secure cookie. `COOKIE_SECURE=true` forces the flag on; `COOKIE_SECURE=false` forces it off. |
 | `TRUSTED_PROXY_HOPS` | both | Proxies in front of the app that append to `X-Forwarded-For` (1 for one load balancer). Unset: the header is ignored and all sign-in attempts share one limit of 100 a minute. |
 | `SECURITY_SLACK_WEBHOOK_URL` | copilot | Optional Slack incoming webhook for the security channel: one message per flagged question (at most one a minute per person) and one when a session lock starts. |
+
+## Question trends
+
+Counts questions by week, metric and outcome. It does not show question text. The log only keeps a fingerprint, and the report does not read that column.
+
+On the laptop demo, sign in as the analyst (Avery Patel) and open http://localhost:3000/trends. The log is in the running server. A second process cannot see it.
+
+On Postgres, the app login reads the counts view and still cannot read the audit log. Use that login, not the owner login:
+
+```bash
+DATABASE_URL=postgres://... npm run trends
+```
+
+Weeks start on Monday, UTC. A question that never became a metric is counted as "(no metric)". That is the list of questions the copilot could not place yet.
 
 ## Common problems
 
