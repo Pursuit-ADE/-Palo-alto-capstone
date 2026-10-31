@@ -29,6 +29,8 @@ describe('migrations', () => {
     await migrate(db, { migrationsFolder: MIGRATIONS }); // and running it again on start is a no-op
     const cols = await client.query<{ column_name: string }>("SELECT column_name FROM information_schema.columns WHERE table_name = 'query_audit'");
     expect(cols.rows.map((r) => r.column_name)).toEqual(expect.arrayContaining(['question_sha256', 'flags', 'model', 'turn']));
+    const purchased = await client.query<{ def: string }>("SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'product_usage_purchased_quantity_positive'");
+    expect(purchased.rows[0]?.def).toContain('purchased_quantity > 0');
     await client.close();
   });
 

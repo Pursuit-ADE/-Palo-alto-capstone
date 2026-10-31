@@ -13,7 +13,7 @@ export function retentionDays(raw: string | undefined, fallback: number): number
 
 // A negative or zero value would put the cutoff in the future and delete all alert history, so it's refused.
 export const DELIVERY_RETENTION_DAYS = retentionDays(process.env.DELIVERY_RETENTION_DAYS, 180);
-const FINISHED = ['delivered', 'suppressed_no_access', 'failed'];
+const FINISHED = ['delivered', 'suppressed_no_access', 'suppressed_inactive', 'failed'];
 
 export async function purge(db: Db, opts: { now?: Date; deliveryDays?: number; dryRun?: boolean } = {}) {
   const now = opts.now ?? new Date();
