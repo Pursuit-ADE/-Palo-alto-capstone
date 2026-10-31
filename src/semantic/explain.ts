@@ -62,8 +62,11 @@ function withoutHeldDollars(phrase: string): string {
     return holds ? `${holder} ${verb} ` : all;
   });
 }
-/** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
-const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*x\b/gi;
+/**
+ * A ratio someone else quoted ("3x", "0.5 x", "3×", "300%"). Never read as a filter or an amount, and never repeated
+ * back. A percentage was read as a deal size, and "×" not at all (review, Oct 31).
+ */
+const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*(?:x\b|×|%)/gi;
 /** The same pattern without the g flag, so .test() keeps no state between calls. */
 const HAS_QUOTED_RATIO = new RegExp(QUOTED_RATIO.source, 'i');
 const SECTOR_CUE = /\b(sector|sectors|industry|industries|vertical|verticals)\b/i;
@@ -98,7 +101,8 @@ const EXCLUDES = / (excluding|exclude|excludes|except|without|other than|apart f
 /** Asks for coverage split by something ("by region"): a breakdown request, not a comparison (#50 review, Oct 31). */
 const BREAKDOWN = / (by|per|for each|across) (region|regions|rep|reps|owner|owners|team|teams|stage|stages|manager|managers) /;
 /** Words right before a quoted ratio that make it the figure itself: "marketing says 3x", "mine is 0.5x", "we're at 3x". */
-const RATIO_LEAD = /^(say|says|said|show|shows|showed|showing|report|reports|reported|see|sees|saw|get|gets|got|quote|quotes|quoted|claim|claims|claimed|at|of|is|was|are|be)$/;
+const RATIO_LEAD =
+  /^(say|says|said|show|shows|showed|showing|report|reports|reported|see|sees|saw|get|gets|got|quote|quotes|quoted|claim|claims|claimed|has|have|had|mine|ours|theirs|yours|at|of|is|was|are|be)$/;
 /** Who may sit before "is 3x" for the ratio to be a coverage figure: "mine is", "the dashboard is", not "revenue is". */
 const RATIO_SUBJECT = /^(mine|ours|yours|theirs|it|that|this|we|i|you|they|coverage|ratio|number|figure|one)$/;
 /** Words right after a quoted ratio that make it a multiplier: "2x higher", "2x more deals", "1.5x what finance reports". */
@@ -109,7 +113,16 @@ const MULTIPLIER = /^(higher|lower|more|less|bigger|smaller|greater|larger|than|
  * "coverage"). Not a multiplier ("2x higher", "grew 2x") or a ratio of something else ("revenue is 2x", "my ARR 1.5x").
  */
 function quotesCoverage(phrase: string): boolean {
-  const words = phrase.toLowerCase().replace(/(\d)\s+x\b/g, '$1x').replace(/['’]re\b/g, ' are').replace(/['’]s\b/g, ' is').split(/[^a-z0-9.]+/).filter(Boolean);
+  // A full stop after the ratio ("Marketing says 3x.") is punctuation, not part of the number (review, Oct 31).
+  const words = phrase
+    .toLowerCase()
+    .replace(/×/g, 'x')
+    .replace(/(\d)\s+x\b/g, '$1x')
+    .replace(/['’]re\b/g, ' are')
+    .replace(/['’]s\b/g, ' is')
+    .split(/[^a-z0-9.]+/)
+    .map((w) => w.replace(/\.+$/, ''))
+    .filter(Boolean);
   return words.some((w, i) => {
     if (!/^\d+(?:\.\d+)?x$/.test(w)) return false;
     const [before, after] = [words[i - 1] ?? '', words[i + 1] ?? ''];
@@ -179,12 +192,15 @@ const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
 const ANY_POSSESSIVE = /\b([a-z][a-z.-]*)['’]s\b/gi;
 /** Capitalised words before 's that are contractions, not names: "Why's my coverage…", "What's the reason…" (review on #50). */
 const NOT_A_NAME = new Set(['why', 'what', 'how', 'where', 'who', 'when', 'it', 'that', 'there', 'here', 'this', 'everyone', 'let']);
+/** Words that can open a Title-Case run before 's without being part of a name: "My Team's", "Next Quarter's". */
+const LEADING_WORDS = new Set(['my', 'our', 'your', 'their', 'his', 'her', 'the', 'a', 'an', 'next', 'last', 'this', 'that', 'is', 'are', 'was', 'does', 'do', 'did', 'has', 'than']);
 /** Everyday words that take 's in a coverage question and are not people: "my team's", "this quarter's", "the board's". */
 const EVERYDAY = new Set(
   ('team teams company everyone everybody anyone someone somebody nobody quarter quarters year month week today region regions ' +
     'rep reps manager managers boss board deck slide sheet chart dashboard report spreadsheet number figure coverage pipeline quota data ' +
     'org organization department group division unit segment territory sector industry customer customers account accounts partner ' +
-    'market business forecast plan target goal one other he she').split(' '),
+    'market business forecast plan target goal one other he she yesterday today tomorrow ceo cfo cro coo vp exec execs executive ' +
+    'leadership teammate teammates colleague colleagues peer peers crm salesforce system tool').split(' '),
 );
 
 /**
@@ -197,9 +213,15 @@ function unknownPossessive(phrase: string, resolved: string[]): string | null {
   const known = (lower: string) =>
     OTHER_FIGURE.test(` ${lower} `) || resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()));
   for (const m of phrase.matchAll(POSSESSIVE)) {
-    const words = m[1]!.split(/\s+/);
-    while (words.length && NOT_A_NAME.has(words[0]!.toLowerCase())) words.shift();
-    if (words.length && !known(words.join(' ').toLowerCase())) return words.join(' ');
+    // In a Title-Case run ("Why Is My Coverage Lower Than My Team's") the name, if any, follows the last
+    // "my", "the", "why" and the like, so only those words are checked.
+    const run = m[1]!.split(/\s+/);
+    const opener = (w: string) => NOT_A_NAME.has(w.toLowerCase()) || LEADING_WORDS.has(w.toLowerCase());
+    const last = run.reduce((at, w, i) => (opener(w) ? i : at), -1);
+    const words = run.slice(last + 1);
+    const lower = words.join(' ').toLowerCase();
+    // "the Board's", "My Team's", "Next Quarter's": everyday words in capitals are not names either (review, Oct 31).
+    if (words.length && !(words.length === 1 && EVERYDAY.has(lower)) && !known(lower)) return words.join(' ');
   }
   for (const m of phrase.matchAll(ANY_POSSESSIVE)) {
     const lower = m[1]!.toLowerCase();

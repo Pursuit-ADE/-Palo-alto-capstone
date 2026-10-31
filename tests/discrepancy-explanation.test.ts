@@ -722,3 +722,46 @@ describe('bug hunt fixes, reviewed: no new regressions', () => {
     expect(e.summary.startsWith('Coverage for Darcel Schlecht is lower than for')).toBe(true);
   });
 });
+
+// A phrasing hunt on main (Oct 31, after #50 merged) found wordings that were asked back or misread. Each one below
+// came back as a clarification, "unsupported" or a deal-size question before this fix.
+describe('phrasing hunt, Oct 31: ordinary wordings of the client question', () => {
+  const OWN_FIGURE = { numerator: 174325, denominator: 338000, value: 0.5158 };
+
+  it.each([
+    "Why is my coverage lower than the Board's?",
+    "Why Is My Coverage Lower Than My Team's?",
+    "why is my coverage different from yesterday's number?",
+    "why is my coverage different from the CEO's?",
+    "Why does Salesforce's number differ from my coverage?",
+    "why is my coverage different from my teammate's?",
+    'Mine is 0.5x. Marketing says 3x. Why?',
+    'why does marketing say 3x.',
+    "Marketing's number is 3x. Mine is 0.5x. Why?",
+    'why does marketing have 3x when i have 0.5x?',
+    "why's mine 0.5x? marketing has 3x",
+    'why is ours 0.5x but theirs 3x?',
+    'Marketing says 300% coverage, why is mine lower?',
+    'why is my coverage 50% when marketing says 300%?',
+    'why does marketing say 3× when mine is 0.5×?',
+  ])('"%s" explains the seller\'s own figure and repeats no quoted ratio', async (phrase) => {
+    const e = explained(await ask(database, reg, 'u_ts_east', phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer)).toEqual(OWN_FIGURE);
+    expect(JSON.stringify(e)).not.toMatch(/\b3x|0\.5x|300%|50%|3×/);
+  });
+
+  // "different from East's", "Q2's" and "Sam's" (a possessive after "from") are fixed in the normal-path reader on
+  // trevor/normal-path-names, which also stops repeating an unknown name back; its tests cover them.
+  it("\"this Quarter's\" against \"next Quarter's\" compares the two quarters", async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "Why is this Quarter's coverage lower than next Quarter's?"));
+    expect([(e.answer.intent as Intent).filters.period, (e.other!.intent as Intent).filters.period]).toEqual(['FY27-Q1', 'FY27-Q2']);
+  });
+
+  it('title-case names are still checked: a known rep is compared, an unknown one is asked about', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', "Why Is Darcel Schlecht's Coverage Lower Than Niesha Huffines's?"));
+    expect([(e.answer.intent as Intent).filters.people, (e.other!.intent as Intent).filters.people]).toEqual([['Darcel Schlecht'], ['Niesha Huffines']]);
+    expect(await ask(database, reg, 'u_analyst', "Why Is Jordan's Coverage Lower Than The Company's?")).toMatchObject({ kind: 'clarify' });
+  });
+
+});
