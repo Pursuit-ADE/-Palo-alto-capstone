@@ -238,6 +238,7 @@ describe('intent validation and injection', () => {
   });
 
   // System rule 9 (docs/SYSTEM-CARD.md): the schema and validateIntent enforce regions and quarters, whatever the model proposes.
+  // Stages are enforced by the schema too (#86): see "refuses a stage that is not an open-deal stage" below.
   it('refuses a region or quarter that is not in the data, whatever the model proposes', async () => {
     const propose = (filters: Record<string, unknown>) => answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters, groupBy: [] });
     await expect(propose({ regions: ['north'] })).rejects.toBeInstanceOf(IntentError);
