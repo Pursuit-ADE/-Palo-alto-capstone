@@ -14,7 +14,9 @@
   min-height: 100dvh;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  /* Scroll when the card is taller than the window. Hidden overflow clipped the bottom on a short screen. */
+  overflow-x: hidden;
+  overflow-y: auto;
   color: var(--stage-text);
   background: #15171a;
 }
