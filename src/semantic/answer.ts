@@ -11,6 +11,7 @@ import { notifySecurity } from '../server/security-notify';
 import { currentSnapshot, run, type Answer, type AuditFields } from './governed';
 import { EXPLAINED_METRIC, explainDiscrepancy, isDiscrepancyQuestion, type Explanation } from './explain';
 import { deterministicModel, type IntentModel } from './model';
+import { topicOf } from '../audit/topics';
 import { ALL_REGIONS, resolvePrincipal, ScopeViolation, type Principal } from './scope';
 
 export { currentSnapshot, type Answer, type RatioPart } from './governed';
@@ -88,6 +89,7 @@ export async function recordRefusal(database: Database, userId: string, question
     outcome,
     reason,
     questionSha256: questionFingerprint(question),
+    topic: topicOf(question),
     username: actor?.username ?? null,
     sessionId: actor?.sessionId ?? null,
   });
@@ -126,7 +128,9 @@ async function audited<T extends Reply>(
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
   const linkedRows = linked.map((l) => ({ ...l, ...actorOf(fields), id: randomUUID(), userId, source: 'comparison_side', requestId, outcome: 'answered' }));
-  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome }, linkedRows);
+  // The topic label is for questions that were not answered; an answer or an explanation already names its metric.
+  const answered = outcome === 'answered' || outcome === 'explanation';
+  await audit(database, { ...fields, id: auditId, userId, source, requestId, outcome, topic: answered ? null : (fields.topic ?? null) }, linkedRows);
   // The audit ID is filled in only once its row is written.
   const withId = (a: Answer, id: string): Answer => ({ ...a, provenance: { ...a.provenance, auditId: id } });
   if (result.kind === 'answer') return { ...result, provenance: { ...result.provenance, auditId } };
@@ -176,7 +180,8 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal, linked) => {
-    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1 });
+    // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
+    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
     await screen(phrase, userId, await principal(), opts, fields);
     // "Why is my coverage different?" gets a fixed explanation inside the asker's scope, before any model sees it.

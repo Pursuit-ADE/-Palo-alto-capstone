@@ -57,6 +57,13 @@
       "when": 1792500000000,
       "tag": "0007_question_trends",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792600000000,
+      "tag": "0008_question_topics",
+      "breakpoints": true
     }
   ]
 }

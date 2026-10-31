@@ -131,6 +131,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT SELECT ON data_snapshots, regions, app_users, products, accounts, account_team, opportunities, quotas TO app_readonly;
     -- Counts of questions only (migration 0007). The answering login still cannot read query_audit itself.
     GRANT SELECT ON question_trends TO app_readonly;
+    -- Unanswered questions by topic label (migration 0008): counts only, the same as above.
+    GRANT SELECT ON question_topics TO app_readonly;
     GRANT INSERT ON query_audit TO app_audit;
     REVOKE SELECT ON session_guard FROM app_readonly;
     GRANT SELECT, INSERT, UPDATE, DELETE ON session_guard TO app_audit;

@@ -102,6 +102,17 @@ DATABASE_URL=postgres://... npm run trends
 
 Weeks start on Monday, UTC. A question that never became a metric is counted as "(no metric)". That is the list of questions the copilot could not place yet.
 
+Unanswered questions also carry a topic label from a fixed list (support cases, product usage, renewals and so on), so the page shows what they were about without their words.
+
+The weekly trends agent reads the same counts with the same login and writes a short summary. Run it once a week:
+
+```bash
+DATABASE_URL=postgres://... npm run trends:agent -- --out reports/trends/2026-10-26.md
+DATABASE_URL=postgres://... TRENDS_AGENT=claude npm run trends:agent   # Claude picks what matters; needs ANTHROPIC_API_KEY
+```
+
+Every number in the summary comes from code. Claude may only choose facts and explain them in words, and anything else falls back to the plain summary (`docs/SYSTEM-CARD.md`, "Question log and trends").
+
 ## Common problems
 
 | What you see | Why | Fix |

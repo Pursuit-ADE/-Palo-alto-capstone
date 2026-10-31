@@ -197,13 +197,28 @@ export const queryAudit = pgTable('query_audit', {
   // the first 16 characters of the stored token hash, never the token.
   username: text('username'),
   sessionId: text('session_id'),
-}, (t) => [index('query_audit_at').on(t.at), index('query_audit_user_at').on(t.userId, t.at)]);
+  // A label from the fixed list in src/audit/topics.ts for a question that was not answered (migration 0008). Never text.
+  topic: text('topic'),
+}, (t) => [
+  index('query_audit_at').on(t.at),
+  index('query_audit_user_at').on(t.userId, t.at),
+  // Migration 0008: only labels from TOPICS in src/audit/topics.ts.
+  check('query_audit_topic_known', sql`${t.topic} IS NULL OR ${t.topic} IN ('support_cases', 'product_usage', 'renewals_churn', 'forecast', 'engagements_contacts', 'competitors', 'pricing_discounts', 'people_hr', 'other')`),
+]);
 
 // Counts only. The app login can read this view and still cannot read query_audit. The grant is applied
 // with the other grants: the embedded database has no app_readonly role, so migration 0007 does not grant it.
 export const questionTrendsView = pgView('question_trends', {
   week: date('week').notNull(),
   metric: text('metric').notNull(),
+  outcome: text('outcome').notNull(),
+  count: integer('count').notNull(),
+}).existing();
+
+// Unanswered questions by week, topic and outcome (migration 0008). The read-only login can read these counts only.
+export const questionTopicsView = pgView('question_topics', {
+  week: date('week').notNull(),
+  topic: text('topic').notNull(),
   outcome: text('outcome').notNull(),
   count: integer('count').notNull(),
 }).existing();

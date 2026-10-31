@@ -43,9 +43,12 @@ export function questionTrends(rows: AuditCountInput[]): TrendCount[] {
   return [...counts.values()].sort((a, b) => a.week.localeCompare(b.week) || a.metric.localeCompare(b.metric) || a.outcome.localeCompare(b.outcome));
 }
 
+/** Outcomes that answered the question: a governed answer, or a "why is my number different?" explanation (#50). */
+export const ANSWERED_OUTCOMES = new Set(['answered', 'explanation']);
+
 /** Questions that did not become an answer. This is as close as the log can come to "what we can't answer yet". */
 export function unansweredTrends(counts: TrendCount[]): TrendCount[] {
-  return counts.filter((c) => c.outcome !== 'answered');
+  return counts.filter((c) => !ANSWERED_OUTCOMES.has(c.outcome));
 }
 
 /**
