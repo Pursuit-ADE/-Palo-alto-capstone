@@ -112,6 +112,9 @@ const PLAIN_BEFORE_NOUN = new Set(
     'exec execs executive leadership management marketing finance ops revops field inside channel partner partners ' +
     'support product regional global direct dream mine ours company everyone everybody manager managers boss vp svp ' +
     'cro ceo cfo coo board director head lead leader closing pending at-risk risky slipping stuck hot warm cold ' +
+    // Purpose words: "for review deals", "for the qbr team" (review, Oct 31).
+    'review reviews planning reference context forecast forecasting qbr qbrs prep preparation presentation demo test ' +
+    'analysis analytics budgeting status update standup sync kickoff audit compliance alignment internal external ' +
     // The name nouns themselves: "for my team's deals", "for the account team".
     'deal deals team teams account accounts pipeline pipelines opportunity opportunities quota quotas book territory ' +
     'portfolio customer customers client clients rep reps').split(' '),

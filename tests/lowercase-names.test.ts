@@ -34,6 +34,8 @@ describe('lower-case names', () => {
   // Each of these was asked back by the word-list version, and several lost a filter main applied.
   it.each([
     'open pipeline for planning',
+    'open pipeline for review deals',
+    'open pipeline for the qbr team',
     'open pipeline for gtx pro for context',
     'open pipeline in the east for planning',
     'open pipeline by owner for review',
