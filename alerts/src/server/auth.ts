@@ -83,7 +83,7 @@ export function inviteExpiry(raw = process.env.DEMO_INVITE_EXPIRES): Date | null
   return Number.isNaN(d.getTime()) ? 'invalid' : d;
 }
 
-export async function signUp(db: Db, input: { username: string; password: string; invite: string }, secret = process.env.DEMO_INVITE_SECRET, now = new Date(), expiry = inviteExpiry()) {
+export async function signUp(db: Db, input: { username: string; password: string; invite: string }, secret = process.env.DEMO_INVITE_SECRET, now = new Date(), expiry = inviteExpiry(), directory?: EmployeeDirectory) {
   if (!secret || expiry === 'invalid') throw new AuthError('Sign-up is turned off here.', 'signup_off');
   if (expiry && now > expiry) throw new AuthError('Invite codes for this demo have expired.', 'invite_expired');
   const username = input.username.trim().toLowerCase();
@@ -93,6 +93,9 @@ export async function signUp(db: Db, input: { username: string; password: string
   if (weak) throw new AuthError(weak, 'weak_password');
   const userId = userForInvite(input.invite, secret);
   if (!userId) throw new AuthError('That invite code is not valid.', 'bad_invite');
+  // Checked before the account exists, so someone who has left doesn't spend the invite on an account they can't use
+  // (PR #89 review). Same message as a bad code: the form doesn't say why.
+  if ((await employeeStatusOf(directory, userId)) !== 'active') throw new AuthError('That invite code is not valid.', 'employee_inactive');
   // An invite code works once: each demo person has at most one account in this app (a unique index enforces it,
   // so two sign-ups at the same moment can't both win). A leaked code can't create more accounts.
   const inserted = await db
