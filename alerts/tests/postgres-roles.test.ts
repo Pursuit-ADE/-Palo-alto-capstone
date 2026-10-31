@@ -45,6 +45,9 @@ describe.skipIf(!enabled)('alerts Postgres least privilege', () => {
     await denied('DROP TABLE alert_cursor');
     // Sign-in: sessions can be added and removed, but an account's person can't be changed.
     await denied("UPDATE app_accounts SET user_id = 'u_analyst'");
+    // The low-usage rule reads the snapshot date, and cannot change a snapshot.
+    await app.query('SELECT id, as_of_date FROM data_snapshots');
+    await denied("UPDATE data_snapshots SET notes = 'x'");
     // Only the tables alerts need are readable: no deals, quotas or products.
     await denied('SELECT * FROM opportunities');
     await denied('SELECT * FROM quotas');

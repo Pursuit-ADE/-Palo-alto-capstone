@@ -4,7 +4,7 @@
 // Postgres mode (persistent; see .env.example and ../docker/init-roles.sql):
 //   MIGRATION_DATABASE_URL  owner role: migrations, data load and grants. Set it only for `npm run db:setup` (or on a
 //                           laptop); a deployed server should not hold it.
-//   ALERTS_DATABASE_URL     alerts_app: reads the CRM and event tables; may only insert and update alert
+//   ALERTS_DATABASE_URL     alerts_app: reads the CRM tables, events and the snapshot date; may only insert and update alert
 //                           deliveries, subscriptions and the scheduler cursor, and delete only a subscription
 //                           (unsubscribing). No other deletes, no schema changes.
 import { PGlite } from '@electric-sql/pglite';
@@ -99,7 +99,8 @@ async function applyGrants(owner: pg.Pool) {
     GRANT USAGE ON SCHEMA public TO alerts_app;
     -- Only what alert matching, routing and the inbox read: no deals, quotas, products or regions.
     -- product_usage is the synthetic table the low-usage rule reads. The products catalog stays closed.
-    GRANT SELECT ON app_users, accounts, account_team, contacts, support_cases, engagements, product_usage, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
+    -- data_snapshots is read-only: the low-usage rule needs the newest snapshot's as-of date. It never writes one.
+    GRANT SELECT ON data_snapshots, app_users, accounts, account_team, contacts, support_cases, engagements, product_usage, alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT INSERT, UPDATE ON alert_deliveries, alert_subscriptions, alert_cursor TO alerts_app;
     GRANT DELETE ON alert_subscriptions TO alerts_app; -- unsubscribing; alert history is never deleted
     -- Demo sign-in (Week 5): accounts and sessions; no UPDATE, so an account's person can't be changed.
