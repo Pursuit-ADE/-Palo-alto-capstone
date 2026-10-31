@@ -1,27 +1,34 @@
 // Runs the golden phrasing set through the configured intent model and reports how many match.
 // Deterministic by default; with INTENT_MODEL=claude it evaluates Claude (this makes real API calls).
 //   npm run eval:golden
+// Claude isn't deterministic, so each phrase runs 10 times with Claude (once otherwise) and the report gives
+// pass^k: the share of phrases right on all k runs. RUNS=n overrides the count.
 import golden from '../registry/golden/phrases.json';
 import { loadRegistry } from '../src/registry/load';
-import { validateIntent } from '../src/semantic/compile';
+import { goldenMatch, type PhraseRuns, summarize } from '../src/semantic/golden-score';
 import { selectModel } from '../src/semantic/model';
 
 const registry = loadRegistry();
 const model = selectModel();
-let pass = 0;
-const failures: string[] = [];
+const runs = Number(process.env.RUNS) || (model.name === 'deterministic' ? 1 : 10);
+const results: PhraseRuns[] = [];
 for (const c of golden.cases) {
-  const r = await model.propose(c.phrase, registry, golden.asOfDate);
-  let ok: boolean;
-  if ('clarify' in c.expect) ok = r.kind === 'clarify';
-  else if ('unsupported' in c.expect) ok = r.kind === 'unsupported' || r.kind === 'clarify';
-  else {
-    ok = r.kind === 'intent' && JSON.stringify(validateIntent(r.intent, registry).intent) === JSON.stringify(validateIntent(c.expect, registry).intent);
+  const entry: PhraseRuns = { phrase: c.phrase, correct: [], replies: [] };
+  for (let run = 0; run < runs; run++) {
+    const r = await model.propose(c.phrase, registry, golden.asOfDate);
+    entry.correct.push(goldenMatch(c.expect, r, registry));
+    entry.replies.push(JSON.stringify(r.kind === 'intent' ? r.intent : r.kind));
   }
-  if (ok) pass++;
-  else failures.push(`  ✗ "${c.phrase}" → ${JSON.stringify(r)}`);
+  results.push(entry);
 }
+
+const s = summarize(results);
+const pct = (x: number) => `${(x * 100).toFixed(1)}%`;
 console.log(`Model: ${model.name}`);
-console.log(`Golden set: ${pass}/${golden.cases.length} match`);
-if (failures.length) console.log(failures.join('\n'));
-process.exit(failures.length ? 1 : 0);
+console.log(`Golden set: ${s.phrases} phrases x ${s.runs} run(s)`);
+console.log(`  pass^1 (share of runs right): ${pct(s.passRate)}`);
+if (s.runs > 1) console.log(`  pass^${s.runs} (phrases right on every run): ${pct(s.passHatK[s.runs]!)}`);
+console.log(`  same reply on every run: ${s.stable}/${s.phrases}`);
+if (s.runs === 1) console.log(`Golden set: ${s.phrases - s.failing.length}/${s.phrases} match`);
+for (const f of s.failing) console.log(`  ✗ "${f.phrase}": right on ${f.correct}/${s.runs} run(s)`);
+process.exit(s.failing.length ? 1 : 0);
