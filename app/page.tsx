@@ -97,6 +97,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
             items={[['Scope', scopeText(pipeline.scope)], ['Fiscal quarter', quarter], ['Data as of', dateRange(pipeline.provenance.asOfDate)]]}
           />
           <p>{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          {me.role === 'analyst' && <p><a href="/trends">Question trends</a></p>}
           <ViewSwitch view={view} />
         </div>
 
