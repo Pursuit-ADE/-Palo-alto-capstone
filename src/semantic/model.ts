@@ -96,7 +96,9 @@ export function claudeModel(client: Anthropic = new Anthropic({ timeout: CLAUDE_
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         output_config: { effort: 'low', format: betaZodOutputFormat(ModelOutput) },
-        system: systemPrompt(registry, asOfDate),
+        // The system prompt depends only on the registry and the snapshot date, so it is the same on every question
+        // and is cached (it is well over Opus 5.5's 512-token minimum). Cache reads cost 0.05x input tokens.
+        system: [{ type: 'text', text: systemPrompt(registry, asOfDate), cache_control: { type: 'ephemeral' } }],
         messages: [
           {
             role: 'user',
