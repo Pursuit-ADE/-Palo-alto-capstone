@@ -22,7 +22,8 @@
     "onboard:propose": "tsx scripts/onboard-dataset.ts propose",
     "onboard:confirm": "tsx scripts/onboard-dataset.ts confirm",
     "db:setup": "tsx scripts/db-setup.ts",
-    "purge": "tsx scripts/purge.ts"
+    "purge": "tsx scripts/purge.ts",
+    "trends": "tsx scripts/question-trends.ts"
   },
   "engines": {
     "node": ">=22.12.0"

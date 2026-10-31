@@ -42,6 +42,19 @@ export const RatioMetric = Base.extend({
   numerator: Identifier,
   denominator: Source,
   requiresPeriod: z.boolean().default(false),
+  // Reviewed goal for the ratio, and the color boundary below it. Both are optional so a ratio with no
+  // agreed target stays unlabeled. One without the other, or a boundary at or above the target, is refused
+  // at load (standards section 9 rule 5) instead of quietly hiding the labels.
+  target: z.number().positive().optional(),
+  caution: z.number().positive().optional(),
+}).superRefine((metric, ctx) => {
+  const target = metric.target;
+  const caution = metric.caution;
+  if ((target == null) !== (caution == null)) {
+    ctx.addIssue({ code: 'custom', message: 'A ratio target needs both target and caution, or neither.', path: ['caution'] });
+  } else if (target != null && caution != null && caution >= target) {
+    ctx.addIssue({ code: 'custom', message: 'The color boundary must be below the target.', path: ['caution'] });
+  }
 });
 export const MetricDefinition = z.discriminatedUnion('kind', [AggregateMetric, RatioMetric]);
 export type MetricDefinition = z.infer<typeof MetricDefinition>;
@@ -74,7 +87,9 @@ export const Intent = z
         // Bounded arrays: guards against reported resource exhaustion when validating unbounded arrays,
         // and a model-generated intent should never be able to send thousands of values.
         regions: z.array(z.enum(['central', 'east', 'west'])).min(1).max(3).optional(),
-        stages: z.array(z.string().min(1).max(40)).min(1).max(10).optional(),
+        // Open-deal stages only. A stage outside this pair is refused before a query, so a model or a
+        // tampered intent cannot filter on a stage the open pipeline does not count.
+        stages: z.array(z.enum(['Prospecting', 'Engaging'])).min(1).max(10).optional(),
         period: z.string().regex(/^FY\d{2}-Q[1-4]$/).optional(),
         // Closed lists from the dataset, resolved to ids before SQL. Bounds match the other filters.
         amount: z
