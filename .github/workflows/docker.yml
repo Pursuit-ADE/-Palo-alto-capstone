@@ -6,11 +6,22 @@ name: docker
 on:
   push:
     branches: [main, week5]
+  # A PR that changes only documentation skips the 4-minute uncached stack build. Anything else can break the
+  # images or the start-up checks (config.ts, compose variables), which only this run catches, so it still runs.
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
   workflow_dispatch:
 
 permissions:
   contents: read
+
+
+# A newer push to a PR cancels that PR's older run (Actions minutes are billed, review Oct 31). Every other run (a merge
+# to main, the schedule, a manual run) gets a group of its own, because a group keeps only one pending run and would
+# cancel the checks of a merge queued behind another.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   stack:
