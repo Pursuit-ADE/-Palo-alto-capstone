@@ -3,7 +3,7 @@
 // - Signed in: the account behind the session cookie. Nothing in the form or URL can change it.
 // - Not signed in: only with ALLOW_TEST_IDENTITIES=true under `npm run dev` (refused in production), a demo id
 //   picked by the "Viewing as" switch, else nobody.
-import { demoUsers } from '../db/seed';
+import { activeDemoIds } from './auth';
 import { testIdentitiesEnabled } from './identity';
 import { currentSession } from './session';
 
@@ -22,7 +22,8 @@ export async function requireUser(requested?: unknown, fallback?: string): Promi
   const session = await currentSession();
   if (session) return session;
   if (!testIdentitiesEnabled()) return undefined;
-  const ids = new Set(demoUsers().map((u) => u.id));
+  // Cached per dataset folder: rebuilding the seed here cost 30-130 ms on every request (review, Oct 31).
+  const ids = new Set(activeDemoIds());
   if (typeof requested === 'string' && ids.has(requested)) return { userId: requested };
   return fallback && ids.has(fallback) ? { userId: fallback } : undefined;
 }
