@@ -56,6 +56,16 @@ describe('lower-case names', () => {
     expect(read(phrase)).not.toMatchObject(ASKS);
   });
 
+  // Review, Oct 31: a first name that is in the data asks for the full name, the same sentence that
+  // "Darcel's open pipeline" gets, not "I don't know that name".
+  it.each(["open pipeline for darcel's deals", "open pipeline for melvin's team"])('"%s" asks for the full name', (phrase) => {
+    expect(read(phrase)).toMatchObject({ kind: 'clarify', question: expect.stringContaining("Use the person's full name") });
+    expect(read(phrase.replace(/^open pipeline for (\w)/, (_m, c: string) => `open pipeline for ${c.toUpperCase()}`))).toMatchObject({
+      kind: 'clarify',
+      question: expect.stringContaining("Use the person's full name"),
+    });
+  });
+
   it('a region that is not in the data keeps its own, more helpful question', () => {
     expect(read('open pipeline for the emea team')).toMatchObject({ kind: 'clarify', question: expect.stringContaining("isn't a region here") });
   });

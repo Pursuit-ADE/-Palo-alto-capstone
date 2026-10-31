@@ -128,19 +128,33 @@ const startsResolvedName = (text: string, at: number, picked: Hit[]) => picked.s
  * PRD A2): "for zephyra deals", "for the zephyra account", "from zephyra's team", "the rep named zack". A bare "for
  * zephyra" is left alone, because it reads the same as "for planning".
  */
-function unknownLowerName(text: string, picked: Hit[]): boolean {
+function unknownLowerName(text: string, picked: Hit[]): string | undefined {
   const unknown = (word: string, at: number) =>
     !PLAIN_BEFORE_NOUN.has(word) && !UNKNOWN_REGIONS.includes(word) && !/^(fy\d{2,4})?(-?q[1-4])?$/.test(word) && !startsResolvedName(text, at, picked);
   // The 's survives cleaning as " s ": "for zephyra s account". It counts only before a name noun too, so "for
   // tomorrow's meeting" and "for friday's call" stay ordinary.
   for (const m of text.matchAll(/ (?:for|from|of|at|with)(?: (?:the|my|our|a|an))? ([a-z][a-z0-9-]*)(?: s)? ([a-z]+)(?= )/g)) {
     const [word, next] = [m[1]!, m[2]!];
-    if (NAME_NOUN.test(next) && unknown(word, m.index! + m[0].lastIndexOf(` ${word} `) + 1)) return true;
+    if (NAME_NOUN.test(next) && unknown(word, m.index! + m[0].lastIndexOf(` ${word} `) + 1)) return nameSentence(word);
   }
   for (const m of text.matchAll(/ (?:named|called) ([a-z][a-z0-9-]*)(?= )/g)) {
-    if (unknown(m[1]!, m.index! + m[0].length - m[1]!.length)) return true;
+    if (unknown(m[1]!, m.index! + m[0].length - m[1]!.length)) return nameSentence(m[1]!);
   }
-  return false;
+  return undefined;
+}
+
+/** A first name in the data ("darcel's deals") asks for the full name, the same sentence as for "Darcel's"; else unknown. */
+const nameSentence = (word: string) => (isFirstName(word) ? FULL_NAME : UNKNOWN_NAME);
+
+/**
+ * A sector question with no sector in the data, or a lower-case name used as one: one helper, so readSelectors() makes
+ * a single check for both and stays below its complexity (review, Oct 31).
+ */
+function sectorOrNameQuestion(text: string, sectorNames: string[], sectors: string[], picked: Hit[]): string | undefined {
+  if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
+    return `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.`;
+  }
+  return unknownLowerName(text, picked);
 }
 
 /**
@@ -209,14 +223,10 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(account|customer|client)s? /.test(text) && accounts.length === 0) {
     return { filters: {}, clarify: "I don't know that account, so I won't answer for everything. I can filter by an account that is in the data." };
   }
-  if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
-    return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
-  }
-  // A lower-case name used as one ("for zephyra deals"): NAMED only sees capitalised names, so it was dropped and the
-  // whole scope answered (QA cycle 5, Oct 31; PRD A2).
-  if (unknownLowerName(text, picked)) {
-    return { filters: {}, clarify: "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data." };
-  }
+  // A sector with none in the data, or a lower-case name used as one ("for zephyra deals"): NAMED only sees capitalised
+  // names, so such a name was dropped and the whole scope answered (QA cycle 5, Oct 31; PRD A2).
+  const asked = sectorOrNameQuestion(text, sectorNames, sectors, picked);
+  if (asked) return { filters: {}, clarify: asked };
   // "open deal value" is a name for the metric. The amount parser also treats "deal value" as a deal size,
   // so the synonym is blanked and a real comparison in the same question still counts.
   const amount = parseAmount(phrase, { ignore: [...covered, 'open deal value'] });
