@@ -167,3 +167,16 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .auth-error { color: var(--bad); font-weight: 600; margin: 4px 0 0; }
 .hint { color: var(--muted); font-size: 14px; margin: 0; }
 .who span { font-size: 14px; color: var(--chrome-fg); }
+
+/* "Why is my number different?" (app/explanation-panel.tsx) */
+.explanation .reasons { margin: 0 0 12px; padding-left: 20px; }
+.explanation .reasons li { margin: 3px 0; }
+.side-by-side th[scope="row"] { text-align: left; font-weight: 600; }
+.side-by-side tr.differs td { font-weight: 700; }
+.provenance-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 16px; }
+.provenance-pair .figure-label { margin: 14px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.checks { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; }
+.checks li { margin: 3px 0; }
+.check-tag { display: inline-block; min-width: 64px; font: 700 11px/1.6 var(--font); letter-spacing: .06em; text-transform: uppercase; }
+.checks .ok .check-tag { color: var(--ok); }
+.checks .bad .check-tag { color: var(--bad); }
