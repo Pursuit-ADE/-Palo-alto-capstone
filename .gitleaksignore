@@ -1,0 +1,2 @@
+# Test invite fixture on 48dbf178. The value was not a real credential. The commit stays in history, so the scan ignores that one fingerprint.
+48dbf178325c36f4f316d4a9b426a83e702da61c:tests/employee-status.test.ts:generic-api-key:10

@@ -5,9 +5,11 @@ How Team ALTO PALS changes this repository. The rules for the code itself are in
 
 ## Branch flow
 
-1. Branch from the current week branch (`week5` now): `<name>/<topic>` or `<topic>-week<N>`.
-2. Open a pull request back into that week branch. Never push to `main` or a `week*` branch directly.
-3. When a week is done, it is promoted with a reviewed pull request (`week5` into `week4`, and so on up to `main`).
+From v0.5.0 on, `main` is the only long-lived branch. The `week1` to `week5` branches are kept for history only and take no new work.
+
+1. Branch from `main`: `<name>/<topic>`, one small change per branch.
+2. Open a pull request back into `main`. Never push to `main` directly.
+3. Keep branches short-lived: merge or close within a few days, and rebase on `main` if it moves ahead.
 4. Stable points on `main` get a version tag (see [Releases](#releases)).
 
 ## Before you open a pull request
@@ -54,15 +56,17 @@ recorded in [CHANGELOG.md](CHANGELOG.md):
 | Tag | Meaning |
 |---|---|
 | `v0.1.0`, `v0.2.0`, `v0.3.0` | Weeks 1 to 3, as merged into `main` |
-| `v0.4.0`, `v0.5.0` | Weeks 4 and 5, once they are promoted to `main` |
+| `v0.5.0` | Weeks 4 and 5, promoted together on Oct 24 |
+| `v0.6.0`, `v0.7.0` | Stable points while we finish the client feedback (Oct 29, Nov 1) |
+| `v1.0.0-rc.1` | The build for the dry run with the client |
 | `v1.0.0` | The Demo Day build |
 
-To cut a release after a week is promoted to `main`:
+To cut a release once the changes for it are merged into `main` and CI is green:
 
 ```bash
 git checkout main && git pull
-git tag -a v0.5.0 -m "Week 5: ..."
-git push origin v0.5.0
+git tag -a v0.6.0 -m "v0.6.0: ..."
+git push origin v0.6.0
 ```
 
 Then move that version's notes from "Unreleased" to a new heading in the changelog.

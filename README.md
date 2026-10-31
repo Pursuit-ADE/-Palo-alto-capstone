@@ -108,9 +108,9 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 
 ## Branches and releases
 
-Each week of the build has its own branch: `week1` (the copilot) and `week2` (adds the actionable alerts service in [`alerts/`](alerts/README.md)), and so on. Work merges into the current week branch through a reviewed pull request, and each finished week is promoted to `main`.
+Weeks 1 to 5 were built on `week1` to `week5` branches, which are now kept for history. From v0.5.0 on, all work branches from `main` and comes back through a reviewed pull request.
 
-Stable points on `main` are tagged with [semantic versions](https://semver.org/) (`v0.1.0` is Week 1, `v0.2.0` Week 2, `v0.3.0` Week 3). [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable; `week*` branches are work in progress.
+Stable points on `main` are tagged with [semantic versions](https://semver.org/): `v0.1.0` to `v0.3.0` are Weeks 1 to 3, and `v0.5.0` is Weeks 4 and 5. [CHANGELOG.md](CHANGELOG.md) lists what each one added. Only tagged commits on `main` are stable.
 
 ## Contributing
 
