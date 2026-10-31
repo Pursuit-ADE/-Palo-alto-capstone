@@ -20,11 +20,12 @@ const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|i
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
 /**
- * "East vs West", "compare east and west", "is east higher than (the) west": two figures wanted, not their sum. A
- * comparative counts only with a region right after "than", so "deals larger than $50,000" stays a deal-size filter.
+ * "East vs West", "compare east and west", "is east higher than (the) west", "higher in East than West": two figures
+ * wanted, not their sum. A comparative counts only next to a region ("than west", "in east than"), so "deals larger
+ * than $50,000" stays a deal-size filter. The "in East than" form was answered as one combined total (phrasing hunt, Oct 31).
  */
 const COMPARISON =
-  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)) /;
+  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)|(higher|lower|bigger|smaller|larger|better|worse|more|less) (in|for) (the )?(central|east|west) than) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 // A capitalized name, including a product id whose last token is a number ("GTK 500").
