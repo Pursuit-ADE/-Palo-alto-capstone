@@ -303,11 +303,14 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 
-/** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
+/** Whether the question changes something a follow-up can change: region, period, stage, breakdown or a ranking. */
 function hasModifier(text: string, registry: Registry): boolean {
   if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text) || ALL_STAGES.test(text)) return true;
   if (/ (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous) quarter /.test(text)) return true;
   if (Object.keys(registry.glossary.dimensionPhrases).some((p) => text.includes(` ${p} `))) return true;
+  // "Who has the most?" after an answer ranks that answer by its owners (bug hunt, Oct 31). A superlative is needed,
+  // so "who are you?" doesn't become a breakdown.
+  if (SUPERLATIVE.test(text) && rankedBy(text)) return true;
   return findStages(text).length > 0;
 }
 
@@ -505,6 +508,30 @@ function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
+const SUPERLATIVE = / (top|bottom|highest|lowest|most|least|best|worst|biggest|smallest|largest|rank|ranked|ranking) /;
+const RANKING = / (which|who|whose) /;
+/** What a ranking ranks, checked in this order: "who" alone means people. */
+const RANKED: [RegExp, Dimension][] = [
+  [/ (region|regions) /, 'region'],
+  [/ (stage|stages) /, 'stage'],
+  [/ (who|whose|rep|reps|owner|owners|seller|sellers|salesperson|salespeople) /, 'owner'],
+];
+
+/**
+ * "Which rep has the lowest coverage?", "who has the most open pipeline?", "top 3 reps": a ranking needs the
+ * breakdown it ranks by. Without one the scope's total was answered (bug hunt, Oct 31; PRD A2).
+ */
+function rankedBy(text: string): Dimension | undefined {
+  if (!RANKING.test(text) && !SUPERLATIVE.test(text)) return undefined;
+  return RANKED.find(([words]) => words.test(text))?.[1];
+}
+
+function cannotRank(metric: MetricDefinition, by: Dimension): string {
+  const what = by === 'owner' ? 'rep' : by;
+  const name = metric.name.toLowerCase();
+  return `${metric.name} can't be broken down by ${what}, so I can't rank ${what}s by it. I can show ${name} for one ${what} you name, or ${name} by ${metric.dimensions.join(' or ')}.`;
+}
+
 /**
  * Follow-ups (PRD A5): with a previous intent, a question that names no metric but changes a region, period,
  * stage or breakdown ("what about West?", "by stage", "and next quarter?") starts from the previous intent.
@@ -565,6 +592,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     .filter((h) => h.at >= 0)
     .sort((a, b) => a.at - b.at);
   for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  const ranked = groupBy.length ? undefined : rankedBy(text);
+  if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
+  if (ranked) groupBy.push(ranked);
   // A breakdown this metric doesn't have is asked about, not silently dropped.
   const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
   if (unsupportedDim) {

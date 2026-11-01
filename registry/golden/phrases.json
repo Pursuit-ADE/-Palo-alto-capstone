@@ -632,6 +632,22 @@
       }
     },
     {
+      "phrase": "Who has the most open pipeline?",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {},
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "Which rep has the lowest coverage this quarter?",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
       "phrase": "open pipeline over $1M",
       "expect": {
         "metric": "open_pipeline",
