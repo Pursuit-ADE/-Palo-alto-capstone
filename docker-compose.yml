@@ -57,6 +57,7 @@ services:
       EMPLOYEE_STATUS: ${EMPLOYEE_STATUS:-off}   # "off" on purpose for the demo; a real deploy lists active employees
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       SECURITY_SLACK_WEBHOOK_URL: ${SECURITY_SLACK_WEBHOOK_URL:-}
+      ALERTS_URL: ${ALERTS_URL:-http://localhost:3001}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
