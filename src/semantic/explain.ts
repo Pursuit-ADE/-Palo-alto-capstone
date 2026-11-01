@@ -46,6 +46,13 @@ const HOW_OPENER = / (how|where) (s|is|does|do) /;
 const HOW_COMPARED = / (compare|compared|comparing|comparison|against|versus|vs|relative|stack|stacks|gap|different|differ|differs|difference|higher|lower|bigger|smaller|than) /;
 /** "Why is mine 0.52x when the company is 0.65x?" sets two figures side by side without a comparison word (user test, Oct 29). */
 const SET_AGAINST = / (when|while|whereas|but) /;
+/**
+ * A dollar amount stated as someone's figure ("west has $806,676", "theirs is $2M"), not a deal-size filter ("over
+ * $1M"), which coverage asks back about because quota isn't split by deal size.
+ */
+const FIGURE_DOLLARS = /\b(has|have|had|is|are|was|were|shows?|says?|reports?|gets?|got)\s+\$\s?\d[\d,]*(?:\.\d+)?\s*(?:k|m|mm|bn|million|thousand|billion)?\b/gi;
+/** The same pattern without the g flag, so .test() keeps no state between calls. */
+const HAS_FIGURE_DOLLARS = new RegExp(FIGURE_DOLLARS.source, 'i');
 /** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
 const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*x\b/gi;
 /** The same pattern without the g flag, so .test() keeps no state between calls. */
@@ -57,7 +64,7 @@ const STAGE_WORDS = / (prospecting|engaging|won|lost) /;
  * a single named quarter is the asker's own figure for that quarter, not a request to compare two quarters.
  */
 const OTHER_FIGURE =
-  / (marketing|sales|finance|leadership|company|companys|everyone|everybody|whole|overall|total|dashboard|report|spreadsheet|someone|somebody|they|their|them|he|she|his|her|manager|boss|say|says|said) /;
+  / (marketing|sales|finance|leadership|company|companys|everyone|everybody|whole|overall|total|dashboard|report|spreadsheet|someone|somebody|they|their|them|he|she|his|her|manager|boss|say|says|said|all regions|every region|all teams|every team|global|worldwide|org|organization|organisation) /;
 
 /** The question is about a figure someone else holds: it names one (OTHER_FIGURE) or quotes a ratio. */
 const pointsElsewhere = (phrase: string) => OTHER_FIGURE.test(clean(phrase)) || HAS_QUOTED_RATIO.test(phrase);
@@ -105,14 +112,21 @@ function namesOtherMetric(text: string, registry: Registry): boolean {
   );
 }
 
+/** "Why…/how much…" with a comparison, or "how's/where's…" with a comparison word: a question about a gap. */
+function asksAboutAGap(text: string, phrase: string): boolean {
+  // Two quoted figures with someone else's ("0.65x for the company, so why is mine 0.52x?") are a comparison too, and
+  // so is a figure stated for another slice ("so low when west has $806,676", bug hunt, Oct 31).
+  const elsewhere = pointsElsewhere(phrase) || HAS_FIGURE_DOLLARS.test(phrase);
+  const setAgainst = (SET_AGAINST.test(text) || (phrase.match(QUOTED_RATIO)?.length ?? 0) > 1) && elsewhere;
+  const compared = DIFFERENCE.test(text) || / gap /.test(text) || setAgainst;
+  if ((WHY.test(text) || HOW_MUCH.test(text)) && compared) return true;
+  return HOW_OPENER.test(text) && (HOW_COMPARED.test(text) || setAgainst);
+}
+
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
   const text = withCoverageWords(clean(phrase), registry);
-  // Two quoted figures with someone else's ("0.65x for the company, so why is mine 0.52x?") are a comparison too.
-  const setAgainst = (SET_AGAINST.test(text) || (phrase.match(QUOTED_RATIO)?.length ?? 0) > 1) && pointsElsewhere(phrase);
-  const compared = DIFFERENCE.test(text) || / gap /.test(text) || setAgainst;
-  const asks = ((WHY.test(text) || HOW_MUCH.test(text)) && compared) || (HOW_OPENER.test(text) && (HOW_COMPARED.test(text) || setAgainst));
-  if (!asks || BREAKDOWN.test(text)) return false;
+  if (!asksAboutAGap(text, phrase) || BREAKDOWN.test(text)) return false;
   if (text.includes(' coverage ')) return true;
   // Coverage is the only metric written as "3x", so a ratio quoted as the figure names it, unless the question names
   // another metric ("my pipeline is 3x bigger", where 3x is a multiplier).
@@ -128,7 +142,8 @@ export function isDiscrepancyQuestion(phrase: string, registry: Registry, previo
  * "sector" keeps them and is asked back below.
  */
 function selectorPhrase(phrase: string): string {
-  let text = phrase.replace(QUOTED_RATIO, ' ');
+  // A dollar figure stated as someone's number ("when west has $806,676") is not a deal-size filter (bug hunt, Oct 31).
+  let text = phrase.replace(QUOTED_RATIO, ' ').replace(FIGURE_DOLLARS, '$1 ');
   if (SECTOR_CUE.test(text)) return text;
   for (const sector of new Set(catalog().accounts.map((a) => a.sector))) {
     text = text.replace(new RegExp(`\\b${sector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
@@ -365,13 +380,36 @@ function directionCorrection(phrase: string, registry: Registry, asOfDate: strin
 const hasSlice = (f: Intent['filters']) => Boolean(f.regions?.length || f.people?.length || f.teams?.length);
 
 /**
- * The second figure to run, if any. A named slice compared with "the company" by someone who can't see the company
- * (a seller or manager) is explained alone: their own whole scope is not the company's figure (#50 review, Oct 31).
+ * The second figure to run, if any. The asker's whole scope stands in only for a figure the question names as theirs
+ * or the company's:
+ * - a named slice compared with "the company" by someone who can't see the company (a seller or manager) is explained
+ *   alone, because their own whole scope is not the company's figure (#50 review, Oct 31);
+ * - a named slice set against a quoted ratio ("higher than 0.4x", "when marketing says 3x") with no word for the whole
+ *   scope is explained alone too: nobody named the whole scope (bug hunt, Oct 31).
  */
 function secondFigure(p: Plan, principal: Principal, phrase: string): Intent | null {
+  if (!p.second || hasSlice(p.second.filters) || !hasSlice(p.first.filters)) return p.second;
   const companyWide = principal.ownerIds === null && principal.regions.length === ALL_REGIONS.length;
-  if (p.second && !hasSlice(p.second.filters) && hasSlice(p.first.filters) && !companyWide && pointsElsewhere(phrase)) return null;
+  if (!companyWide && pointsElsewhere(phrase)) return null;
+  if (HAS_QUOTED_RATIO.test(phrase) && !WHOLE.test(clean(phrase))) return null;
   return p.second;
+}
+
+/**
+ * Someone who sees only their own deals or a team sees a region only through those: naming their own region changes
+ * nothing, and the whole region is outside their scope. So the region is dropped, and a comparison that is then the
+ * same figure twice becomes their own figure, explained alone (bug hunt, Oct 31: "lower than east" got "the same
+ * figure"). A region outside their scope stays, so the compiler still refuses it.
+ */
+function withoutOwnRegion(p: Plan, principal: Principal): Plan {
+  if (principal.ownerIds === null) return p;
+  const strip = (i: Intent): Intent => {
+    const regions = i.filters.regions?.filter((r) => !principal.regions.includes(r));
+    const { regions: _named, ...rest } = i.filters;
+    return { ...i, filters: regions?.length ? { ...rest, regions } : rest };
+  };
+  const [first, second] = [strip(p.first), p.second && strip(p.second)];
+  return { first, second: second && JSON.stringify(second.filters) !== JSON.stringify(first.filters) ? second : null };
 }
 
 /** Answers a discrepancy question (see isDiscrepancyQuestion). Called inside the audited request in ask(). */
@@ -386,8 +424,9 @@ export async function explainDiscrepancy(
 ): Promise<Explanation | Clarify> {
   const snapshot = await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
-  const p = plan(phrase, registry, snapshot.asOfDate, previous);
-  if (isClarify(p)) return p;
+  const planned = plan(phrase, registry, snapshot.asOfDate, previous);
+  if (isClarify(planned)) return planned;
+  const p = withoutOwnRegion(planned, principal);
   const answer = await run(database, registry, principal, p.first, fields);
   const second: AuditFields = {};
   const run2 = await runSecond(database, registry, principal, secondFigure(p, principal, phrase), second, fields);

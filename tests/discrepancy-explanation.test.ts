@@ -616,3 +616,63 @@ describe('PR #50 review, Oct 31: the detection rules see explanations', () => {
     expect(e.kind).toBe('explanation');
   });
 });
+
+// Bug hunt on Oct 31 (the parallel session's report): each case was reproduced and confirmed by a second reviewer.
+describe('bug hunt, Oct 31: explanations', () => {
+  it.each([
+    ['u_ts_east', 'why is my coverage lower than east this quarter', 0.5158],
+    ['u_mgr_melvin_marxen', 'why is my coverage lower than central this quarter', 0.7753],
+  ])('%s: "%s" explains their own figure: the whole region is outside their scope', async (user, phrase, value) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer).value).toBe(value);
+    expect(e.summary).not.toContain('Both requests cover the same slice');
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+  });
+
+  it('a region named by the analyst is still compared as the whole region', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is east coverage lower than west this quarter'));
+    expect([row(e.answer).value, row(e.other!).value]).toEqual([0.4262, 0.7525]);
+  });
+
+  it('a region outside a seller\'s scope is still refused', async () => {
+    await expect(ask(database, reg, 'u_ts_east', 'why is my coverage lower than west this quarter')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it.each(['why is coverage for Niesha Huffines higher than all regions', 'why is coverage for Niesha Huffines higher than all teams this quarter', 'why is coverage for Niesha Huffines lower than every region'])(
+    '"%s" from a manager explains the rep alone, not against his own team',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_mgr_melvin_marxen', phrase));
+      expect(e.other).toBeNull();
+      expect((e.answer.intent as Intent).filters.people).toEqual(['Niesha Huffines']);
+    },
+  );
+
+  it('a dollar amount about another figure is not read as a deal-size filter', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is east coverage so low when west has $806,676 of pipeline this quarter'));
+    expect([(e.answer.intent as Intent).filters.regions, (e.other!.intent as Intent).filters.regions]).toEqual([['east'], ['west']]);
+    await expect(ask(database, reg, 'u_ts_east', 'why is my coverage so low when west has $806,676 of pipeline')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it.each([
+    "Why is Cara Losch's team's coverage higher than 0.4x?",
+    "Why is Cara Losch's team's coverage 0.52x when marketing says 3x?",
+  ])('"%s": a quoted ratio is not the company figure, so the team is explained alone', async (phrase) => {
+    const e = explained(await ask(database, reg, 'u_analyst', phrase));
+    expect(e.other).toBeNull();
+    expect((e.answer.intent as Intent).filters.teams).toEqual(['Cara Losch']);
+  });
+
+  it("still compares a team with the company when the question names the company", async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', "Why is Cara Losch's team's coverage 0.52x when the company is 0.65x?"));
+    expect(e.other).not.toBeNull();
+  });
+
+  it('a clarifying question on the explanation path has a reason code in its audit row', async () => {
+    const r = await ask(database, reg, 'u_analyst', "why is jordan's coverage lower than the company's?");
+    expect(r.kind).toBe('clarify');
+    const [last] = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_analyst')).orderBy(desc(queryAudit.at)).limit(1);
+    expect(last).toMatchObject({ outcome: 'clarify', metricId: 'pipeline_coverage' });
+    expect(last!.reason).toMatch(/^clarify:[0-9a-f]{16}$/);
+  });
+});

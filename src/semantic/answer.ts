@@ -31,6 +31,15 @@ export function questionFingerprint(text: string): string {
   return createHmac('sha256', AUDIT_KEY).update(text).digest('hex');
 }
 
+/**
+ * A clarify from the explanation route gets the same reason code as one from the model, never the question's words
+ * (bug hunt, Oct 31). A helper, so ask() stays under the complexity limit once #52 adds checkMetric() there.
+ */
+function withClarifyReason<T extends { kind: string; question?: string }>(reply: T, fields: AuditFields): T {
+  if (reply.kind === 'clarify' && reply.question) fields.reason = `clarify:${questionFingerprint(reply.question).slice(0, 16)}`;
+  return reply;
+}
+
 type AuditRow = AuditFields & { id: string; userId: string; source: string; outcome: string; requestId: string };
 
 /** Writes the request's audit row, plus any linked rows (a comparison's second figure) in the same statement. */
@@ -203,7 +212,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     const previous = parsePrevious(opts.previous);
     if (isDiscrepancyQuestion(phrase, registry, previous)) {
       Object.assign(fields, { metricId: EXPLAINED_METRIC });
-      return explainDiscrepancy(database, registry, await principal(), phrase, previous, fields, linked);
+      return withClarifyReason(await explainDiscrepancy(database, registry, await principal(), phrase, previous, fields, linked), fields);
     }
     const snapshot = await currentSnapshot(database);
     const asOfDate = snapshot?.asOfDate ?? new Date().toISOString().slice(0, 10);
