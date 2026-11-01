@@ -751,8 +751,8 @@ describe('phrasing hunt, Oct 31: ordinary wordings of the client question', () =
     expect(JSON.stringify(e)).not.toMatch(/\b3x|0\.5x|300%|50%|3×/);
   });
 
-  // "different from East's", "Q2's" and "Sam's" (a possessive after "from") are fixed in the normal-path reader on
-  // trevor/normal-path-names, which also stops repeating an unknown name back; its tests cover them.
+  // "different from East's", "Q2's" and "Sam's" (a possessive after "from") are fixed in the normal-path reader in
+  // #102, which also stops repeating an unknown name back; its tests cover them.
   it("\"this Quarter's\" against \"next Quarter's\" compares the two quarters", async () => {
     const e = explained(await ask(database, reg, 'u_ts_east', "Why is this Quarter's coverage lower than next Quarter's?"));
     expect([(e.answer.intent as Intent).filters.period, (e.other!.intent as Intent).filters.period]).toEqual(['FY27-Q1', 'FY27-Q2']);
