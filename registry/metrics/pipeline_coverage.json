@@ -18,5 +18,5 @@
   "target": 3,
   "caution": 2,
   "dimensions": ["region"],
-  "notes": "Total (unweighted) coverage. Coverage by region is a view of this metric, not a separate formula. Alex confirmed the 3.00x target for this demo on the midpoint check call. Below 2.00x is red, from 2.00x up to the target is amber, and at or above the target is green. The 2.00x color boundary is the plan's split, not a second confirmation from that call. The target and the color boundary are display-only and do not change the computed value."
+  "notes": "Total (unweighted) coverage. Coverage by region is a view of this metric, not a separate formula. Alex confirmed the 3.00x target for this demo. Below 2.00x is red, from 2.00x up to the target is amber, and at or above the target is green; the 2.00x boundary is a team choice. The target and the colors are display-only and do not change the computed value."
 }

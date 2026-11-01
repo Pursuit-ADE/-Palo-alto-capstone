@@ -1,6 +1,6 @@
 import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
-import { coverageSpec, coverageStanding, coverageTrackMax, type CoverageTarget } from '@/semantic/coverage-target';
+import { capitalize, coverageSpec, coverageStanding, coverageTrackMax, type CoverageTarget } from '@/semantic/coverage-target';
 import type { Answer } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
@@ -36,7 +36,7 @@ function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][num
   const v = row.value === null || row.value === undefined ? null : Number(row.value);
   const regionStanding = goal && v != null ? coverageStanding(v, goal) : null;
   const tone = regionStanding ? `tone-${regionStanding.tone}` : undefined;
-  const legend = v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}` : '';
+  const legend = v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}.` : '';
   return (
     <div className="bar-row">
       <div className="bar-head">
@@ -165,7 +165,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <section className="card coverage" aria-labelledby="cov-title">
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
             <span className={standing ? `cov-value tone-${standing.tone}` : 'cov-value'}>{format(cov, 'ratio')}</span>
-            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : standing ? `${standing.standing}, ${standing.words}. 1.00x means pipeline equals quota.` : '1.00x means pipeline equals quota.'}</p>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : standing ? `${capitalize(standing.standing)}, ${standing.words}. 1.00x means pipeline equals quota.` : '1.00x means pipeline equals quota.'}</p>
             {graphs ? (
               <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} kinds={kinds} />
             ) : (

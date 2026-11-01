@@ -15,11 +15,14 @@ export function coverageStanding(value: number, spec: CoverageTarget): { standin
   return { standing: 'off target', words: `below ${caution}x. ${named}`, tone: 'red' };
 }
 
-/** The receipt's Target row: the standing and the band, in one line. */
+/** The receipt's Target row: the standing and the band, in one line. It stands alone, so it starts with a capital. */
 export function coverageReceipt(value: number, spec: CoverageTarget): string {
   const standing = coverageStanding(value, spec);
-  return `${standing.standing}, ${standing.words}.`;
+  return `${capitalize(standing.standing)}, ${standing.words}.`;
 }
+
+/** For a standing that starts a sentence, such as after a full stop on the dashboard (UI review, Nov 1). */
+export const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export function coverageSpec(metric: { target?: number | null; caution?: number | null }): CoverageTarget | null {
   if (metric.target == null || metric.caution == null || metric.caution >= metric.target) return null;
