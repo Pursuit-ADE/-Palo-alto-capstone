@@ -113,6 +113,10 @@ Findings are tracked in `docs/RED-TEAM.md` (F1–F25). The ones a reviewer shoul
 - Topic labels are coarse: the first matching word list wins, so "use cases" counts as support cases and "will we hit quota" as forecast. Read them as trends, not exact categories.
 - "Why is my number different?" explanations cover pipeline coverage only. They can't check a figure from outside the asker's scope, and say so instead of guessing which reason applies.
 - With Claude on, the deterministic reading checks Claude's choice of metric (`checkMetric()`, `src/semantic/answer.ts`). When they disagree, the user is asked, even if Claude was right and the keyword reader was wrong: a wrong guess costs one extra question, never a wrong number. Filters, period and breakdown are not cross-checked.
+- A rep can tell a real colleague outside their scope from a made-up name: the first gets "You do not have access to …", the second doesn't. It reveals that a name exists, never a figure. The names are fictional sample data, so this stays for the demo; a rollout should give both the same reply (freeze decisions, #52).
+- A lower-case name is asked back only next to a word like "deals" ("for zephyra deals"); a bare "for zephyra" is not, so ordinary words aren't caught. Kept narrow on purpose.
+- Percent targets aren't read: "marketing says 300%" is not understood, "3x" is.
+- An inactive employee gets the same sign-up and sign-in messages as a wrong invite code or password, on purpose, so the replies don't show which accounts exist. The audit log keeps the real reason (#89).
 - This is a self-assessment by the team that built it. The client's own red team should test it before any rollout.
 
 ## Retention
