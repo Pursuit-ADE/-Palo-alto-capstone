@@ -765,3 +765,26 @@ describe('phrasing hunt, Oct 31: ordinary wordings of the client question', () =
   });
 
 });
+
+// Bug hunting's final review of #101 (Nov 1): the analyst sees every region and team, so "a figure from outside your
+// scope" is untrue for them. A seller or manager keeps the sentence, which is true for them.
+describe('the "can\'t see" sentence matches who is asking', () => {
+  it.each([
+    "why is my coverage lower than the company's?",
+    'Why does marketing say 3x when mine is 0.5x?',
+    "Why is the Board's coverage figure different from mine?",
+  ])(
+    'analyst: "%s" says the other figure can\'t be checked, not that it is outside their scope',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_analyst', phrase));
+      expect(e.other).toBeNull();
+      expect(e.summary).not.toContain('outside your scope');
+      expect(e.summary).toContain("I can't see or check the other figure, so I can't say which reason applies to it.");
+    },
+  );
+
+  it('a seller still hears that the other figure is outside their scope', async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', 'Why does marketing say 3x when mine is 0.5x?'));
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+  });
+});

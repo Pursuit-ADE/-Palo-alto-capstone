@@ -423,6 +423,9 @@ function directionCorrection(phrase: string, registry: Registry, asOfDate: strin
   return claim ? premiseCorrection(claim.subject, claim.object, claim.higher, verdict === 'different_period') : null;
 }
 
+/** The asker's scope is every region and team (the analyst). */
+const seesEverything = (p: Principal) => p.ownerIds === null && p.regions.length === ALL_REGIONS.length;
+
 const hasSlice = (f: Intent['filters']) => Boolean(f.regions?.length || f.people?.length || f.teams?.length);
 
 /**
@@ -435,7 +438,7 @@ const hasSlice = (f: Intent['filters']) => Boolean(f.regions?.length || f.people
  */
 function secondFigure(p: Plan, principal: Principal, phrase: string): Intent | null {
   if (!p.second || hasSlice(p.second.filters) || !hasSlice(p.first.filters)) return p.second;
-  const companyWide = principal.ownerIds === null && principal.regions.length === ALL_REGIONS.length;
+  const companyWide = seesEverything(principal);
   const text = clean(phrase);
   if (!companyWide && (pointsElsewhere(phrase) || WIDER.test(text))) return null;
   if (HAS_QUOTED_RATIO.test(phrase) && !WHOLE.test(text) && !WIDER.test(text) && !OWN.test(text)) return null;
@@ -489,7 +492,7 @@ export async function explainDiscrepancy(
   // The second figure gets its own audit row (same request id), so each side of a comparison can be replayed from
   // the log: intent, metric version, regions, snapshot and result hash (PR #50 review).
   if (other) linked.push({ ...second, role: fields.role, reason: 'explanation:second_figure' });
-  const text = explanationText(answer, other, verdict, numerators);
+  const text = explanationText(answer, other, verdict, numerators, seesEverything(principal));
   const correction = other && verdict ? directionCorrection(phrase, registry, snapshot.asOfDate, answer, other, verdict, principal) : null;
   return { kind: 'explanation', answer, other, verdict, ...text, summary: correction ? `${correction} ${text.summary}` : text.summary };
 }

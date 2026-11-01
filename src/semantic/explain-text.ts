@@ -127,8 +127,15 @@ function scopeReason(a: Answer, b: Answer): string {
 
 const COMBINING = "Coverage is total open pipeline over total quota. A combined figure is not the average of each team's coverage.";
 
+/**
+ * Why the other figure can't be explained. For a seller or manager it is outside their scope. The analyst sees every
+ * region and team, so for them it is simply a figure the copilot doesn't hold (bug hunting's review of #101, Nov 1).
+ */
+const CANT_SEE = "I can't see or check a figure from outside your scope, so I can't say which reason applies to another number.";
+const CANT_CHECK = "I can't see or check the other figure, so I can't say which reason applies to it.";
+
 /** One figure: the asker's own, with the reasons any two coverage figures can legitimately differ. */
-function ownScope(a: Answer): { summary: string; reasons: string[] } {
+function ownScope(a: Answer, seesEverything: boolean): { summary: string; reasons: string[] } {
   const f = a.filters;
   // A region named in the question (or the previous answer) is a filter too, not "none" (#50 review, Oct 31).
   const regions = sliceOf(a).regions;
@@ -137,7 +144,7 @@ function ownScope(a: Answer): { summary: string; reasons: string[] } {
     summary: [
       `${a.narrative} It covers ${scopeOf(a)}.`,
       `Every coverage figure in this copilot uses the same definition, ${a.metric.name} v${a.metric.version}: ${a.metric.definition}`,
-      "I can't see or check a figure from outside your scope, so I can't say which reason applies to another number. Two coverage figures differ when one of these differs:",
+      `${seesEverything ? CANT_CHECK : CANT_SEE} Two coverage figures differ when one of these differs:`,
     ].join(' '),
     reasons: [
       `Scope: each person's figure covers only the regions and teams they may see. Yours covers ${scopeOf(a)}.`,
@@ -197,8 +204,11 @@ export function premiseCorrection(subject: Answer, object: Answer, saidHigher: b
   return `Coverage for ${label(subject)} is ${really} than for ${label(object)}, not ${said}: ${s.toFixed(2)}x against ${o.toFixed(2)}x.`;
 }
 
-/** The explanation's sentences and checks. Figures come only from the answers' rows. */
-export function explanationText(a: Answer, b: Answer | null, verdict: Verdict | null, numerators: boolean[]) {
-  const text = b && verdict ? compared(a, b, verdict) : ownScope(a);
+/**
+ * The explanation's sentences and checks. Figures come only from the answers' rows. `seesEverything`: the asker's
+ * scope is every region and team.
+ */
+export function explanationText(a: Answer, b: Answer | null, verdict: Verdict | null, numerators: boolean[], seesEverything = false) {
+  const text = b && verdict ? compared(a, b, verdict) : ownScope(a, seesEverything);
   return { ...text, checks: checksFor(b ? [a, b] : [a], numerators, verdict === 'different_period') };
 }
