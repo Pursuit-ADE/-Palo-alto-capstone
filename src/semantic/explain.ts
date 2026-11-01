@@ -46,8 +46,27 @@ const HOW_OPENER = / (how|where) (s|is|does|do) /;
 const HOW_COMPARED = / (compare|compared|comparing|comparison|against|versus|vs|relative|stack|stacks|gap|different|differ|differs|difference|higher|lower|bigger|smaller|than) /;
 /** "Why is mine 0.52x when the company is 0.65x?" sets two figures side by side without a comparison word (user test, Oct 29). */
 const SET_AGAINST = / (when|while|whereas|but) /;
-/** A ratio someone else quoted ("3x", "0.5 x"). Never read as a filter or an amount, and never repeated back. */
-const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*x\b/gi;
+/**
+ * A dollar amount someone or somewhere holds: "west has $806,676", "marketing says $2M", "Darcel has $656,040". Not a
+ * deal-size condition ("deals that are $1M or more", "$500k and up"), which coverage asks back about because quota isn't
+ * split by deal size (review of the bug-hunt fixes, Oct 31).
+ */
+const HELD_DOLLARS = /\b([A-Za-z]+)\s+(has|have|had|shows|showed|says|said|reports|reported|gets|got)\s+\$\s?\d[\d,]*(?:\.\d+)?\s*(?:k|m|mm|bn|million|thousand|billion)?\b(?!\s*(?:or\b|and\b|to\b|plus\b|\+))/g;
+const NOT_A_HOLDER = /^(deal|deals|opportunity|opportunities|amount|amounts|it|that|which|this|these|those|each|every)$/i;
+
+/** The question with each held dollar figure removed, keeping its holder and verb. */
+function withoutHeldDollars(phrase: string): string {
+  return phrase.replace(HELD_DOLLARS, (all, holder: string, verb: string) => {
+    const lower = holder.toLowerCase();
+    const holds = !NOT_A_HOLDER.test(holder) && ((ALL_REGIONS as readonly string[]).includes(lower) || OTHER_FIGURE.test(` ${lower} `) || /^[A-Z]/.test(holder));
+    return holds ? `${holder} ${verb} ` : all;
+  });
+}
+/**
+ * A ratio someone else quoted ("3x", "0.5 x", "3×", "300%"). Never read as a filter or an amount, and never repeated
+ * back. A percentage was read as a deal size, and "×" not at all (review, Oct 31).
+ */
+const QUOTED_RATIO = /\b\d+(?:\.\d+)?\s*(?:x\b|×|%)/gi;
 /** The same pattern without the g flag, so .test() keeps no state between calls. */
 const HAS_QUOTED_RATIO = new RegExp(QUOTED_RATIO.source, 'i');
 const SECTOR_CUE = /\b(sector|sectors|industry|industries|vertical|verticals)\b/i;
@@ -58,6 +77,13 @@ const STAGE_WORDS = / (prospecting|engaging|won|lost) /;
  */
 const OTHER_FIGURE =
   / (marketing|sales|finance|leadership|company|companys|everyone|everybody|whole|overall|total|dashboard|report|spreadsheet|someone|somebody|they|their|them|he|she|his|her|manager|boss|say|says|said) /;
+/**
+ * Words for a scope wider than a team: the analyst's own whole scope, but outside a seller's or manager's. Kept apart
+ * from OTHER_FIGURE, which would also stop "why is global coverage higher next quarter?" comparing two quarters.
+ */
+const WIDER = / (all regions|every region|all teams|every team|global|worldwide|org|orgs|organization|organisation) /;
+/** The asker's own whole figure: "when we're at 0.65x", "when my coverage is…". */
+const OWN = / (we|us|our|ours|my|mine|re) /;
 
 /** The question is about a figure someone else holds: it names one (OTHER_FIGURE) or quotes a ratio. */
 const pointsElsewhere = (phrase: string) => OTHER_FIGURE.test(clean(phrase)) || HAS_QUOTED_RATIO.test(phrase);
@@ -66,10 +92,17 @@ function clean(phrase: string): string {
   return ` ${phrase.replace(QUOTED_RATIO, ' ').toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
+/**
+ * Leaves something out ("when you exclude east"). The plain path asks back about these; an explanation would read the
+ * excluded name as the slice to explain. The same words as EXCLUSION in normalize.ts, without "not", which is in too
+ * many real discrepancy questions (review of the bug-hunt fixes, Oct 31).
+ */
+const EXCLUDES = / (excluding|exclude|excludes|except|without|other than|apart from|besides|minus|outside of|leave out|leaving out|left out) /;
 /** Asks for coverage split by something ("by region"): a breakdown request, not a comparison (#50 review, Oct 31). */
 const BREAKDOWN = / (by|per|for each|across) (region|regions|rep|reps|owner|owners|team|teams|stage|stages|manager|managers) /;
 /** Words right before a quoted ratio that make it the figure itself: "marketing says 3x", "mine is 0.5x", "we're at 3x". */
-const RATIO_LEAD = /^(say|says|said|show|shows|showed|showing|report|reports|reported|see|sees|saw|get|gets|got|quote|quotes|quoted|claim|claims|claimed|at|of|is|was|are|be)$/;
+const RATIO_LEAD =
+  /^(say|says|said|show|shows|showed|showing|report|reports|reported|see|sees|saw|get|gets|got|quote|quotes|quoted|claim|claims|claimed|has|have|had|mine|ours|theirs|yours|at|of|is|was|are|be)$/;
 /** Who may sit before "is 3x" for the ratio to be a coverage figure: "mine is", "the dashboard is", not "revenue is". */
 const RATIO_SUBJECT = /^(mine|ours|yours|theirs|it|that|this|we|i|you|they|coverage|ratio|number|figure|one)$/;
 /** Words right after a quoted ratio that make it a multiplier: "2x higher", "2x more deals", "1.5x what finance reports". */
@@ -80,7 +113,16 @@ const MULTIPLIER = /^(higher|lower|more|less|bigger|smaller|greater|larger|than|
  * "coverage"). Not a multiplier ("2x higher", "grew 2x") or a ratio of something else ("revenue is 2x", "my ARR 1.5x").
  */
 function quotesCoverage(phrase: string): boolean {
-  const words = phrase.toLowerCase().replace(/(\d)\s+x\b/g, '$1x').replace(/['’]re\b/g, ' are').replace(/['’]s\b/g, ' is').split(/[^a-z0-9.]+/).filter(Boolean);
+  // A full stop after the ratio ("Marketing says 3x.") is punctuation, not part of the number (review, Oct 31).
+  const words = phrase
+    .toLowerCase()
+    .replace(/×/g, 'x')
+    .replace(/(\d)\s+x\b/g, '$1x')
+    .replace(/['’]re\b/g, ' are')
+    .replace(/['’]s\b/g, ' is')
+    .split(/[^a-z0-9.]+/)
+    .map((w) => w.replace(/\.+$/, ''))
+    .filter(Boolean);
   return words.some((w, i) => {
     if (!/^\d+(?:\.\d+)?x$/.test(w)) return false;
     const [before, after] = [words[i - 1] ?? '', words[i + 1] ?? ''];
@@ -105,14 +147,21 @@ function namesOtherMetric(text: string, registry: Registry): boolean {
   );
 }
 
+/** "Why…/how much…" with a comparison, or "how's/where's…" with a comparison word: a question about a gap. */
+function asksAboutAGap(text: string, phrase: string): boolean {
+  // Two quoted figures with someone else's ("0.65x for the company, so why is mine 0.52x?") are a comparison too, and
+  // so is a figure stated for another slice ("so low when west has $806,676", bug hunt, Oct 31).
+  const elsewhere = pointsElsewhere(phrase) || withoutHeldDollars(phrase) !== phrase;
+  const setAgainst = (SET_AGAINST.test(text) || (phrase.match(QUOTED_RATIO)?.length ?? 0) > 1) && elsewhere;
+  const compared = DIFFERENCE.test(text) || / gap /.test(text) || setAgainst;
+  if ((WHY.test(text) || HOW_MUCH.test(text)) && compared) return true;
+  return HOW_OPENER.test(text) && (HOW_COMPARED.test(text) || setAgainst);
+}
+
 /** A "why is my coverage different / why does X say 3x" question, or "why is this number different" right after coverage. */
 export function isDiscrepancyQuestion(phrase: string, registry: Registry, previous?: Intent): boolean {
   const text = withCoverageWords(clean(phrase), registry);
-  // Two quoted figures with someone else's ("0.65x for the company, so why is mine 0.52x?") are a comparison too.
-  const setAgainst = (SET_AGAINST.test(text) || (phrase.match(QUOTED_RATIO)?.length ?? 0) > 1) && pointsElsewhere(phrase);
-  const compared = DIFFERENCE.test(text) || / gap /.test(text) || setAgainst;
-  const asks = ((WHY.test(text) || HOW_MUCH.test(text)) && compared) || (HOW_OPENER.test(text) && (HOW_COMPARED.test(text) || setAgainst));
-  if (!asks || BREAKDOWN.test(text)) return false;
+  if (!asksAboutAGap(text, phrase) || BREAKDOWN.test(text) || EXCLUDES.test(text)) return false;
   if (text.includes(' coverage ')) return true;
   // Coverage is the only metric written as "3x", so a ratio quoted as the figure names it, unless the question names
   // another metric ("my pipeline is 3x bigger", where 3x is a multiplier).
@@ -128,7 +177,8 @@ export function isDiscrepancyQuestion(phrase: string, registry: Registry, previo
  * "sector" keeps them and is asked back below.
  */
 function selectorPhrase(phrase: string): string {
-  let text = phrase.replace(QUOTED_RATIO, ' ');
+  // A dollar figure stated as someone's number ("when west has $806,676") is not a deal-size filter (bug hunt, Oct 31).
+  let text = withoutHeldDollars(phrase).replace(QUOTED_RATIO, ' ');
   if (SECTOR_CUE.test(text)) return text;
   for (const sector of new Set(catalog().accounts.map((a) => a.sector))) {
     text = text.replace(new RegExp(`\\b${sector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi'), ' ');
@@ -142,12 +192,15 @@ const POSSESSIVE = /\b([A-Z][A-Za-z.-]*(?:\s+[A-Z][A-Za-z.-]*)*)['’]s\b/g;
 const ANY_POSSESSIVE = /\b([a-z][a-z.-]*)['’]s\b/gi;
 /** Capitalised words before 's that are contractions, not names: "Why's my coverage…", "What's the reason…" (review on #50). */
 const NOT_A_NAME = new Set(['why', 'what', 'how', 'where', 'who', 'when', 'it', 'that', 'there', 'here', 'this', 'everyone', 'let']);
+/** Words that can open a Title-Case run before 's without being part of a name: "My Team's", "Next Quarter's". */
+const LEADING_WORDS = new Set(['my', 'our', 'your', 'their', 'his', 'her', 'the', 'a', 'an', 'next', 'last', 'this', 'that', 'is', 'are', 'was', 'does', 'do', 'did', 'has', 'than']);
 /** Everyday words that take 's in a coverage question and are not people: "my team's", "this quarter's", "the board's". */
 const EVERYDAY = new Set(
   ('team teams company everyone everybody anyone someone somebody nobody quarter quarters year month week today region regions ' +
     'rep reps manager managers boss board deck slide sheet chart dashboard report spreadsheet number figure coverage pipeline quota data ' +
     'org organization department group division unit segment territory sector industry customer customers account accounts partner ' +
-    'market business forecast plan target goal one other he she').split(' '),
+    'market business forecast plan target goal one other he she yesterday today tomorrow ceo cfo cro coo vp exec execs executive ' +
+    'leadership teammate teammates colleague colleagues peer peers crm salesforce system tool').split(' '),
 );
 
 /**
@@ -160,9 +213,15 @@ function unknownPossessive(phrase: string, resolved: string[]): string | null {
   const known = (lower: string) =>
     OTHER_FIGURE.test(` ${lower} `) || resolved.some((r) => r.toLowerCase().includes(lower) || lower.includes(r.toLowerCase()));
   for (const m of phrase.matchAll(POSSESSIVE)) {
-    const words = m[1]!.split(/\s+/);
-    while (words.length && NOT_A_NAME.has(words[0]!.toLowerCase())) words.shift();
-    if (words.length && !known(words.join(' ').toLowerCase())) return words.join(' ');
+    // In a Title-Case run ("Why Is My Coverage Lower Than My Team's") the name, if any, follows the last
+    // "my", "the", "why" and the like, so only those words are checked.
+    const run = m[1]!.split(/\s+/);
+    const opener = (w: string) => NOT_A_NAME.has(w.toLowerCase()) || LEADING_WORDS.has(w.toLowerCase());
+    const last = run.reduce((at, w, i) => (opener(w) ? i : at), -1);
+    const words = run.slice(last + 1);
+    const lower = words.join(' ').toLowerCase();
+    // "the Board's", "My Team's", "Next Quarter's": everyday words in capitals are not names either (review, Oct 31).
+    if (words.length && !(words.length === 1 && EVERYDAY.has(lower)) && !known(lower)) return words.join(' ');
   }
   for (const m of phrase.matchAll(ANY_POSSESSIVE)) {
     const lower = m[1]!.toLowerCase();
@@ -308,8 +367,8 @@ const NOT_OURS =
   / (marketing|finance|sales|leadership|dashboard|report|reports|reported|spreadsheet|someone|somebody|they|their|them|manager|boss|say|says|said|expected|expect|target|goal|plan|forecast|thought) /;
 
 /** The asker's whole scope as one side of "than": only with a WHOLE word and nothing that makes it someone else's figure. */
-function wholeHalf(before: string, after: string): Half {
-  const here = (t: string) => WHOLE.test(t) && !NOT_OURS.test(t);
+function wholeHalf(before: string, after: string, ownRegions: string[]): Half {
+  const here = (t: string) => (WHOLE.test(t) || ownRegions.some((r) => t.includes(` ${r} `))) && !NOT_OURS.test(t);
   return sideOf(here(before), here(after));
 }
 
@@ -320,7 +379,7 @@ const sideOf = (inBefore: boolean, inAfter: boolean): Half => {
 };
 
 /** Where a figure is named: by its quarter when the two differ by quarter, else by its own names or "the company". */
-function placeSide(side: Answer, before: string, after: string, byPeriod: boolean, registry: Registry, asOfDate: string): Half {
+function placeSide(side: Answer, before: string, after: string, byPeriod: boolean, registry: Registry, asOfDate: string, ownRegions: string[]): Half {
   if (byPeriod) {
     const label = side.filters.period?.label ?? '';
     const [x, y] = [before, after].map((t) => findPeriods(t, registry.glossary, asOfDate).labels.has(label));
@@ -328,7 +387,7 @@ function placeSide(side: Answer, before: string, after: string, byPeriod: boolea
   }
   const f = (side.intent as Intent).filters;
   const names = [...(f.regions ?? []), ...(f.people ?? []), ...(f.teams ?? [])].map((n) => clean(n));
-  if (!names.length) return wholeHalf(before, after);
+  if (!names.length) return wholeHalf(before, after, ownRegions);
   const [x, y] = [before, after].map((t) => names.some((n) => t.includes(n)));
   return sideOf(Boolean(x), Boolean(y));
 }
@@ -339,14 +398,14 @@ function placeSide(side: Answer, before: string, after: string, byPeriod: boolea
  * word such as "company". Null unless the question has one "than", a direction word about coverage before it, and
  * names both figures on different sides of it (#50 review, Oct 31: "than expected", "than 0.4x", "more pipeline than").
  */
-function claimed(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer): { subject: Answer; object: Answer; higher: boolean } | null {
+function claimed(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer, ownRegions: string[]): { subject: Answer; object: Answer; higher: boolean } | null {
   const halves = withCoverageWords(clean(phrase), registry).split(' than ');
   if (halves.length !== 2) return null;
   const [before, after] = [`${halves[0]} `, ` ${halves[1]}`];
   const [up, down] = [HIGHER.test(before), LOWER.test(before)];
   if (up === down || !before.includes(' coverage ') || OTHER_QUANTITY.test(before) || OTHER_QUANTITY.test(after)) return null;
   const byPeriod = !sameQuarter(a, b);
-  const half = (side: Answer) => placeSide(side, before, after, byPeriod, registry, asOfDate);
+  const half = (side: Answer) => placeSide(side, before, after, byPeriod, registry, asOfDate, ownRegions);
   const aFirst = namedFirst(half(a), half(b));
   if (aFirst === null) return null;
   return aFirst ? { subject: a, object: b, higher: up } : { subject: b, object: a, higher: up };
@@ -356,22 +415,51 @@ function claimed(phrase: string, registry: Registry, asOfDate: string, a: Answer
  * A wrong direction in the question ("higher" when it is lower), corrected before anything else. Only between two
  * figures the asker may see, and only when both reconcile: a failed check is the first thing to say then.
  */
-function directionCorrection(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer, verdict: Verdict): string | null {
+function directionCorrection(phrase: string, registry: Registry, asOfDate: string, a: Answer, b: Answer, verdict: Verdict, principal: Principal): string | null {
   if (verdict !== 'same_definition_different_scope' && verdict !== 'different_period') return null;
-  const claim = claimed(phrase, registry, asOfDate, a, b);
+  // withoutOwnRegion dropped a seller's or manager's own region, so that word now names their whole scope.
+  const ownRegions = principal.ownerIds === null ? [] : principal.regions;
+  const claim = claimed(phrase, registry, asOfDate, a, b, ownRegions);
   return claim ? premiseCorrection(claim.subject, claim.object, claim.higher, verdict === 'different_period') : null;
 }
+
+/** The asker's scope is every region and team (the analyst). */
+const seesEverything = (p: Principal) => p.ownerIds === null && p.regions.length === ALL_REGIONS.length;
 
 const hasSlice = (f: Intent['filters']) => Boolean(f.regions?.length || f.people?.length || f.teams?.length);
 
 /**
- * The second figure to run, if any. A named slice compared with "the company" by someone who can't see the company
- * (a seller or manager) is explained alone: their own whole scope is not the company's figure (#50 review, Oct 31).
+ * The second figure to run, if any. The asker's whole scope stands in only for a figure the question names as theirs
+ * or the company's:
+ * - a named slice compared with "the company" by someone who can't see the company (a seller or manager) is explained
+ *   alone, because their own whole scope is not the company's figure (#50 review, Oct 31);
+ * - a named slice set against a quoted ratio ("higher than 0.4x", "when marketing says 3x") with no word for the whole
+ *   scope is explained alone too: nobody named the whole scope (bug hunt, Oct 31).
  */
 function secondFigure(p: Plan, principal: Principal, phrase: string): Intent | null {
-  const companyWide = principal.ownerIds === null && principal.regions.length === ALL_REGIONS.length;
-  if (p.second && !hasSlice(p.second.filters) && hasSlice(p.first.filters) && !companyWide && pointsElsewhere(phrase)) return null;
+  if (!p.second || hasSlice(p.second.filters) || !hasSlice(p.first.filters)) return p.second;
+  const companyWide = seesEverything(principal);
+  const text = clean(phrase);
+  if (!companyWide && (pointsElsewhere(phrase) || WIDER.test(text))) return null;
+  if (HAS_QUOTED_RATIO.test(phrase) && !WHOLE.test(text) && !WIDER.test(text) && !OWN.test(text)) return null;
   return p.second;
+}
+
+/**
+ * Someone who sees only their own deals or a team sees a region only through those: naming their own region changes
+ * nothing, and the whole region is outside their scope. So the region is dropped, and a comparison that is then the
+ * same figure twice becomes their own figure, explained alone (bug hunt, Oct 31: "lower than east" got "the same
+ * figure"). A region outside their scope stays, so the compiler still refuses it.
+ */
+function withoutOwnRegion(p: Plan, principal: Principal): Plan {
+  if (principal.ownerIds === null) return p;
+  const strip = (i: Intent): Intent => {
+    const regions = i.filters.regions?.filter((r) => !principal.regions.includes(r));
+    const { regions: _named, ...rest } = i.filters;
+    return { ...i, filters: regions?.length ? { ...rest, regions } : rest };
+  };
+  const [first, second] = [strip(p.first), p.second && strip(p.second)];
+  return { first, second: second && JSON.stringify(second.filters) !== JSON.stringify(first.filters) ? second : null };
 }
 
 /** Answers a discrepancy question (see isDiscrepancyQuestion). Called inside the audited request in ask(). */
@@ -386,8 +474,9 @@ export async function explainDiscrepancy(
 ): Promise<Explanation | Clarify> {
   const snapshot = await currentSnapshot(database);
   if (!snapshot) throw new Error('No data snapshot loaded');
-  const p = plan(phrase, registry, snapshot.asOfDate, previous);
-  if (isClarify(p)) return p;
+  const planned = plan(phrase, registry, snapshot.asOfDate, previous);
+  if (isClarify(planned)) return planned;
+  const p = withoutOwnRegion(planned, principal);
   const answer = await run(database, registry, principal, p.first, fields);
   const second: AuditFields = {};
   const run2 = await runSecond(database, registry, principal, secondFigure(p, principal, phrase), second, fields);
@@ -403,8 +492,8 @@ export async function explainDiscrepancy(
   // The second figure gets its own audit row (same request id), so each side of a comparison can be replayed from
   // the log: intent, metric version, regions, snapshot and result hash (PR #50 review).
   if (other) linked.push({ ...second, role: fields.role, reason: 'explanation:second_figure' });
-  const text = explanationText(answer, other, verdict, numerators);
-  const correction = other && verdict ? directionCorrection(phrase, registry, snapshot.asOfDate, answer, other, verdict) : null;
+  const text = explanationText(answer, other, verdict, numerators, seesEverything(principal));
+  const correction = other && verdict ? directionCorrection(phrase, registry, snapshot.asOfDate, answer, other, verdict, principal) : null;
   return { kind: 'explanation', answer, other, verdict, ...text, summary: correction ? `${correction} ${text.summary}` : text.summary };
 }
 

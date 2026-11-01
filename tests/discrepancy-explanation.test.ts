@@ -616,3 +616,175 @@ describe('PR #50 review, Oct 31: the detection rules see explanations', () => {
     expect(e.kind).toBe('explanation');
   });
 });
+
+// Bug hunt on Oct 31 (the parallel session's report): each case was reproduced and confirmed by a second reviewer.
+describe('bug hunt, Oct 31: explanations', () => {
+  it.each([
+    ['u_ts_east', 'why is my coverage lower than east this quarter', 0.5158],
+    ['u_mgr_melvin_marxen', 'why is my coverage lower than central this quarter', 0.7753],
+  ])('%s: "%s" explains their own figure: the whole region is outside their scope', async (user, phrase, value) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer).value).toBe(value);
+    expect(e.summary).not.toContain('Both requests cover the same slice');
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+  });
+
+  it('a region named by the analyst is still compared as the whole region', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is east coverage lower than west this quarter'));
+    expect([row(e.answer).value, row(e.other!).value]).toEqual([0.4262, 0.7525]);
+  });
+
+  it('a region outside a seller\'s scope is still refused', async () => {
+    await expect(ask(database, reg, 'u_ts_east', 'why is my coverage lower than west this quarter')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it.each(['why is coverage for Niesha Huffines higher than all regions', 'why is coverage for Niesha Huffines higher than all teams this quarter', 'why is coverage for Niesha Huffines lower than every region'])(
+    '"%s" from a manager explains the rep alone, not against his own team',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_mgr_melvin_marxen', phrase));
+      expect(e.other).toBeNull();
+      expect((e.answer.intent as Intent).filters.people).toEqual(['Niesha Huffines']);
+    },
+  );
+
+  it('a dollar amount about another figure is not read as a deal-size filter', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', 'why is east coverage so low when west has $806,676 of pipeline this quarter'));
+    expect([(e.answer.intent as Intent).filters.regions, (e.other!.intent as Intent).filters.regions]).toEqual([['east'], ['west']]);
+    await expect(ask(database, reg, 'u_ts_east', 'why is my coverage so low when west has $806,676 of pipeline')).rejects.toBeInstanceOf(ScopeViolation);
+  });
+
+  it.each([
+    "Why is Cara Losch's team's coverage higher than 0.4x?",
+    "Why is Cara Losch's team's coverage 0.52x when marketing says 3x?",
+  ])('"%s": a quoted ratio is not the company figure, so the team is explained alone', async (phrase) => {
+    const e = explained(await ask(database, reg, 'u_analyst', phrase));
+    expect(e.other).toBeNull();
+    expect((e.answer.intent as Intent).filters.teams).toEqual(['Cara Losch']);
+  });
+
+  it("still compares a team with the company when the question names the company", async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', "Why is Cara Losch's team's coverage 0.52x when the company is 0.65x?"));
+    expect(e.other).not.toBeNull();
+  });
+
+  it('a clarifying question on the explanation path has a reason code in its audit row', async () => {
+    const r = await ask(database, reg, 'u_analyst', "why is jordan's coverage lower than the company's?");
+    expect(r.kind).toBe('clarify');
+    const [last] = await database.db.select().from(queryAudit).where(eq(queryAudit.userId, 'u_analyst')).orderBy(desc(queryAudit.at)).limit(1);
+    expect(last).toMatchObject({ outcome: 'clarify', metricId: 'pipeline_coverage' });
+    expect(last!.reason).toMatch(/^clarify:[0-9a-f]{16}$/);
+  });
+});
+
+// Review of the bug-hunt fixes (Oct 31): each case was reproduced by one reviewer and confirmed by a second.
+describe('bug hunt fixes, reviewed: no new regressions', () => {
+  it.each([
+    ['u_ts_east', 'why is my coverage lower for deals that are $1M or more?'],
+    ['u_analyst', 'why is east coverage lower than west for deals that are $500k and up?'],
+    ['u_analyst', 'Why is coverage lower when the deal is $100k or more?'],
+    ['u_mgr_melvin_marxen', "why is Darcel Schlecht's coverage lower than mine on deals that were $100,000 or larger?"],
+  ])('%s: "%s" keeps its deal-size condition and is asked back, not dropped', async (user, phrase) => {
+    expect((await ask(database, reg, user, phrase)).kind).toBe('clarify');
+  });
+
+  it.each([
+    'How is global coverage this quarter when you exclude east?',
+    'Why is coverage lower for the company when you exclude east?',
+    'How does coverage look across all regions when we leave out east?',
+    'How is coverage for all teams this quarter when you exclude Darcel Schlecht?',
+  ])('"%s" leaves something out, so the plain path asks back instead', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+
+  it.each(["Why is East's coverage 0.43x when the org is at 0.65x?", "Why is East's coverage 0.43x when we're at 0.65x?", "Why is east coverage 0.43x when global coverage is 0.65x?"])(
+    '"%s": the analyst\'s own whole scope is still the other figure',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_analyst', phrase));
+      expect(row(e.other!).value).toBe(0.6544);
+    },
+  );
+
+  it.each([
+    ['u_analyst', 'Why is global coverage higher next quarter?'],
+    ['u_mgr_melvin_marxen', "why is my org's coverage lower next quarter"],
+  ])('%s: "%s" still compares this quarter with next', async (user, phrase) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect([e.answer.filters.period?.label, e.other?.filters.period?.label]).toEqual(['FY27-Q1', 'FY27-Q2']);
+  });
+
+  it.each(['How is my coverage this quarter while the org reorganizes?', 'How is coverage calculated when a deal is $1M?'])('"%s" is a plain question', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+
+  it("a manager's own region compared with a rep still gets the direction checked", async () => {
+    const e = explained(await ask(database, reg, 'u_mgr_melvin_marxen', "why is Darcel Schlecht's coverage higher than central this quarter"));
+    expect(e.summary.startsWith('Coverage for Darcel Schlecht is lower than for')).toBe(true);
+  });
+});
+
+// A phrasing hunt on main (Oct 31, after #50 merged) found wordings that were asked back or misread. Each one below
+// came back as a clarification, "unsupported" or a deal-size question before this fix.
+describe('phrasing hunt, Oct 31: ordinary wordings of the client question', () => {
+  const OWN_FIGURE = { numerator: 174325, denominator: 338000, value: 0.5158 };
+
+  it.each([
+    "Why is my coverage lower than the Board's?",
+    "Why Is My Coverage Lower Than My Team's?",
+    "why is my coverage different from yesterday's number?",
+    "why is my coverage different from the CEO's?",
+    "Why does Salesforce's number differ from my coverage?",
+    "why is my coverage different from my teammate's?",
+    'Mine is 0.5x. Marketing says 3x. Why?',
+    'why does marketing say 3x.',
+    "Marketing's number is 3x. Mine is 0.5x. Why?",
+    'why does marketing have 3x when i have 0.5x?',
+    "why's mine 0.5x? marketing has 3x",
+    'why is ours 0.5x but theirs 3x?',
+    'Marketing says 300% coverage, why is mine lower?',
+    'why is my coverage 50% when marketing says 300%?',
+    'why does marketing say 3× when mine is 0.5×?',
+  ])('"%s" explains the seller\'s own figure and repeats no quoted ratio', async (phrase) => {
+    const e = explained(await ask(database, reg, 'u_ts_east', phrase));
+    expect(e.other).toBeNull();
+    expect(row(e.answer)).toEqual(OWN_FIGURE);
+    expect(JSON.stringify(e)).not.toMatch(/\b3x|0\.5x|300%|50%|3×/);
+  });
+
+  // "different from East's", "Q2's" and "Sam's" (a possessive after "from") are fixed in the normal-path reader in
+  // #102, which also stops repeating an unknown name back; its tests cover them.
+  it("\"this Quarter's\" against \"next Quarter's\" compares the two quarters", async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', "Why is this Quarter's coverage lower than next Quarter's?"));
+    expect([(e.answer.intent as Intent).filters.period, (e.other!.intent as Intent).filters.period]).toEqual(['FY27-Q1', 'FY27-Q2']);
+  });
+
+  it('title-case names are still checked: a known rep is compared, an unknown one is asked about', async () => {
+    const e = explained(await ask(database, reg, 'u_analyst', "Why Is Darcel Schlecht's Coverage Lower Than Niesha Huffines's?"));
+    expect([(e.answer.intent as Intent).filters.people, (e.other!.intent as Intent).filters.people]).toEqual([['Darcel Schlecht'], ['Niesha Huffines']]);
+    expect(await ask(database, reg, 'u_analyst', "Why Is Jordan's Coverage Lower Than The Company's?")).toMatchObject({ kind: 'clarify' });
+  });
+
+});
+
+// Bug hunting's final review of #101 (Nov 1): the analyst sees every region and team, so "a figure from outside your
+// scope" is untrue for them. A seller or manager keeps the sentence, which is true for them.
+describe('the "can\'t see" sentence matches who is asking', () => {
+  it.each([
+    "why is my coverage lower than the company's?",
+    'Why does marketing say 3x when mine is 0.5x?',
+    "Why is the Board's coverage figure different from mine?",
+  ])(
+    'analyst: "%s" says the other figure can\'t be checked, not that it is outside their scope',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_analyst', phrase));
+      expect(e.other).toBeNull();
+      expect(e.summary).not.toContain('outside your scope');
+      expect(e.summary).toContain("I can't see or check the other figure, so I can't say which reason applies to it.");
+    },
+  );
+
+  it('a seller still hears that the other figure is outside their scope', async () => {
+    const e = explained(await ask(database, reg, 'u_ts_east', 'Why does marketing say 3x when mine is 0.5x?'));
+    expect(e.summary).toContain("I can't see or check a figure from outside your scope");
+  });
+});
