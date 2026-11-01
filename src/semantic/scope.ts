@@ -2,6 +2,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { appUsers } from '../db/schema';
+import { ALL_REGIONS } from './regions';
 
 export interface Principal {
   userId: string;
@@ -21,7 +22,7 @@ export class ScopeViolation extends Error {
   }
 }
 
-export const ALL_REGIONS = ['central', 'east', 'west'];
+export { ALL_REGIONS } from './regions';
 
 export async function resolvePrincipal(db: Db, userId: string): Promise<Principal> {
   const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId));

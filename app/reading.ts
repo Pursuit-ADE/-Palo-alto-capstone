@@ -1,6 +1,6 @@
 // How an answer read the question, in words: the filters it applied, shared by the provenance panel and the Read as line.
 import type { Answer } from '@/semantic/answer';
-import { ALL_REGIONS } from '@/semantic/scope';
+import { ALL_REGIONS } from '@/semantic/regions';
 import { dateRange } from './format';
 
 const titleCase = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
