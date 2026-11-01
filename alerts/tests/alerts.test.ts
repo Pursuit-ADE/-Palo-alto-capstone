@@ -628,8 +628,30 @@ describe('Email channel (L5)', () => {
     expect(posted.sort()).toEqual(['hooks.slack.com', 'mail.example']);
     // One channel down means not delivered, so it is retried rather than marked sent.
     expect(await both(false).deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
-    // Someone with no Slack link of their own gets nothing on Slack, and the alert isn't marked delivered.
+    // Someone with neither of their own destinations gets nothing, and the alert isn't marked delivered.
     expect(await both(true).deliver('slack_email', 'u_ts_west', [item], false)).toBe(false);
+  });
+
+  it('sends nothing for "Slack and email" when the person has only one of the two set up (#104 review)', async () => {
+    const half = (setup: { slack?: boolean; email?: boolean }) => {
+      const posted: string[] = [];
+      const ch = createChannels({
+        slackWebhooks: setup.slack ? { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' } : {},
+        emails: setup.email ? { u_ts_east: 'jordan@example.test' } : {},
+        emailWebhook: 'https://mail.example/send',
+        env: { EMAIL_WEBHOOK_HOSTS: 'mail.example' },
+        fetch: async (url) => { posted.push(new URL(url).hostname); return { ok: true }; },
+      });
+      return { ch, posted };
+    };
+    // Slack, no email: not delivered, and nothing is posted to Slack either, so a retry can't repeat it there.
+    const slackOnly = half({ slack: true });
+    expect(await slackOnly.ch.deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    expect(slackOnly.posted).toEqual([]);
+    // Email, no Slack: the same.
+    const emailOnly = half({ email: true });
+    expect(await emailOnly.ch.deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    expect(emailOnly.posted).toEqual([]);
   });
 
   it('posts the message to a laptop email webhook, never to a shared inbox URL as the recipient', async () => {

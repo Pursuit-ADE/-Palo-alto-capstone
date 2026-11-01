@@ -143,9 +143,12 @@ export function createChannels(opts: {
       if (channel === 'inbox') return true;
       if (channel === 'slack') return toSlack(userId, items, isDigest);
       if (channel === 'email') return toEmail(userId, items, isDigest);
-      // Both: delivered only when both accept it. A retry sends to both again, so the channel that worked may get the
-      // alert twice; delivery is already at-least-once (engine.ts), and a duplicate beats a missed P1.
+      // Both: delivered only when both accept it. A person without both their own Slack link and their own address
+      // gets nothing, before either post, the same as Slack-only with no link; otherwise every retry would resend to
+      // the half that works (#104 review). In a real outage of one half, each retry (up to MAX_ATTEMPTS, engine.ts)
+      // sends to both again, so the half that works can get the alert up to that many times; a duplicate beats a missed P1.
       if (channel === 'slack_email') {
+        if (!webhooks[userId] || !emails[userId]) return false;
         const [slack, email] = await Promise.all([toSlack(userId, items, isDigest), toEmail(userId, items, isDigest)]);
         return slack && email;
       }
