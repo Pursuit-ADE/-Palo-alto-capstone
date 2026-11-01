@@ -120,7 +120,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                     <b>{a.title}</b>
                   </div>
                   <p>{a.explanation}</p>
-                  <a href={a.link}>Ask the copilot about this</a>
+                  {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one. */}
+                  <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this (opens in a new tab)</a>
                 </li>
               ))}
             </ul>
