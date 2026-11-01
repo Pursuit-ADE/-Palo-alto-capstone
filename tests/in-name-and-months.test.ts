@@ -40,6 +40,26 @@ describe('an unknown name or a month after "in" is asked about (PRD A2)', () => 
     expect(r.kind === 'answer' && r.narrative).toContain('$4,966,215');
   });
 
+  // The reply to that question finishes the request (review, Nov 1): it used to start a new one and get "unsupported".
+  it.each([
+    ['open pipeline in October', 'FY27-Q1', '$1,963,909'],
+    ['open pipeline on Monday', 'next quarter', '$3,002,306'],
+    ['open pipeline for East in September', 'Q2', 'FY27-Q2'],
+    ['open pipeline last quarter', 'this quarter', '$1,963,909'],
+  ])('"%s", then "%s", answers', async (first, reply, expected) => {
+    const c = await ask(database, reg, 'u_analyst', first);
+    if (c.kind !== 'clarify' || !c.resume) throw new Error('expected a resumable clarification');
+    const r = await ask(database, reg, 'u_analyst', reply, { previous: c.resume });
+    expect(r.kind === 'answer' && r.narrative).toContain(expected);
+  });
+
+  it('a breakdown named in the first question survives the reply', async () => {
+    const c = await ask(database, reg, 'u_analyst', 'open pipeline by stage on Monday');
+    if (c.kind !== 'clarify' || !c.resume) throw new Error('expected a resumable clarification');
+    const r = await ask(database, reg, 'u_analyst', 'FY27-Q1', { previous: c.resume });
+    expect(r).toMatchObject({ kind: 'answer', intent: { groupBy: ['stage'], filters: { period: 'FY27-Q1' } } });
+  });
+
   it('"in EMEA" keeps its own region message', async () => {
     const r = await ask(database, reg, 'u_analyst', 'open pipeline in EMEA');
     expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining("isn't a region here") });

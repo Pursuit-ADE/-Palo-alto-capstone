@@ -814,7 +814,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
 
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
-    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?` };
+    // Resumable, like the other period questions, so replying "FY27-Q1" or "next quarter" finishes the request instead of
+    // starting a new one (review, Nov 1: "in October" then "FY27-Q1" was unsupported).
+    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?`, resume: partial() };
   }
   if (periods.labels.size > 1) {
     return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?`, resume: partial() };
