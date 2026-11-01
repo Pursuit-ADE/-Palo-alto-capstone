@@ -2,6 +2,7 @@
 import { and, eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { appUsers } from '../db/schema';
+import { ALL_REGIONS } from './regions';
 
 export interface Principal {
   userId: string;
@@ -21,7 +22,7 @@ export class ScopeViolation extends Error {
   }
 }
 
-export const ALL_REGIONS = ['central', 'east', 'west'];
+export { ALL_REGIONS } from './regions';
 
 export async function resolvePrincipal(db: Db, userId: string): Promise<Principal> {
   const [user] = await db.select().from(appUsers).where(eq(appUsers.id, userId));
@@ -49,8 +50,17 @@ export async function resolvePrincipal(db: Db, userId: string): Promise<Principa
 export function effectiveRegions(principal: Principal, requested?: string[]): string[] {
   if (!requested) return principal.regions;
   const outside = requested.filter((r) => !principal.regions.includes(r));
-  if (outside.length) throw new ScopeViolation(`You do not have access to region: ${outside.join(', ')}`);
+  // A model may propose the same region twice; name it once (review, Oct 31).
+  if (outside.length) throw new ScopeViolation(outsideRegions([...new Set(outside)]));
   return requested;
+}
+
+/** The refusal shown as "Not answered", in words rather than "region: west" (bug hunt, Oct 31). Names come from the fixed region list. */
+function outsideRegions(regions: string[]): string {
+  const names = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(', ').replace(/, ([^,]*)$/, ' and $1');
+  return regions.length > 1
+    ? `You don't have access to the ${names} regions, so I can't answer for them.`
+    : `You don't have access to the ${names} region, so I can't answer for it.`;
 }
 
 export function scopeStatement(principal: Principal, regions: string[]): string {

@@ -48,7 +48,7 @@ describe('coverage target', () => {
       'FY27-Q1',
     );
     expect(text).toBe(
-      'Pipeline coverage for FY27-Q1 by region: Central is highest at 0.76x and East is lowest at 0.43x (3 regions). Both are off target (below 2.00x; the target is 3.00x).',
+      'Pipeline coverage for FY27-Q1 by region: Central is highest at 0.76x and East is lowest at 0.43x (3 regions). All 3 are off target (below 2.00x; the target is 3.00x).',
     );
   });
 

@@ -4,13 +4,13 @@ How someone watching the copilot (the team during the demo, or the client's SOC 
 
 ## What the log holds
 
-One row per question, dashboard tile or intent, written by `src/semantic/answer.ts`, including refusals.
+One row per question, dashboard tile or intent, written by `src/semantic/answer.ts`, including refusals. A question whose Claude attempt failed also has a `question_attempt` row with the same `request_id` (see below).
 
 | Column | Use in detection |
 |---|---|
 | `at` | When (UTC, set by the app server's clock) |
-| `request_id`, `turn` | Ties a conversation's turns together |
-| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events). `comparison_side` is the second figure of a "why is my number different?" comparison: same `request_id` as its question row |
+| `request_id`, `turn` | One request. Each turn gets its own `request_id`; `turn` is its place in the conversation. When Claude fails and the deterministic model answers instead, both rows share the `request_id`. The failed attempt is a `question_attempt` row (outcome `error`, reason `ProviderError`, no flags), and the fallback's row is the `question` and carries the flags, so each question is counted once |
+| `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events). `comparison_side` is the second figure of a "why is my number different?" comparison: same `request_id` as its question row. `question_attempt` is a Claude attempt that failed and was answered by the fallback: same `request_id` as the fallback's `question` row, outcome `error`, no flags. So queries on `source = 'question'` (the trends views, "flagged unusually often") count each submission once, while D5 and D6, which don't filter on source, still see the failure |
 | `user_id`, `role` | Who, and the role from the database (`sales_rep`, `technical_seller`, `sales_manager`, `analyst`). Sign-in rows with an unknown account use `unknown` |
 | `question_sha256` | Keyed hash of the question. Same text gives the same hash only while `AUDIT_HASH_KEY` stays the same |
 | `intent`, `metric_id`, `metric_version`, `regions`, `snapshot_id`, `result_hash` | What was asked for and answered |
@@ -129,7 +129,7 @@ Run these by hand, for example once a day during the demo period.
 The same question from several people (a shared attack script, or a common question worth adding to the golden set):
 
 ```sql
-SELECT question_sha256, count(DISTINCT user_id) AS people, count(*) AS times, array_agg(DISTINCT outcome) AS outcomes
+SELECT question_sha256, count(DISTINCT user_id) AS people, count(DISTINCT request_id) AS times, array_agg(DISTINCT outcome) AS outcomes
 FROM query_audit
 WHERE question_sha256 IS NOT NULL AND at > now() - interval '7 days'
 GROUP BY question_sha256
@@ -150,7 +150,7 @@ HAVING count(*) >= 5
 ORDER BY flagged_pct DESC;
 ```
 
-Daily trend by outcome:
+Daily trend by outcome. This counts rows, not questions: a Claude attempt that failed before the fallback answered shows as an `error` here (its `source` is `question_attempt`). Add `AND source = 'question'` to count each question once:
 
 ```sql
 SELECT date_trunc('day', at) AS day, outcome, count(*) AS n

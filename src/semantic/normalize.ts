@@ -11,23 +11,55 @@ import { findPeriod, resolvePeriod } from './periods';
 const EXCLUSION = / (excluding|exclude|except|without|other than|apart from|besides|minus|outside of|not) /;
 const UNKNOWN_REGIONS = ['north', 'south', 'emea', 'apac', 'apj', 'americas', 'latam', 'europe', 'asia', 'japan'];
 const STAGE_WORDS: Record<string, string> = { prospecting: 'Prospecting', engaging: 'Engaging', won: 'Won', lost: 'Lost' };
-// Periods we can't answer: anything other than a single fiscal quarter in the snapshot.
-const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\d\d /;
+// Periods we can't answer: anything other than a single fiscal quarter in the snapshot. A month too ("in October" was
+// answered for all time; bug hunt, Oct 31), except "may", which is usually the verb. A weekday too: "on Monday" was
+// answered for any close date once weekdays stopped being checked as names (review, Nov 1). "for friday's call" names a
+// meeting, not a period, so it reads as before.
+const MONTH_NAMES = 'january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
+const WEEKDAY_NAMES = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+const UNSUPPORTED_PERIOD = new RegExp(` (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\\d\\d | (${MONTH_NAMES}) | (${WEEKDAY_NAMES}) (?!s (call|meeting|review|standup|sync|demo|update) )`);
 
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
 const NO_BREAKDOWN = / (total|overall|no breakdown|combined) /;
 /**
- * "East vs West", "compare east and west", "is east higher than (the) west": two figures wanted, not their sum. A
- * comparative counts only with a region right after "than", so "deals larger than $50,000" stays a deal-size filter.
+ * "East vs West", "compare east and west", "is east higher than (the) west", "higher in East than West": two figures
+ * wanted, not their sum. A comparative counts only next to a region ("than west", "in east than"), so "deals larger
+ * than $50,000" stays a deal-size filter. The "in East than" form was answered as one combined total (phrasing hunt, Oct 31).
  */
 const COMPARISON =
-  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)) /;
+  / (vs|versus|compare|compared|comparing|(higher|lower|bigger|smaller|larger|better|worse|more|less) than (in |for )?(the )?(central|east|west)|(higher|lower|bigger|smaller|larger|better|worse|more|less) (in|for) (the )?(central|east|west) than) /;
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 // A capitalized name, including a product id whose last token is a number ("GTK 500").
-const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
+const NAMED = /\b(?:for|at|from|with|on|in)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
+
+/**
+ * Words that are a period, region, weekday or currency, not a name: "in October", "in EMEA", "Monday's", "in USD".
+ * Months and regions get their own question elsewhere; the rest are ignored, as before (review, Oct 31).
+ */
+const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS, ...WEEKDAY_NAMES.split('|'), 'usd', 'us', 'dollar', 'dollars']);
+
+/**
+ * A first name of a rep or manager in the data ("Darcel's", "for Melvin") is not unknown, just not enough to pick one
+ * person. A fixed sentence that names no one asks for the full name (review, Oct 31: "I don't know that name" was
+ * untrue for a demo persona's own first name).
+ */
+const FULL_NAME = "Use the person's full name, as it is in the data, so I don't answer for everything. For a manager's team, say the manager's full name and \"team\".";
+// A cache: the catalog is fixed for the process, so its first names are read once.
+let firstNames: Set<string> | undefined;
+function isFirstName(word: string): boolean {
+  firstNames ??= new Set([...catalog().owners, ...catalog().managers].map((p) => words(p.name).split(' ')[0]!));
+  return firstNames.has(word);
+}
+
+/** The question for a name after "for" or "in" that isn't in the data: a lone first name gets FULL_NAME. */
+function nameQuestion(parts: string[]): string {
+  return parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, '')) ? FULL_NAME : UNKNOWN_NAME;
+}
+
+const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
 
 type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people' | 'teams'>;
 
@@ -65,6 +97,66 @@ function findNames(text: string, kind: Hit['kind'], names: string[]): Hit[] {
     if (at >= 0) hits.push({ kind, name, at, len: token.length });
   }
   return hits;
+}
+
+/**
+ * Nouns that make the word before them a name: "for zephyra deals", "from zephyra's team". Only with one of these does a
+ * lower-case word count as a name, because "for planning" and "for review" look the same as "for zephyra" without a
+ * dictionary (a word-list version asked back 1 in 3 ordinary questions, review Oct 31).
+ */
+const NAME_NOUN = /^(deal|deals|team|teams|account|accounts|pipeline|pipelines|opportunity|opportunities|quota|quotas|book|territory|portfolio|customers|clients|reps)$/;
+/** Words that can sit before those nouns without being a name: "for open deals", "for the team", "of big accounts". */
+const PLAIN_BEFORE_NOUN = new Set(
+  ('the a an my our your his her their its this that these those each every all any both some no me us them everyone ' +
+    'open closed won lost active stalled new old big large small largest biggest top key whole entire total overall ' +
+    'current next last previous prior early late high low remaining existing other same sales east west central ' +
+    'prospecting engaging enterprise smb mid-market strategic commercial renewal upsell inbound outbound q1 q2 q3 q4 ' +
+    'exec execs executive leadership management marketing finance ops revops field inside channel partner partners ' +
+    'support product regional global direct dream mine ours company everyone everybody manager managers boss vp svp ' +
+    'cro ceo cfo coo board director head lead leader closing pending at-risk risky slipping stuck hot warm cold ' +
+    // Purpose words: "for review deals", "for the qbr team" (review, Oct 31).
+    'review reviews planning reference context forecast forecasting qbr qbrs prep preparation presentation demo test ' +
+    'analysis analytics budgeting status update standup sync kickoff audit compliance alignment internal external ' +
+    // The name nouns themselves: "for my team's deals", "for the account team".
+    'deal deals team teams account accounts pipeline pipelines opportunity opportunities quota quotas book territory ' +
+    'portfolio customer customers client clients rep reps').split(' '),
+);
+
+/** A word that starts a name the catalog resolved. findNames records only a name's first mention, so match by words. */
+const startsResolvedName = (text: string, at: number, picked: Hit[]) => picked.some((h) => text.startsWith(` ${words(h.name)} `, at - 1));
+
+/**
+ * A lower-case name used as one, which is neither an ordinary word nor a name the catalog resolved (QA cycle 5, Oct 31;
+ * PRD A2): "for zephyra deals", "for the zephyra account", "from zephyra's team", "the rep named zack". A bare "for
+ * zephyra" is left alone, because it reads the same as "for planning".
+ */
+function unknownLowerName(text: string, picked: Hit[]): string | undefined {
+  const unknown = (word: string, at: number) =>
+    !PLAIN_BEFORE_NOUN.has(word) && !UNKNOWN_REGIONS.includes(word) && !/^(fy\d{2,4})?(-?q[1-4])?$/.test(word) && !startsResolvedName(text, at, picked);
+  // The 's survives cleaning as " s ": "for zephyra s account". It counts only before a name noun too, so "for
+  // tomorrow's meeting" and "for friday's call" stay ordinary.
+  for (const m of text.matchAll(/ (?:for|from|of|at|with)(?: (?:the|my|our|a|an))? ([a-z][a-z0-9-]*)(?: s)? ([a-z]+)(?= )/g)) {
+    const [word, next] = [m[1]!, m[2]!];
+    if (NAME_NOUN.test(next) && unknown(word, m.index! + m[0].lastIndexOf(` ${word} `) + 1)) return nameSentence(word);
+  }
+  for (const m of text.matchAll(/ (?:named|called) ([a-z][a-z0-9-]*)(?= )/g)) {
+    if (unknown(m[1]!, m.index! + m[0].length - m[1]!.length)) return nameSentence(m[1]!);
+  }
+  return undefined;
+}
+
+/** A first name in the data ("darcel's deals") asks for the full name, the same sentence as for "Darcel's"; else unknown. */
+const nameSentence = (word: string) => (isFirstName(word) ? FULL_NAME : UNKNOWN_NAME);
+
+/**
+ * A sector question with no sector in the data, or a lower-case name used as one: one helper, so readSelectors() makes
+ * a single check for both and stays below its complexity (review, Oct 31).
+ */
+function sectorOrNameQuestion(text: string, sectorNames: string[], sectors: string[], picked: Hit[]): string | undefined {
+  if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
+    return `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.`;
+  }
+  return unknownLowerName(text, picked);
 }
 
 /**
@@ -117,14 +209,15 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   for (const m of phrase.matchAll(NAMED)) {
     const raw = m[1]!;
     const parts = raw.toLowerCase().split(/\s+/);
+    // "West's" is the region West: drop the possessive before looking the word up (bug hunt, Oct 31).
     const known = parts.every((w) => {
-      const token = w.replace(/[^a-z0-9]/g, '');
-      return KNOWN_WORDS.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
+      const token = w.replace(/['’]s$/, '').replace(/[^a-z0-9]/g, '');
+      // Months and regions we don't have get their own question below, not "I don't know that name".
+      return KNOWN_WORDS.has(token) || NOT_A_NAME_HERE.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
     const named = covered.some((c) => sameName(c, raw));
-    if (!known && !named) {
-      return { filters: {}, clarify: `I don't know "${raw}", so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.` };
-    }
+    // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
+    if (!known && !named) return { filters: {}, clarify: nameQuestion(parts) };
   }
   if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku)s? /.test(text) && products.length === 0) {
     return { filters: {}, clarify: "I don't know that product, so I won't answer for everything. I can filter by a product that is in the data." };
@@ -132,9 +225,10 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(account|customer|client)s? /.test(text) && accounts.length === 0) {
     return { filters: {}, clarify: "I don't know that account, so I won't answer for everything. I can filter by an account that is in the data." };
   }
-  if (/ (sector|sectors|industry|industries|vertical|verticals) /.test(text) && sectorNames.length === 0) {
-    return { filters: {}, clarify: `I can filter by sector. The sectors in this data are ${sectors.join(', ')}.` };
-  }
+  // A sector with none in the data, or a lower-case name used as one ("for zephyra deals"): NAMED only sees capitalised
+  // names, so such a name was dropped and the whole scope answered (QA cycle 5, Oct 31; PRD A2).
+  const asked = sectorOrNameQuestion(text, sectorNames, sectors, picked);
+  if (asked) return { filters: {}, clarify: asked };
   // "open deal value" is a name for the metric. The amount parser also treats "deal value" as a deal size,
   // so the synonym is blanked and a real comparison in the same question still counts.
   const amount = parseAmount(phrase, { ignore: [...covered, 'open deal value'] });
@@ -238,6 +332,49 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
 }
 
 /**
+ * The asker's own team or reps, which replaces a rep or team named earlier in the conversation. Only "my" or "our":
+ * "his whole team" or "the whole team" is someone else's, and for the analyst it would widen to the company (review,
+ * Oct 31).
+ */
+const WHOLE_TEAM = / (my|our) (whole |entire )?(team|reps) | all (of )?(my|our) reps /;
+
+/** Any word with 's, in any case and with a straight or curly apostrophe ("Jordan's", "JORDAN'S", "Priya’s"). */
+// Capitalised words only: everyday nouns in lower case ("the owner's", "yesterday's") are not names, and no word list
+// can hold them all (review, Oct 31). A lower-case name ("jordan's") is not caught here.
+const POSSESSIVE = /\b([A-Z][A-Za-z.-]*)['’][sS]\b/g;
+/**
+ * Words that take 's in a question and are not names: contractions ("what's", "how's") and everyday nouns ("my
+ * team's"). The same words as NOT_A_NAME and EVERYDAY in explain.ts, plus deal, client and sales.
+ */
+const NOT_A_NAME = new Set(
+  ('what how why where who when it that there here this let everyone everybody anyone someone somebody nobody ' +
+    'team teams company quarter quarters year month week today region regions rep reps manager managers boss board ' +
+    'deck slide sheet chart dashboard report spreadsheet number figure coverage pipeline quota data ' +
+    'org organization department group division unit segment territory sector industry customer customers account accounts partner ' +
+    'market business forecast plan target goal one other he she deal deals client clients sales ' +
+    'owner owners seller sellers product products stage stages period yesterday tomorrow ' +
+    'palo alto crm salesforce vp svp evp ceo cfo cro coo cmo director directors').split(' '),
+);
+
+/**
+ * "What is Jordan's open pipeline?": a possessive that is not a region, rep, team or other name the question
+ * resolved. NAMED only catches names after "for", "at" and the like, so this one was dropped and the asker's whole
+ * scope answered (bug hunt, Oct 31; PRD A2). The explanation path has its own check, with "marketing's" and other
+ * outside figures allowed (explain.ts).
+ */
+/** The question to ask about a possessive that isn't a resolved name, or undefined when every possessive is known. */
+function unknownPossessive(phrase: string, filters: Omit<SelectorFilters, 'amount'>): string | undefined {
+  const names = [...(filters.products ?? []), ...(filters.accounts ?? []), ...(filters.sectors ?? []), ...(filters.people ?? []), ...(filters.teams ?? [])];
+  const resolved = new Set(names.flatMap((n) => words(n).split(' ')));
+  for (const m of phrase.matchAll(POSSESSIVE)) {
+    const word = m[1]!.toLowerCase();
+    if (NOT_A_NAME.has(word) || KNOWN_WORDS.has(word) || NOT_A_NAME_HERE.has(word) || resolved.has(word)) continue;
+    return isFirstName(word) ? FULL_NAME : UNKNOWN_NAME;
+  }
+  return undefined;
+}
+
+/**
  * The phrase's selectors win. A checked model amount fills a gap only when the question has no digits, so a
  * spelled-out amount the parser cannot read can still be used. A question with digits keeps the parser's
  * answer, including a refusal. On a follow-up, an unnamed selector stays from the previous intent.
@@ -246,6 +383,16 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   const read = readSelectors(phrase);
   const modelAmount = /\d/.test(phrase) ? undefined : checkedAmount(intent.filters.amount);
   if (read.clarify && !(read.clarify === AMOUNT_CLARIFY && modelAmount)) return { kind: 'clarify', question: read.clarify };
+  const named: Omit<SelectorFilters, 'amount'> = {
+    products: read.filters.products ?? checkedProducts(intent.filters.products),
+    accounts: read.filters.accounts ?? checkedAccounts(intent.filters.accounts),
+    sectors: read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase),
+    people: read.filters.people ?? checkedPeople(intent.filters.people),
+    teams: read.filters.teams ?? checkedTeams(intent.filters.teams),
+  };
+  // A name the model resolved ("my rep Darcel's" as Darcel Schlecht) is known too (review, Oct 31).
+  const unknown = unknownPossessive(phrase, named);
+  if (unknown) return { kind: 'clarify', question: unknown };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
@@ -253,25 +400,41 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   const source = inherited?.filters;
   const amount = read.filters.amount ?? modelAmount ?? source?.amount;
   if (amount) filters.amount = amount;
-  const products = read.filters.products ?? checkedProducts(intent.filters.products) ?? source?.products;
-  if (products?.length) filters.products = products;
-  const accounts = read.filters.accounts ?? checkedAccounts(intent.filters.accounts) ?? source?.accounts;
-  if (accounts?.length) filters.accounts = accounts;
-  const sectors = read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase) ?? source?.sectors;
-  if (sectors?.length) filters.sectors = sectors;
-  const people = read.filters.people ?? checkedPeople(intent.filters.people) ?? source?.people;
-  if (people?.length) filters.people = people;
-  const teams = read.filters.teams ?? checkedTeams(intent.filters.teams) ?? source?.teams;
-  if (teams?.length) filters.teams = teams;
+  // "and my whole team?" after a question about one rep is about the team, not that rep again (bug hunt, Oct 31).
+  const ownTeam = WHOLE_TEAM.test(clean(phrase));
+  const kept = (k: keyof typeof named) => named[k] ?? (ownTeam && (k === 'people' || k === 'teams') ? undefined : source?.[k]);
+  for (const k of ['products', 'accounts', 'sectors', 'people', 'teams'] as const) {
+    const v = kept(k);
+    if (v?.length) filters[k] = v;
+  }
   return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 
-/** Whether the question changes something a follow-up can change: region, period, stage or breakdown. */
-function hasModifier(text: string, registry: Registry): boolean {
+/** Whether the question changes something a follow-up can change: region, period, stage, breakdown or a ranking. */
+function hasModifier(text: string, registry: Registry, phrase: string): boolean {
   if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text) || ALL_STAGES.test(text)) return true;
   if (/ (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous) quarter /.test(text)) return true;
   if (Object.keys(registry.glossary.dimensionPhrases).some((p) => text.includes(` ${p} `))) return true;
+  // "Who has the most?" after an answer ranks that answer by its owners (bug hunt, Oct 31). A superlative is needed,
+  // so "who are you?" doesn't become a breakdown.
+  if (SUPERLATIVE.test(text) && rankedBy(text)) return true;
+  if (selectorFollowUp(text, phrase)) return true;
   return findStages(text).length > 0;
+}
+
+/** A follow-up that starts with a filter word: "for Darcel Schlecht", "in the retail sector", "and for GTK 500". */
+const SELECTOR_LEAD = /^ (and |what about |how about |now |then )?(for|in|at|with|from|on|only|just) /;
+
+/**
+ * "for Darcel Schlecht", "in the retail sector", or a bare name: a filter alone changes the previous question (bug
+ * hunt, Oct 31). Only when the filter leads, or is all there is, so "Who is Darcel Schlecht's manager?" is not read as
+ * a follow-up (review, Oct 31).
+ */
+function selectorFollowUp(text: string, phrase: string): boolean {
+  const f = readSelectors(phrase).filters;
+  const names = [...(f.products ?? []), ...(f.accounts ?? []), ...(f.sectors ?? []), ...(f.people ?? []), ...(f.teams ?? [])];
+  if (!names.length && !f.amount) return false;
+  return SELECTOR_LEAD.test(text) || (names.length === 1 && text === ` ${words(names[0]!)} `);
 }
 
 function findStages(text: string): string[] {
@@ -365,6 +528,42 @@ export function comparedRegions(intent: Intent, phrase: string, registry: Regist
   if (metric?.dimensions.includes('region') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'region'] };
   const names = regions.map((r) => r[0]!.toUpperCase() + r.slice(1)).join(' and ');
   return { kind: 'clarify', question: `To compare ${names} I show each region on its own, which leaves room for one other breakdown. Which one do you want?` };
+}
+
+/** "Darcel Schlecht vs Niesha Huffines", "higher than Niesha Huffines": two named reps or teams set against each other. */
+const SET_AGAINST = / (vs|versus|compare|compared|comparing|against) /;
+
+/**
+ * "higher than Niesha Huffines": a comparative only sets two reps against each other when a named rep or team follows
+ * "than". "deals more than 5000" is a deal size (review, Oct 31).
+ */
+function thanNamed(text: string, names: string[]): boolean {
+  return names.some((name) => text.includes(` than ${words(name)} `) || text.includes(` than for ${words(name)} `) || text.includes(` than the ${words(name)} `));
+}
+
+/**
+ * Two or more named reps compared are shown rep by rep, like regions (comparedRegions), never added into one figure
+ * (bug hunt, Oct 31: "open pipeline for Darcel Schlecht vs Niesha Huffines" answered their sum). Teams, and metrics
+ * with no owner breakdown, are asked about. Without a comparison word the named reps stay one combined filter.
+ */
+export function comparedPeople(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const people = intent.filters.people?.length ?? 0;
+  const teams = intent.filters.teams?.length ?? 0;
+  const text = clean(phrase);
+  const named = [...(intent.filters.people ?? []), ...(intent.filters.teams ?? [])];
+  if (people + teams < 2 || intent.groupBy.includes('owner') || !(SET_AGAINST.test(text) || thanNamed(text, named))) return intent;
+  const metric = registry.metrics.get(intent.metric);
+  if (!teams && metric?.dimensions.includes('owner') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'owner'] };
+  if (!teams && metric?.dimensions.includes('owner')) {
+    return { kind: 'clarify', question: 'To compare them I show each rep on their own, which leaves room for one other breakdown. Which one do you want?' };
+  }
+  return { kind: 'clarify', question: `${metric?.name ?? 'This metric'} can't be shown rep by rep or team by team here, so I won't add them together. Ask about each one on its own.` };
+}
+
+/** Comparisons of named reps or teams, then of named regions: each is shown on its own or asked about. */
+export function compared(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const byPeople = comparedPeople(intent, phrase, registry);
+  return 'kind' in byPeople ? byPeople : comparedRegions(byPeople, phrase, registry);
 }
 
 /** The question asked when a phrase names more than one metric. */
@@ -469,6 +668,71 @@ function clean(phrase: string): string {
 }
 
 /**
+ * The breakdowns a question asks for, in the order named: glossary phrases, a second one chained with "and", or the one
+ * a ranking needs. A breakdown the metric doesn't have, or one by period, is asked about, never silently dropped.
+ */
+function askedBreakdown(text: string, phrase: string, metric: MetricDefinition, registry: Registry, asOfDate: string): Dimension[] | { kind: 'clarify'; question: string } {
+  const groupBy: Dimension[] = [];
+  const dimHits = Object.entries(registry.glossary.dimensionPhrases)
+    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
+    .filter((h) => h.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  for (const d of [...dimHits.map((h) => h.d), ...chainedDimensions(text)]) if (!groupBy.includes(d)) groupBy.push(d);
+  // "per quarter for Q1" names its quarter, so it is not a breakdown by period (review, Oct 31).
+  if (PERIOD_BREAKDOWN.test(text) && findPeriods(text, registry.glossary, asOfDate).labels.size === 0) {
+    return { kind: 'clarify', question: PERIOD_BREAKDOWN_QUESTION };
+  }
+  const named = readSelectors(phrase).filters;
+  const ranked = groupBy.length ? undefined : rankedBy(text, Boolean(named.people?.length || named.teams?.length));
+  if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
+  if (ranked) groupBy.push(ranked);
+  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
+  if (unsupportedDim) {
+    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
+  }
+  return groupBy;
+}
+
+const DIMENSION_WORDS: Record<string, Dimension> = { region: 'region', stage: 'stage', owner: 'owner', rep: 'owner', seller: 'owner' };
+/** "by region and stage", "by stage, region": a second breakdown named without its own "by". */
+const CHAINED = / (?:by|per|each) (?:sales )?(region|stage|owner|rep|seller)s? (?:and |plus )?(?:by |per )?(?:sales )?(region|stage|owner|rep|seller)s? /;
+
+/** Both breakdowns of a chained phrase, in the order named. The glossary phrases only catch the one after "by" (bug hunt, Oct 31). */
+function chainedDimensions(text: string): Dimension[] {
+  const m = CHAINED.exec(text);
+  return m ? [DIMENSION_WORDS[m[1]!]!, DIMENSION_WORDS[m[2]!]!] : [];
+}
+
+/** "by quarter", "per month": every answer is for one quarter, so a breakdown by period is asked about, not dropped. */
+const PERIOD_BREAKDOWN = / (by|per|each|every) (quarter|quarters|month|months|year|years|week|weeks|period|periods) (?!end )/;
+const PERIOD_BREAKDOWN_QUESTION = 'I answer for one quarter at a time, so I can\'t break this down by period. Which quarter do you want, this quarter or next quarter?';
+
+const SUPERLATIVE = / (top|bottom|highest|lowest|most|least|best|worst|biggest|smallest|largest|rank|ranked|ranking) /;
+/** What a ranking ranks, checked in this order: "who" alone means people. */
+const RANKED: [RegExp, Dimension][] = [
+  [/ (region|regions) /, 'region'],
+  [/ (stage|stages) /, 'stage'],
+  [/ (who|whose|rep|reps|owner|owners|seller|sellers|salesperson|salespeople) /, 'owner'],
+];
+
+/**
+ * "Which rep has the lowest coverage?", "who has the most open pipeline?", "top 3 reps": a ranking needs the
+ * breakdown it ranks by. Without one the scope's total was answered (bug hunt, Oct 31; PRD A2). A superlative is
+ * needed ("the reps who report to me" is not a ranking), and a question that names a rep ("my top rep Darcel
+ * Schlecht") or asks about the asker ("am I the top rep?") is about that rep (review, Oct 31).
+ */
+function rankedBy(text: string, namesRep = false): Dimension | undefined {
+  if (!SUPERLATIVE.test(text) || namesRep || / am i /.test(text)) return undefined;
+  return RANKED.find(([w]) => w.test(text))?.[1];
+}
+
+function cannotRank(metric: MetricDefinition, by: Dimension): string {
+  const what = by === 'owner' ? 'rep' : by;
+  const name = metric.name.toLowerCase();
+  return `${metric.name} can't be broken down by ${what}, so I can't rank ${what}s by it. I can show ${name} for one ${what} you name, or ${name} by ${metric.dimensions.join(' or ')}.`;
+}
+
+/**
  * Follow-ups (PRD A5): with a previous intent, a question that names no metric but changes a region, period,
  * stage or breakdown ("what about West?", "by stage", "and next quarter?") starts from the previous intent.
  * The previous intent is the whole conversation state: a small structured summary, never rows or chat text.
@@ -486,7 +750,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const followUpCue = FOLLOW_UP.test(text);
   let continued = false; // this turn names no metric and only changes a modifier
   if (matches.length === 0) {
-    if (prior && (hasModifier(text, registry) || followUpCue)) {
+    if (prior && (hasModifier(text, registry, phrase) || followUpCue)) {
       matches = [prior.metric];
       continued = true;
     }
@@ -522,17 +786,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
       ? []
       : (inherit?.filters.stages ?? []);
 
-  const groupBy: Dimension[] = [];
-  const dimHits = Object.entries(glossary.dimensionPhrases)
-    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
-    .filter((h) => h.at >= 0)
-    .sort((a, b) => a.at - b.at);
-  for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
-  // A breakdown this metric doesn't have is asked about, not silently dropped.
-  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
-  if (unsupportedDim) {
-    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
-  }
+  const asked = askedBreakdown(text, phrase, metric, registry, asOfDate);
+  if (!Array.isArray(asked)) return asked;
+  const groupBy: Dimension[] = asked;
   if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
     for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
   }
@@ -558,7 +814,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
 
   const periods = findPeriods(text, glossary, asOfDate);
   if (periods.unsupported) {
-    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?` };
+    // Resumable, like the other period questions, so replying "FY27-Q1" or "next quarter" finishes the request instead of
+    // starting a new one (review, Nov 1: "in October" then "FY27-Q1" was unsupported).
+    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?`, resume: partial() };
   }
   if (periods.labels.size > 1) {
     return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?`, resume: partial() };
@@ -586,5 +844,5 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   else delete filters.stages;
   if (period) filters.period = period;
   else delete filters.period;
-  return asResult(comparedRegions({ metric: metric.id, filters, groupBy }, phrase, registry));
+  return asResult(compared({ metric: metric.id, filters, groupBy }, phrase, registry));
 }

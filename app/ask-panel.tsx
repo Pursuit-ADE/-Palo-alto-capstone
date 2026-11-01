@@ -7,6 +7,7 @@ import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
 import { ExplanationView } from './explanation-panel';
 import { ProvenancePanel } from './provenance-panel';
+import { readAs } from './reading';
 import { Chart3D } from './chart3d';
 import { answerCharts, breakdownQuestions } from './chart-data';
 import type { View } from './view-mode';
@@ -154,6 +155,9 @@ export function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null
       <h3>{a.metric.name}</h3>
       {/* The answer in one sentence comes first (client feedback, Oct 24): a leader reads it and can stop there. */}
       <p className="narrative narrative-lead">{a.narrative}</p>
+      {/* How the question was read, before the number, so it can be checked where people look first: a reading, not a
+          confidence score, which this copilot doesn't have (receipts design, Nov 1). The panel below keeps the full rows. */}
+      <p className="read-as"><span>Read as:</span> {readAs(a)}</p>
       {big && <p className={tone ? `answer-value tone-${tone}` : 'answer-value'}>{big}</p>}
       <FactChips label="Scope and data date" items={[['Scope', scopeText(a.scope)], ['Data as of', dateRange(a.provenance.asOfDate)]]} />
       {charts && (

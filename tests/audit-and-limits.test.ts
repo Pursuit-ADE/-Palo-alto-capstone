@@ -6,7 +6,7 @@ import { appUsers, dataSnapshots, queryAudit } from '@/db/schema';
 import { loadRegistry } from '@/registry/load';
 import { answerIntent, ask, MAX_QUESTION_LENGTH, questionFingerprint } from '@/semantic/answer';
 import { IntentError } from '@/semantic/compile';
-import { ScopeViolation } from '@/semantic/scope';
+import { effectiveRegions, ScopeViolation, type Principal } from '@/semantic/scope';
 import { RateLimiter } from '@/server/limits';
 import { testIdentitiesEnabled } from '@/server/identity';
 import { promptFor } from '@/server/prompts';
@@ -50,7 +50,19 @@ describe('query audit log (S4)', () => {
     await expect(ask(database, reg, 'u_ts_east', 'number of open deals in the west')).rejects.toBeInstanceOf(ScopeViolation);
     const refusals = await database.db.select().from(queryAudit).where(and(eq(queryAudit.userId, 'u_ts_east'), eq(queryAudit.outcome, 'refused_scope')));
     expect(refusals).toHaveLength(1);
-    expect(refusals[0]!.reason).toBe('You do not have access to region: west');
+    // Shown to the person as "Not answered": words, not "region: west" (bug hunt, Oct 31).
+    expect(refusals[0]!.reason).toBe("You don't have access to the West region, so I can't answer for it.");
+  });
+
+  it('names a repeated region once (review, Oct 31)', () => {
+    const east: Principal = { userId: 'u', displayName: 'East seller', role: 'technical_seller', regions: ['east'], ownerIds: [], slice: '' };
+    expect(() => effectiveRegions(east, ['west', 'west'])).toThrow("You don't have access to the West region, so I can't answer for it.");
+  });
+
+  it('names every region outside the scope in words', async () => {
+    await expect(ask(database, reg, 'u_ts_east', 'open pipeline in central and west')).rejects.toThrow(
+      "You don't have access to the Central and West regions, so I can't answer for them.",
+    );
   });
 
   it('records an invalid intent and an unknown user', async () => {

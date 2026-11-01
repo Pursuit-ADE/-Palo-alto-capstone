@@ -36,14 +36,20 @@ export function narrate(metric: { name: string; unit: string; target?: number | 
   const missing = rows.length - ranked.length;
   const note = missing ? ` ${missing} ${missing === 1 ? 'has' : 'have'} no quota, so coverage is not available there.` : '';
   if (ranked.length === 0) return `${metric.name}${when} is not available for any ${groupBy.join(' and ')}: there is no quota.`;
-  if (groupBy.length > 1) {
-    // Each row is one combination (for example Central and Engaging), so rank combinations, not totals.
-    const sortedCells = [...ranked].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
-    const top = sortedCells[0]!;
-    const name = groupBy.map((d) => label(d, top[d], names)).join(' and ');
-    return `${metric.name}${when} by ${groupBy.join(' and ')}: ${rows.length} combinations. The largest is ${name} at ${fmt(top.value, metric.unit)}.${note}`;
-  }
+  if (groupBy.length > 1) return combinationBreakdown(metric, rows, ranked, groupBy, when, note, names);
   return rankedBreakdown(metric, rows, ranked, groupBy[0]!, when, note, names);
+}
+
+/**
+ * Two breakdowns: each row is one combination (for example Central and Engaging), so rank combinations, not totals.
+ * Every combination tied for the largest is named. A helper, so narrate() stays at its complexity before the ties work.
+ */
+function combinationBreakdown(metric: { name: string; unit: string }, rows: Row[], ranked: Row[], groupBy: string[], when: string, note: string, names?: OwnerNames): string {
+  const sortedCells = [...ranked].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
+  const top = sortedCells[0]!;
+  const largest = tiedWith(sortedCells, top, metric.unit).map((cell) => groupBy.map((d) => label(d, cell[d], names)).join(' and '));
+  const which = largest.length > 1 ? `are ${largest.slice(0, -1).join(', ')}, and ${largest[largest.length - 1]},` : `is ${largest[0]}`;
+  return `${metric.name}${when} by ${groupBy.join(' and ')}: ${rows.length} combination${rows.length === 1 ? '' : 's'}. The largest ${which} at ${fmt(top.value, metric.unit)}.${note}`;
 }
 
 // One sentence for the ranking, then one clause for the standing, so the target is not repeated on both ends.
@@ -62,8 +68,34 @@ function rankedBreakdown(
   // One row is not a ranking: say it is the only one, not that it is both highest and a list of '1 stages'.
   if (sorted.length === 1) return `${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is the only ${dim}, at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}.${note}`;
   const count = `${rows.length} ${dim === 'owner' ? 'owners' : `${dim}s`}`;
-  const ranking = `${metric.name}${when} by ${dim}: ${label(dim, top[dim], names)} is highest at ${fmt(top.value, metric.unit)} and ${label(dim, bottom[dim], names)} is lowest at ${fmt(bottom.value, metric.unit)} (${count}).`;
-  return `${ranking}${sharedStanding(metric, top, bottom, dim, names)}${note}`;
+  // Rows with no value (no quota) are not part of a tie; the note says how many there are. Two rows are "both", not
+  // "all 2" (review, Oct 31).
+  const plural = dim === 'owner' ? 'owners' : `${dim}s`;
+  const valued = sorted.length === 2 ? `both ${plural}` : `all ${sorted.length} ${plural}`;
+  if (fmt(top.value, metric.unit) === fmt(bottom.value, metric.unit)) {
+    return `${metric.name}${when} by ${dim}: ${valued} are equal at ${fmt(top.value, metric.unit)}${standingPhrase(metric, Number(top.value))}.${note}`;
+  }
+  const highs = tiedWith(sorted, top, metric.unit);
+  const lows = tiedWith(sorted, bottom, metric.unit);
+  const high = listed(highs.map((r) => label(dim, r[dim], names)));
+  const low = listed(lows.map((r) => label(dim, r[dim], names)));
+  const ranking = `${metric.name}${when} by ${dim}: ${high} highest at ${fmt(top.value, metric.unit)} and ${low} lowest at ${fmt(bottom.value, metric.unit)} (${count}).`;
+  return `${ranking}${sharedStanding(metric, top, bottom, high, low, sorted.length)}${note}`;
+}
+
+/**
+ * Every row that shows the same value as `row`. Rows that tie are all named, never one picked by row order (bug hunt,
+ * Oct 31: "Engaging is highest at $31,784 and Prospecting is lowest at $31,784"). Compared as shown, so $31,784.40 and
+ * $31,783.60 tie too (review, Oct 31).
+ */
+function tiedWith(sorted: Row[], row: Row, unit: string): Row[] {
+  return sorted.filter((r) => fmt(r.value, unit) === fmt(row.value, unit));
+}
+
+/** "West is", "West and East are", "West, East and Central are". */
+function listed(labels: string[]): string {
+  if (labels.length === 1) return `${labels[0]} is`;
+  return `${labels.slice(0, -1).join(', ')} and ${labels[labels.length - 1]} are`;
 }
 
 /** The band without the repeated "The target is" sentence. The ranking names the target once. */
@@ -71,14 +103,17 @@ function bandOnly(words: string): string {
   return words.split('. ')[0] ?? words;
 }
 
-function sharedStanding(metric: { unit: string; target?: number | null; caution?: number | null }, top: Row, bottom: Row, dim: string, names?: OwnerNames): string {
+/** `high` and `low` are the tied labels with their verb, from listed(): "West is", "West and East are". */
+function sharedStanding(metric: { unit: string; target?: number | null; caution?: number | null }, top: Row, bottom: Row, high: string, low: string, ranked: number): string {
   const spec = metric.unit === 'ratio' ? coverageSpec(metric) : null;
   if (!spec || typeof top.value !== 'number' || typeof bottom.value !== 'number') return '';
-  const high = coverageStanding(top.value, spec);
-  const low = coverageStanding(bottom.value, spec);
+  const highest = coverageStanding(top.value, spec);
+  const lowest = coverageStanding(bottom.value, spec);
   const target = `the target is ${spec.target.toFixed(2)}x`;
-  if (high.standing === low.standing && high.words === low.words) return ` Both are ${high.standing} (${bandOnly(high.words)}; ${target}).`;
-  return ` ${label(dim, top[dim], names)} is ${high.standing} (${bandOnly(high.words)}) and ${label(dim, bottom[dim], names)} is ${low.standing} (${bandOnly(low.words)}); ${target}.`;
+  // When the highest and lowest share a band, every row between them does too, so with more than two rows it is "All 3
+  // are", not "Both are" (reviews, Oct 31: "Both" read as if only two regions were off target).
+  if (highest.standing === lowest.standing && highest.words === lowest.words) return ` ${ranked > 2 ? `All ${ranked}` : 'Both'} are ${highest.standing} (${bandOnly(highest.words)}; ${target}).`;
+  return ` ${high} ${highest.standing} (${bandOnly(highest.words)}) and ${low} ${lowest.standing} (${bandOnly(lowest.words)}); ${target}.`;
 }
 
 /** A Vega-Lite bar chart spec for one breakdown, or null when a single number needs no chart. */

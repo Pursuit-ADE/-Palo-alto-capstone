@@ -18,6 +18,8 @@ import { ALL_REGIONS, resolvePrincipal, ScopeViolation, type Principal } from '.
 export { currentSnapshot, type Answer, type RatioPart } from './governed';
 
 export const MAX_QUESTION_LENGTH = 300;
+/** Characters of an over-limit question that are flagged before it is refused (see screen()). */
+export const OVER_LIMIT_SCAN = 1000;
 
 export type Reply = Answer | Explanation | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
 
@@ -108,20 +110,31 @@ export async function recordRefusal(database: Database, userId: string, question
 /** Who asked, copied onto linked rows so each row of a request names the same account and session. */
 const actorOf = (f: AuditFields) => ({ username: f.username ?? null, sessionId: f.sessionId ?? null, questionSha256: f.questionSha256 ?? null });
 
+/**
+ * A failed model attempt that askWithFallback retries is not the question: the retry's row is. So it leaves its flags to
+ * that row and is logged as a `question_attempt`, linked by request_id. The trends views, their detections and the
+ * flag counts read `source = 'question'`, so one submission counts once there (QA cycle 6, Oct 31: it counted twice,
+ * once as an error). D5 still sees the attempt, because it filters on outcome and model.
+ */
+function retriedAttempt(e: unknown, request: Pick<AskOptions, 'fallbackFollows'>): AuditFields {
+  const retried = request.fallbackFollows && e instanceof Error && e.name === 'ProviderError';
+  return retried ? { flags: [], source: 'question_attempt' } : {};
+}
+
 async function audited<T extends Reply>(
   database: Database,
   userId: string,
   source: string,
   question: string | null,
-  actor: AskOptions['actor'],
+  request: Pick<AskOptions, 'actor' | 'requestId' | 'fallbackFollows'>,
   body: (fields: AuditFields, principal: () => Promise<Principal>, linked: AuditFields[]) => Promise<T>,
 ): Promise<T> {
-  const requestId = randomUUID();
+  const requestId = request.requestId ?? randomUUID();
   const auditId = randomUUID();
   const fields: AuditFields = {
     questionSha256: question === null ? null : questionFingerprint(question),
-    username: actor?.username ?? null,
-    sessionId: actor?.sessionId ?? null,
+    username: request.actor?.username ?? null,
+    sessionId: request.actor?.sessionId ?? null,
   };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
@@ -133,7 +146,7 @@ async function audited<T extends Reply>(
   try {
     result = await body(fields, principal, linked);
   } catch (e) {
-    await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e) });
+    await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e), ...retriedAttempt(e, request) });
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
@@ -152,7 +165,7 @@ async function audited<T extends Reply>(
 
 /** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
 export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent', actor?: AskOptions['actor']): Promise<Answer> {
-  return audited(database, userId, source, null, actor, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
+  return audited(database, userId, source, null, { actor }, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
 }
 
 export interface AskOptions {
@@ -165,6 +178,14 @@ export interface AskOptions {
   guard?: Guard;
   /** Which account and session asked, for the audit row. */
   actor?: { username?: string; sessionId?: string };
+  /** Set by askWithFallback, so a failed model attempt and its fallback are one request in the audit log. */
+  requestId?: string;
+  /**
+   * Set by askWithFallback on a model attempt it retries if the provider fails. That attempt's error row is a
+   * `question_attempt` and leaves the flags to the retry's row, so the question is counted and notified once (D3, the
+   * trends views; bug hunt and QA cycle 6, Oct 31).
+   */
+  fallbackFollows?: boolean;
 }
 
 /** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
@@ -173,17 +194,26 @@ export function parsePrevious(raw: unknown): Intent | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** The checks every question passes before anything reads it: the session lock (S3), the length cap and the flags. */
+/**
+ * The checks every question passes before anything reads it: the session lock (S3), the flags and the length cap.
+ * The length cap comes after the flags, so a long paste is flagged for this asker, counts towards the lock and is
+ * refused as injection when it carries an override (review, Oct 31).
+ */
 async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields) {
-  if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
-  if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
-  const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
+  // Flagged once per question, before the lock check so a locked question's audit row still has its flags. The link
+  // pattern backtracks on long dotted text, so a question already over the limit is scanned only to OVER_LIMIT_SCAN:
+  // an override that opens a long paste is still caught, and a crafted 3,000-character paste can't block the server
+  // for half a second (review of #102, Nov 1).
+  const scanned = phrase.length > MAX_QUESTION_LENGTH ? phrase.slice(0, OVER_LIMIT_SCAN) : phrase;
+  const flags = flagQuestion(scanned, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
   fields.flags = flags;
+  if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
   if (flags.length) await opts.guard?.record(userId);
   // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
   // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
   if (flags.includes('link')) throw new InjectionRefused('link');
   if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
+  if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
 }
 
 /**
@@ -234,9 +264,9 @@ function constraintConflict(proposal: Intent, expected: Intent): string | null {
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
-  return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal, linked) => {
+  return audited<Reply>(database, userId, 'question', phrase, opts, async (fields, principal, linked) => {
     // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
-    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
+    Object.assign(fields, { model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
     await screen(phrase, userId, await principal(), opts, fields);
     // "Why is my coverage different?" gets a fixed explanation inside the asker's scope, before any model sees it.

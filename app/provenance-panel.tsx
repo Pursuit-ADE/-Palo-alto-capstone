@@ -1,37 +1,15 @@
 import type { Answer } from '@/semantic/answer';
 import { coverageReceipt, coverageSpec } from '@/semantic/coverage-target';
 import { dateRange, format, timestamp } from './format';
-
-const titleCase = (s: string) => s.replace(/^./, (c) => c.toUpperCase());
-const list = (xs: string[]) => xs.join(', ').replace(/, ([^,]*)$/, ' and $1');
-const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
-
-function amountText(amount: NonNullable<Answer['filters']['amount']>): string {
-  if (amount.min != null && amount.max != null && amount.min === amount.max && amount.minInclusive !== false && amount.maxInclusive !== false) return `amount ${money(amount.min)}`;
-  const bits: string[] = [];
-  if (amount.min != null) bits.push(`${amount.minInclusive === false ? 'over' : 'at least'} ${money(amount.min)}`);
-  if (amount.max != null) bits.push(`${amount.maxInclusive === false ? 'under' : 'at most'} ${money(amount.max)}`);
-  return bits.join(' and ');
-}
+import { readingParts } from './reading';
 
 /** Where an answer's number came from: definition, scope, applied filters, snapshot and audit row. Shown under every answer. */
 export function ProvenancePanel({ a }: { a: Answer }) {
-  const { filters: f, provenance: p, parts } = a;
+  const { provenance: p, parts } = a;
   const spec = coverageSpec(a.metric);
   const single = a.rows.length === 1 && 'numerator' in a.rows[0]! ? a.rows[0]! : null;
   const receipt = single && typeof single.value === 'number' && spec ? coverageReceipt(single.value, spec) : null;
-  const applied = [
-    f.period ? `${f.period.label} (${dateRange(f.period.start, f.period.end)})` : 'Any expected close date',
-    `${list(f.regions.map(titleCase))} region${f.regions.length > 1 ? 's' : ''}`,
-    f.stages ? `stage ${list(f.stages)}` : null,
-    f.amount ? amountText(f.amount) : null,
-    f.products?.length ? `product ${list(f.products)}` : null,
-    f.accounts?.length ? `account ${list(f.accounts)}` : null,
-    f.sectors?.length ? `sector ${list(f.sectors)}` : null,
-    f.people?.length ? `rep ${list(f.people)}` : null,
-    f.teams?.length ? list(f.teams.map((name) => `${name}'s team`)) : null,
-    f.groupBy.length ? `by ${list(f.groupBy)}` : null,
-  ].filter(Boolean);
+  const applied = readingParts(a);
 
   return (
     <section className="provenance" aria-label={`Where this ${a.metric.name.toLowerCase()} number came from`}>

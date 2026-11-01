@@ -12,7 +12,9 @@ import { getDatabase, getRegistry } from '@/server/runtime';
 
 export type AskResult = Reply | { kind: 'refused'; message: string } | null;
 
-const Question = z.string().trim().min(1).max(MAX_QUESTION_LENGTH);
+// Only bounds the form field. ask() refuses anything over MAX_QUESTION_LENGTH itself, so the refusal is audited and
+// flagged like any other (PRD S4; bug hunt, Oct 31: a long many-shot paste was refused here and left no audit row).
+const Question = z.string().trim().min(1).max(MAX_QUESTION_LENGTH * 10);
 // The conversation state the browser sends back: at most the previous intent (a few hundred bytes) and a turn count.
 const PreviousJson = z.string().max(2000);
 const Turn = z.coerce.number().int().min(1).max(50);

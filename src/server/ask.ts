@@ -1,6 +1,7 @@
 // One submitted question, with the deterministic model as a fallback when the AI model is unavailable.
 // The fallback is the same request, not a second one: its flags were already counted towards the session lock
 // by the first attempt, so the retry doesn't count them again (it would lock a user early).
+import { randomUUID } from 'node:crypto';
 import type { Database } from '../db/client';
 import type { Registry } from '../registry/load';
 import { ask, SessionLocked, type AskOptions, type Reply } from '../semantic/answer';
@@ -66,8 +67,11 @@ export async function askWithFallback(
   breaker: ModelBreaker = modelBreaker,
 ): Promise<Reply | Refusal> {
   if (model !== deterministicModel && breaker.isOpen()) model = deterministicModel;
+  // Both attempts are one request in the audit log (bug hunt, Oct 31).
+  const { requestId = randomUUID() } = opts;
+  const request = { requestId };
   try {
-    return await ask(database, registry, userId, question, { ...opts, model: model === deterministicModel ? model : tagged(model) });
+    return await ask(database, registry, userId, question, { ...opts, ...request, fallbackFollows: model !== deterministicModel, model: model === deterministicModel ? model : tagged(model) });
   } catch (e) {
     if (KNOWN(e) || (e instanceof Error && e.name === 'InjectionRefused')) return { kind: 'refused', message: e.message };
     // Fall back only when the model failed. By then this request already passed the lock check and its flags
@@ -77,7 +81,7 @@ export async function askWithFallback(
       breaker.failed();
       const sameRequest = opts.guard ? { isLocked: () => false, record: () => {} } : undefined;
       try {
-        return await ask(database, registry, userId, question, { ...opts, guard: sameRequest, model: deterministicModel });
+        return await ask(database, registry, userId, question, { ...opts, ...request, guard: sameRequest, model: deterministicModel });
       } catch (e2) {
         if (KNOWN(e2) || (e2 instanceof Error && e2.name === 'InjectionRefused')) return { kind: 'refused', message: e2.message };
       }

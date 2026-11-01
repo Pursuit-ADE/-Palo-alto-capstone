@@ -22,6 +22,13 @@ export class IntentError extends Error {
 // Upper bound on rows any governed query can return (results are aggregates; this caps a bad breakdown).
 export const MAX_RESULT_ROWS = 500;
 
+/**
+ * The request named something that isn't in the data. Fixed sentences that never repeat the value: a tampered previous
+ * intent or a model can put any text in a name field, and this message is shown to the user and kept as the audit
+ * row's reason (evaluator B-03; bug hunt, Oct 31).
+ */
+const NOT_IN_DATA = (what: string) => `That request names ${what} that isn't in the data.`;
+
 const DIMENSION_COLUMN: Record<Dimension, string> = { region: 'region_id', stage: 'stage', owner: 'owner_user_id' };
 
 /** Validates an intent from any source (mock normalizer or AI model) against the schema and the registry. */
@@ -30,11 +37,11 @@ export function validateIntent(raw: unknown, registry: Registry): { intent: Inte
   if (!parsed.success) throw new IntentError('The request does not match the allowed intent format.');
   const intent = parsed.data;
   const metric = registry.metrics.get(intent.metric);
-  if (!metric) throw new IntentError(`Unknown metric: ${intent.metric}`);
+  if (!metric) throw new IntentError(NOT_IN_DATA('a metric'));
   for (const d of intent.groupBy) {
     if (!metric.dimensions.includes(d)) throw new IntentError(`${metric.name} cannot be broken down by ${d}.`);
   }
-  if (intent.filters.period && !findPeriod(intent.filters.period)) throw new IntentError(`Unknown period: ${intent.filters.period}`);
+  if (intent.filters.period && !findPeriod(intent.filters.period)) throw new IntentError(NOT_IN_DATA('a period'));
   // Coverage divides by quota, which has no stage, so a stage filter can't be applied consistently.
   // Refuse it rather than return an answer that silently ignores the filter.
   if (metric.kind === 'ratio' && intent.filters.stages) throw new IntentError(`${metric.name} can't be filtered by stage.`);
@@ -88,7 +95,7 @@ function resolveProducts(names: string[] | undefined): string[] | undefined {
     const exact = products.filter((p) => p.id.toLowerCase() === name.toLowerCase());
     const series = products.filter((p) => p.series.toLowerCase() === name.toLowerCase());
     const hits = exact.length ? exact : series;
-    if (!hits.length) throw new IntentError(`Unknown product: ${name}`);
+    if (!hits.length) throw new IntentError(NOT_IN_DATA('a product'));
     for (const hit of hits) ids.add(hit.id);
   }
   return [...ids];
@@ -103,12 +110,12 @@ function resolveAccounts(names: string[] | undefined, sectors: string[] | undefi
     rows = rows.filter((a) => wanted.has(a.name.toLowerCase()));
     const known = new Set(rows.map((a) => a.name.toLowerCase()));
     const missing = names.filter((n) => !known.has(n.toLowerCase()));
-    if (missing.length) throw new IntentError(`Unknown account: ${missing.join(', ')}`);
+    if (missing.length) throw new IntentError(NOT_IN_DATA('an account'));
   }
   if (sectors?.length) {
     const known = new Set(accounts.map((a) => a.sector.toLowerCase()));
     const missing = sectors.filter((s) => !known.has(s.toLowerCase()));
-    if (missing.length) throw new IntentError(`Unknown sector: ${missing.join(', ')}`);
+    if (missing.length) throw new IntentError(NOT_IN_DATA('a sector'));
     const wanted = new Set(sectors.map((s) => s.toLowerCase()));
     rows = rows.filter((a) => wanted.has(a.sector.toLowerCase()));
   }
@@ -123,7 +130,7 @@ function resolvePeople(names: string[] | undefined, principal: Principal): strin
   const outside: string[] = [];
   for (const name of names) {
     const owner = owners.find((o) => o.name.toLowerCase() === name.toLowerCase());
-    if (!owner) throw new IntentError(`Unknown person: ${name}`);
+    if (!owner) throw new IntentError(NOT_IN_DATA('a person'));
     if (principal.ownerIds && !principal.ownerIds.includes(owner.id)) outside.push(owner.name);
     ids.push(owner.id);
   }
@@ -139,9 +146,9 @@ function resolveTeams(names: string[] | undefined, principal: Principal): string
   const outside: string[] = [];
   for (const name of names) {
     const manager = cat.managers.find((m) => m.name.toLowerCase() === name.toLowerCase());
-    if (!manager) throw new IntentError(`Unknown team: ${name}`);
+    if (!manager) throw new IntentError(NOT_IN_DATA('a team'));
     const reps = cat.owners.filter((o) => o.managerId === manager.id);
-    if (!reps.length) throw new IntentError(`Unknown team: ${name}`);
+    if (!reps.length) throw new IntentError(NOT_IN_DATA('a team'));
     if (principal.ownerIds && reps.some((r) => !principal.ownerIds!.includes(r.id))) outside.push(manager.name);
     else for (const rep of reps) ids.push(rep.id);
   }
