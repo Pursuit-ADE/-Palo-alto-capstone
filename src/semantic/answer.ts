@@ -177,10 +177,13 @@ export function parsePrevious(raw: unknown): Intent | undefined {
   return parsed.success ? parsed.data : undefined;
 }
 
-/** The checks every question passes before anything reads it: the session lock (S3), the length cap and the flags. */
+/**
+ * The checks every question passes before anything reads it: the session lock (S3), the flags and the length cap.
+ * The length cap comes after the flags, so a long paste is flagged for this asker, counts towards the lock and is
+ * refused as injection when it carries an override (review, Oct 31).
+ */
 async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields) {
   if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
-  if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
   const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
   fields.flags = flags;
   if (flags.length) await opts.guard?.record(userId);
@@ -188,6 +191,7 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
   // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
   if (flags.includes('link')) throw new InjectionRefused('link');
   if (flags.includes('instruction_override')) throw new InjectionRefused('instruction_override');
+  if (phrase.length > MAX_QUESTION_LENGTH) throw new IntentError(`Questions are limited to ${MAX_QUESTION_LENGTH} characters.`);
 }
 
 /**
