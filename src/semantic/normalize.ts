@@ -541,6 +541,20 @@ function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
+const DIMENSION_WORDS: Record<string, Dimension> = { region: 'region', stage: 'stage', owner: 'owner', rep: 'owner', seller: 'owner' };
+/** "by region and stage", "by stage, region": a second breakdown named without its own "by". */
+const CHAINED = / (?:by|per|each) (?:sales )?(region|stage|owner|rep|seller)s? (?:and |plus )?(?:by |per )?(?:sales )?(region|stage|owner|rep|seller)s? /;
+
+/** Both breakdowns of a chained phrase, in the order named. The glossary phrases only catch the one after "by" (bug hunt, Oct 31). */
+function chainedDimensions(text: string): Dimension[] {
+  const m = CHAINED.exec(text);
+  return m ? [DIMENSION_WORDS[m[1]!]!, DIMENSION_WORDS[m[2]!]!] : [];
+}
+
+/** "by quarter", "per month": every answer is for one quarter, so a breakdown by period is asked about, not dropped. */
+const PERIOD_BREAKDOWN = / (by|per|each|every) (quarter|quarters|month|months|year|years|week|weeks|period|periods) /;
+const PERIOD_BREAKDOWN_QUESTION = 'I answer for one quarter at a time, so I can\'t break this down by period. Which quarter do you want, this quarter or next quarter?';
+
 const SUPERLATIVE = / (top|bottom|highest|lowest|most|least|best|worst|biggest|smallest|largest|rank|ranked|ranking) /;
 const RANKING = / (which|who|whose) /;
 /** What a ranking ranks, checked in this order: "who" alone means people. */
@@ -625,6 +639,8 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
     .filter((h) => h.at >= 0)
     .sort((a, b) => a.at - b.at);
   for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
+  for (const d of chainedDimensions(text)) if (!groupBy.includes(d)) groupBy.push(d);
+  if (PERIOD_BREAKDOWN.test(text)) return { kind: 'clarify', question: PERIOD_BREAKDOWN_QUESTION };
   const ranked = groupBy.length ? undefined : rankedBy(text);
   if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
   if (ranked) groupBy.push(ranked);
