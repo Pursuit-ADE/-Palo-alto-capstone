@@ -7,6 +7,7 @@ import { alertSubscriptions } from '@/db/schema';
 import { createChannels } from '@/alerts/channels';
 import { loadRules } from '@/alerts/rules';
 import { tick } from '@/alerts/scheduler';
+import { allowAttempt } from '@/server/login-limit';
 
 const enabled = Boolean(process.env.ALERTS_DATABASE_URL && process.env.MIGRATION_DATABASE_URL);
 
@@ -35,6 +36,13 @@ describe.skipIf(!enabled)('alerts Postgres least privilege', () => {
     await tick(database.db, loadRules(), createChannels(), new Date('2026-10-08T15:00:00Z'), new Date('2026-09-01T00:00:00Z'));
     const cursor = await app.query('SELECT evaluated_until FROM alert_cursor');
     expect(cursor.rows).toHaveLength(1);
+  });
+
+  // Real Postgres, through the alerts login: attempts on separate connections must still be counted one at a time.
+  it('lets in exactly the sign-in limit when attempts arrive at the same moment', async () => {
+    const key = `login:parallel-${Date.now()}`;
+    const results = await Promise.all(Array.from({ length: 20 }, () => allowAttempt(database.db, key, 10)));
+    expect(results.filter(Boolean)).toHaveLength(10);
   });
 
   it('cannot delete alerts, change CRM data or the schema', async () => {
