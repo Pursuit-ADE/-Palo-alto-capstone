@@ -11,8 +11,10 @@ import { findPeriod, resolvePeriod } from './periods';
 const EXCLUSION = / (excluding|exclude|except|without|other than|apart from|besides|minus|outside of|not) /;
 const UNKNOWN_REGIONS = ['north', 'south', 'emea', 'apac', 'apj', 'americas', 'latam', 'europe', 'asia', 'japan'];
 const STAGE_WORDS: Record<string, string> = { prospecting: 'Prospecting', engaging: 'Engaging', won: 'Won', lost: 'Lost' };
-// Periods we can't answer: anything other than a single fiscal quarter in the snapshot.
-const UNSUPPORTED_PERIOD = / (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\d\d /;
+// Periods we can't answer: anything other than a single fiscal quarter in the snapshot. A month too ("in October" was
+// answered for all time; bug hunt, Oct 31), except "may", which is usually the verb.
+const MONTH_NAMES = 'january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
+const UNSUPPORTED_PERIOD = new RegExp(` (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\\d\\d | (${MONTH_NAMES}) `);
 
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
@@ -26,8 +28,11 @@ const COMPARISON =
 const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stages) /;
 
 // A capitalized name, including a product id whose last token is a number ("GTK 500").
-const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
+const NAMED = /\b(?:for|at|from|with|on|in)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
+
+/** Words after "for" or "in" that are a period or region, asked about elsewhere ("in October", "in EMEA"). */
+const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS]);
 
 const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
 
@@ -122,7 +127,8 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
     // "West's" is the region West: drop the possessive before looking the word up (bug hunt, Oct 31).
     const known = parts.every((w) => {
       const token = w.replace(/['’]s$/, '').replace(/[^a-z0-9]/g, '');
-      return KNOWN_WORDS.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
+      // Months and regions we don't have get their own question below, not "I don't know that name".
+      return KNOWN_WORDS.has(token) || NOT_A_NAME_HERE.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
     const named = covered.some((c) => sameName(c, raw));
     // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
