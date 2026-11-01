@@ -9,7 +9,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Registry } from '../registry/load';
 import { Intent } from '../registry/types';
-import { asResult, assignSelectors, comparedRegions, continuesPrevious, normalize, proposalQuestion, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
+import { asResult, assignSelectors, compared, continuesPrevious, normalize, proposalQuestion, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
 
 export interface IntentModel {
   readonly name: string;
@@ -125,7 +125,7 @@ export function followUpRule(result: NormalizeResult, question: string, registry
   const base = continuing || !previous ? result.intent : withoutCarryOver(result.intent, question, registry, previous);
   const assigned = assignSelectors(base, question, continuing ? previous : undefined);
   if ('kind' in assigned) return assigned;
-  return ratioQuestion(assigned, registry) ?? asResult(comparedRegions(assigned, question, registry));
+  return ratioQuestion(assigned, registry) ?? asResult(compared(assigned, question, registry));
 }
 
 /** Coverage can't be split the way quota isn't, and needs a quarter: both are asked about (the second resumes the request). */

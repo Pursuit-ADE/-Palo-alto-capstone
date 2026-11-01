@@ -407,6 +407,39 @@ export function comparedRegions(intent: Intent, phrase: string, registry: Regist
   return { kind: 'clarify', question: `To compare ${names} I show each region on its own, which leaves room for one other breakdown. Which one do you want?` };
 }
 
+/** "Darcel Schlecht vs Niesha Huffines", "higher than Niesha Huffines": two named reps or teams set against each other. */
+const SET_AGAINST = / (vs|versus|compare|compared|comparing|against) /;
+
+/**
+ * "higher than Niesha Huffines": a comparative only sets two reps against each other when a named rep or team follows
+ * "than". "deals more than 5000" is a deal size (review, Oct 31).
+ */
+function thanNamed(text: string, names: string[]): boolean {
+  return names.some((name) => text.includes(` than ${words(name)} `) || text.includes(` than for ${words(name)} `) || text.includes(` than the ${words(name)} `));
+}
+
+/**
+ * Two or more named reps compared are shown rep by rep, like regions (comparedRegions), never added into one figure
+ * (bug hunt, Oct 31: "open pipeline for Darcel Schlecht vs Niesha Huffines" answered their sum). Teams, and metrics
+ * with no owner breakdown, are asked about. Without a comparison word the named reps stay one combined filter.
+ */
+export function comparedPeople(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const people = intent.filters.people?.length ?? 0;
+  const teams = intent.filters.teams?.length ?? 0;
+  const text = clean(phrase);
+  const named = [...(intent.filters.people ?? []), ...(intent.filters.teams ?? [])];
+  if (people + teams < 2 || intent.groupBy.includes('owner') || !(SET_AGAINST.test(text) || thanNamed(text, named))) return intent;
+  const metric = registry.metrics.get(intent.metric);
+  if (!teams && metric?.dimensions.includes('owner') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'owner'] };
+  return { kind: 'clarify', question: `${metric?.name ?? 'This metric'} can't be shown rep by rep or team by team here, so I won't add them together. Ask about each one on its own.` };
+}
+
+/** Comparisons of named reps or teams, then of named regions: each is shown on its own or asked about. */
+export function compared(intent: Intent, phrase: string, registry: Registry): Intent | { kind: 'clarify'; question: string } {
+  const byPeople = comparedPeople(intent, phrase, registry);
+  return 'kind' in byPeople ? byPeople : comparedRegions(byPeople, phrase, registry);
+}
+
 /** The question asked when a phrase names more than one metric. */
 function whichMetric(ids: string[], registry: Registry): string {
   return `Do you mean ${ids.map((id) => registry.metrics.get(id)?.name).join(' or ')}?`;
@@ -653,5 +686,5 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   else delete filters.stages;
   if (period) filters.period = period;
   else delete filters.period;
-  return asResult(comparedRegions({ metric: metric.id, filters, groupBy }, phrase, registry));
+  return asResult(compared({ metric: metric.id, filters, groupBy }, phrase, registry));
 }
