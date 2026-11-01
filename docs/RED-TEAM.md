@@ -31,7 +31,7 @@ read access.
 | Someone who planted text in CRM data (an account name or case subject) | To steer the copilot or a seller | A wrong answer, or a seller tricked by an alert | The model never reads stored text; alert text is shown as plain text (`alerts/tests/alerts.test.ts`) |
 | An outsider with a link to the app | To get in without signing in | Any data at all | Sign-in with invite codes; test identities work only with `npm run dev`, and a production server refuses to start with them on (`src/server/identity.ts`) |
 | A compromised or confused AI model | To run SQL, widen scope or invent a metric | Wrong or leaked numbers | The model only proposes an intent; schema, registry and scope checks run after it (`src/semantic/compile.ts`) |
-| Anyone running up cost | Run up AI usage or slow the app | Cost, availability | 300-character questions, 20 questions a minute, `max_tokens` 2000 and a 20-second model timeout |
+| Anyone running up cost | Run up AI usage or slow the app | Cost, availability | 300-character questions, 20 questions a minute, `max_tokens` 2000 and an 8-second model timeout (`CLAUDE_TIMEOUT_MS`) |
 
 ## What the copilot must never do
 
