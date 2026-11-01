@@ -239,8 +239,12 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
   return [...new Set(out)];
 }
 
-/** The asker's whole team or reps, which replaces a rep or team named earlier in the conversation. */
-const WHOLE_TEAM = / (whole|entire|my|our) (team|reps)| all (of )?(my |our |the )?reps /;
+/**
+ * The asker's own team or reps, which replaces a rep or team named earlier in the conversation. Only "my" or "our":
+ * "his whole team" or "the whole team" is someone else's, and for the analyst it would widen to the company (review,
+ * Oct 31).
+ */
+const WHOLE_TEAM = / (my|our) (whole |entire )?(team|reps) | all (of )?(my|our) reps /;
 
 /** Any word with 's, in any case and with a straight or curly apostrophe ("Jordan's", "JORDAN'S", "Priya’s"). */
 // Capitalised words only: everyday nouns in lower case ("the owner's", "yesterday's") are not names, and no word list
@@ -266,7 +270,7 @@ const NOT_A_NAME = new Set(
  * scope answered (bug hunt, Oct 31; PRD A2). The explanation path has its own check, with "marketing's" and other
  * outside figures allowed (explain.ts).
  */
-function unknownPossessive(phrase: string, filters: SelectorFilters): boolean {
+function unknownPossessive(phrase: string, filters: Omit<SelectorFilters, 'amount'>): boolean {
   const names = [...(filters.products ?? []), ...(filters.accounts ?? []), ...(filters.sectors ?? []), ...(filters.people ?? []), ...(filters.teams ?? [])];
   const resolved = new Set(names.flatMap((n) => words(n).split(' ')));
   for (const m of phrase.matchAll(POSSESSIVE)) {
@@ -285,26 +289,29 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   const read = readSelectors(phrase);
   const modelAmount = /\d/.test(phrase) ? undefined : checkedAmount(intent.filters.amount);
   if (read.clarify && !(read.clarify === AMOUNT_CLARIFY && modelAmount)) return { kind: 'clarify', question: read.clarify };
-  if (unknownPossessive(phrase, read.filters)) return { kind: 'clarify', question: UNKNOWN_NAME };
+  const named: Omit<SelectorFilters, 'amount'> = {
+    products: read.filters.products ?? checkedProducts(intent.filters.products),
+    accounts: read.filters.accounts ?? checkedAccounts(intent.filters.accounts),
+    sectors: read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase),
+    people: read.filters.people ?? checkedPeople(intent.filters.people),
+    teams: read.filters.teams ?? checkedTeams(intent.filters.teams),
+  };
+  // A name the model resolved ("my rep Darcel's" as Darcel Schlecht) is known too (review, Oct 31).
+  if (unknownPossessive(phrase, named)) return { kind: 'clarify', question: UNKNOWN_NAME };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
   if (intent.filters.period) filters.period = intent.filters.period;
   const source = inherited?.filters;
-  // "and the whole team?" after a question about one rep is about the team, not that rep again (bug hunt, Oct 31).
-  const wholeTeam = WHOLE_TEAM.test(clean(phrase));
   const amount = read.filters.amount ?? modelAmount ?? source?.amount;
   if (amount) filters.amount = amount;
-  const products = read.filters.products ?? checkedProducts(intent.filters.products) ?? source?.products;
-  if (products?.length) filters.products = products;
-  const accounts = read.filters.accounts ?? checkedAccounts(intent.filters.accounts) ?? source?.accounts;
-  if (accounts?.length) filters.accounts = accounts;
-  const sectors = read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase) ?? source?.sectors;
-  if (sectors?.length) filters.sectors = sectors;
-  const people = read.filters.people ?? checkedPeople(intent.filters.people) ?? (wholeTeam ? undefined : source?.people);
-  if (people?.length) filters.people = people;
-  const teams = read.filters.teams ?? checkedTeams(intent.filters.teams) ?? (wholeTeam ? undefined : source?.teams);
-  if (teams?.length) filters.teams = teams;
+  // "and my whole team?" after a question about one rep is about the team, not that rep again (bug hunt, Oct 31).
+  const ownTeam = WHOLE_TEAM.test(clean(phrase));
+  const kept = (k: keyof typeof named) => named[k] ?? (ownTeam && (k === 'people' || k === 'teams') ? undefined : source?.[k]);
+  for (const k of ['products', 'accounts', 'sectors', 'people', 'teams'] as const) {
+    const v = kept(k);
+    if (v?.length) filters[k] = v;
+  }
   return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 
@@ -316,9 +323,23 @@ function hasModifier(text: string, registry: Registry, phrase: string): boolean 
   // "Who has the most?" after an answer ranks that answer by its owners (bug hunt, Oct 31). A superlative is needed,
   // so "who are you?" doesn't become a breakdown.
   if (SUPERLATIVE.test(text) && rankedBy(text)) return true;
-  // "for Darcel Schlecht", "in the retail sector": a filter alone changes the previous question (bug hunt, Oct 31).
-  if (Object.values(readSelectors(phrase).filters).some((v) => v !== undefined)) return true;
+  if (selectorFollowUp(text, phrase)) return true;
   return findStages(text).length > 0;
+}
+
+/** A follow-up that starts with a filter word: "for Darcel Schlecht", "in the retail sector", "and for GTK 500". */
+const SELECTOR_LEAD = /^ (and |what about |how about |now |then )?(for|in|at|with|from|on|only|just) /;
+
+/**
+ * "for Darcel Schlecht", "in the retail sector", or a bare name: a filter alone changes the previous question (bug
+ * hunt, Oct 31). Only when the filter leads, or is all there is, so "Who is Darcel Schlecht's manager?" is not read as
+ * a follow-up (review, Oct 31).
+ */
+function selectorFollowUp(text: string, phrase: string): boolean {
+  const f = readSelectors(phrase).filters;
+  const names = [...(f.products ?? []), ...(f.accounts ?? []), ...(f.sectors ?? []), ...(f.people ?? []), ...(f.teams ?? [])];
+  if (!names.length && !f.amount) return false;
+  return SELECTOR_LEAD.test(text) || (names.length === 1 && text === ` ${words(names[0]!)} `);
 }
 
 function findStages(text: string): string[] {
@@ -438,6 +459,9 @@ export function comparedPeople(intent: Intent, phrase: string, registry: Registr
   if (people + teams < 2 || intent.groupBy.includes('owner') || !(SET_AGAINST.test(text) || thanNamed(text, named))) return intent;
   const metric = registry.metrics.get(intent.metric);
   if (!teams && metric?.dimensions.includes('owner') && intent.groupBy.length < 2) return { ...intent, groupBy: [...intent.groupBy, 'owner'] };
+  if (!teams && metric?.dimensions.includes('owner')) {
+    return { kind: 'clarify', question: 'To compare them I show each rep on their own, which leaves room for one other breakdown. Which one do you want?' };
+  }
   return { kind: 'clarify', question: `${metric?.name ?? 'This metric'} can't be shown rep by rep or team by team here, so I won't add them together. Ask about each one on its own.` };
 }
 
@@ -548,6 +572,32 @@ function clean(phrase: string): string {
   return ` ${phrase.toLowerCase().replace(/[^a-z0-9-]+/g, ' ').trim()} `;
 }
 
+/**
+ * The breakdowns a question asks for, in the order named: glossary phrases, a second one chained with "and", or the one
+ * a ranking needs. A breakdown the metric doesn't have, or one by period, is asked about, never silently dropped.
+ */
+function askedBreakdown(text: string, phrase: string, metric: MetricDefinition, registry: Registry, asOfDate: string): Dimension[] | { kind: 'clarify'; question: string } {
+  const groupBy: Dimension[] = [];
+  const dimHits = Object.entries(registry.glossary.dimensionPhrases)
+    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
+    .filter((h) => h.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  for (const d of [...dimHits.map((h) => h.d), ...chainedDimensions(text)]) if (!groupBy.includes(d)) groupBy.push(d);
+  // "per quarter for Q1" names its quarter, so it is not a breakdown by period (review, Oct 31).
+  if (PERIOD_BREAKDOWN.test(text) && findPeriods(text, registry.glossary, asOfDate).labels.size === 0) {
+    return { kind: 'clarify', question: PERIOD_BREAKDOWN_QUESTION };
+  }
+  const named = readSelectors(phrase).filters;
+  const ranked = groupBy.length ? undefined : rankedBy(text, Boolean(named.people?.length || named.teams?.length));
+  if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
+  if (ranked) groupBy.push(ranked);
+  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
+  if (unsupportedDim) {
+    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
+  }
+  return groupBy;
+}
+
 const DIMENSION_WORDS: Record<string, Dimension> = { region: 'region', stage: 'stage', owner: 'owner', rep: 'owner', seller: 'owner' };
 /** "by region and stage", "by stage, region": a second breakdown named without its own "by". */
 const CHAINED = / (?:by|per|each) (?:sales )?(region|stage|owner|rep|seller)s? (?:and |plus )?(?:by |per )?(?:sales )?(region|stage|owner|rep|seller)s? /;
@@ -559,11 +609,10 @@ function chainedDimensions(text: string): Dimension[] {
 }
 
 /** "by quarter", "per month": every answer is for one quarter, so a breakdown by period is asked about, not dropped. */
-const PERIOD_BREAKDOWN = / (by|per|each|every) (quarter|quarters|month|months|year|years|week|weeks|period|periods) /;
+const PERIOD_BREAKDOWN = / (by|per|each|every) (quarter|quarters|month|months|year|years|week|weeks|period|periods) (?!end )/;
 const PERIOD_BREAKDOWN_QUESTION = 'I answer for one quarter at a time, so I can\'t break this down by period. Which quarter do you want, this quarter or next quarter?';
 
 const SUPERLATIVE = / (top|bottom|highest|lowest|most|least|best|worst|biggest|smallest|largest|rank|ranked|ranking) /;
-const RANKING = / (which|who|whose) /;
 /** What a ranking ranks, checked in this order: "who" alone means people. */
 const RANKED: [RegExp, Dimension][] = [
   [/ (region|regions) /, 'region'],
@@ -573,11 +622,13 @@ const RANKED: [RegExp, Dimension][] = [
 
 /**
  * "Which rep has the lowest coverage?", "who has the most open pipeline?", "top 3 reps": a ranking needs the
- * breakdown it ranks by. Without one the scope's total was answered (bug hunt, Oct 31; PRD A2).
+ * breakdown it ranks by. Without one the scope's total was answered (bug hunt, Oct 31; PRD A2). A superlative is
+ * needed ("the reps who report to me" is not a ranking), and a question that names a rep ("my top rep Darcel
+ * Schlecht") or asks about the asker ("am I the top rep?") is about that rep (review, Oct 31).
  */
-function rankedBy(text: string): Dimension | undefined {
-  if (!RANKING.test(text) && !SUPERLATIVE.test(text)) return undefined;
-  return RANKED.find(([words]) => words.test(text))?.[1];
+function rankedBy(text: string, namesRep = false): Dimension | undefined {
+  if (!SUPERLATIVE.test(text) || namesRep || / am i /.test(text)) return undefined;
+  return RANKED.find(([w]) => w.test(text))?.[1];
 }
 
 function cannotRank(metric: MetricDefinition, by: Dimension): string {
@@ -640,22 +691,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
       ? []
       : (inherit?.filters.stages ?? []);
 
-  const groupBy: Dimension[] = [];
-  const dimHits = Object.entries(glossary.dimensionPhrases)
-    .map(([p, d]) => ({ at: text.indexOf(` ${p} `), d }))
-    .filter((h) => h.at >= 0)
-    .sort((a, b) => a.at - b.at);
-  for (const h of dimHits) if (!groupBy.includes(h.d)) groupBy.push(h.d);
-  for (const d of chainedDimensions(text)) if (!groupBy.includes(d)) groupBy.push(d);
-  if (PERIOD_BREAKDOWN.test(text)) return { kind: 'clarify', question: PERIOD_BREAKDOWN_QUESTION };
-  const ranked = groupBy.length ? undefined : rankedBy(text);
-  if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
-  if (ranked) groupBy.push(ranked);
-  // A breakdown this metric doesn't have is asked about, not silently dropped.
-  const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
-  if (unsupportedDim) {
-    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
-  }
+  const asked = askedBreakdown(text, phrase, metric, registry, asOfDate);
+  if (!Array.isArray(asked)) return asked;
+  const groupBy: Dimension[] = asked;
   if (!groupBy.length && inherit && !NO_BREAKDOWN.test(text)) {
     for (const d of inherit.groupBy) if (metric.dimensions.includes(d)) groupBy.push(d);
   }

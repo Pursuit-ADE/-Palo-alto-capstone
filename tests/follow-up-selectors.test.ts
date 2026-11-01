@@ -1,5 +1,5 @@
 // Follow-ups that change only a filter (PRD A5, bug hunt Oct 31): "for Darcel Schlecht" after a question keeps its
-// metric instead of being refused as off-topic, and "and the whole team?" drops the rep the previous turn named.
+// metric instead of being refused as off-topic, and "and my whole team?" drops the rep the previous turn named.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { openDatabase, type Database } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
@@ -46,8 +46,8 @@ describe('a follow-up that only names a filter keeps the metric', () => {
   });
 });
 
-describe('a follow-up about the whole team drops the rep', () => {
-  it.each(['and the whole team?', 'what about my team?', 'and all my reps?'])('%s', async (phrase) => {
+describe('a follow-up about the asker\'s own team drops the rep', () => {
+  it.each(['and my whole team?', 'what about my team?', 'and all my reps?'])('%s', async (phrase) => {
     const r = await chain(MELVIN, 'open pipeline for Darcel Schlecht', phrase);
     expect(r.kind === 'answer' && r.filters.people).toBeNull();
     expect(r.kind === 'answer' && r.narrative).toContain('$1,312,792');
