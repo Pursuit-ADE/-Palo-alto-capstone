@@ -614,6 +614,24 @@
       }
     },
     {
+      "phrase": "What is Jordan's open pipeline?",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
+      "phrase": "What is West's open pipeline?",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {
+          "regions": [
+            "west"
+          ]
+        },
+        "groupBy": []
+      }
+    },
+    {
       "phrase": "open pipeline over $1M",
       "expect": {
         "metric": "open_pipeline",

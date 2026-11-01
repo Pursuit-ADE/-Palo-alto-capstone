@@ -29,6 +29,8 @@ const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stag
 const NAMED = /\b(?:for|at|from|with|on)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
 
+const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
+
 type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people' | 'teams'>;
 
 const SECTOR_CUES = ['sector', 'sectors', 'industry', 'industries', 'vertical', 'verticals'];
@@ -117,14 +119,14 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   for (const m of phrase.matchAll(NAMED)) {
     const raw = m[1]!;
     const parts = raw.toLowerCase().split(/\s+/);
+    // "West's" is the region West: drop the possessive before looking the word up (bug hunt, Oct 31).
     const known = parts.every((w) => {
-      const token = w.replace(/[^a-z0-9]/g, '');
+      const token = w.replace(/['’]s$/, '').replace(/[^a-z0-9]/g, '');
       return KNOWN_WORDS.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
     const named = covered.some((c) => sameName(c, raw));
-    if (!known && !named) {
-      return { filters: {}, clarify: `I don't know "${raw}", so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.` };
-    }
+    // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
+    if (!known && !named) return { filters: {}, clarify: UNKNOWN_NAME };
   }
   if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku)s? /.test(text) && products.length === 0) {
     return { filters: {}, clarify: "I don't know that product, so I won't answer for everything. I can filter by a product that is in the data." };
@@ -237,6 +239,40 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
   return [...new Set(out)];
 }
 
+/** Any word with 's, in any case and with a straight or curly apostrophe ("Jordan's", "JORDAN'S", "Priya’s"). */
+// Capitalised words only: everyday nouns in lower case ("the owner's", "yesterday's") are not names, and no word list
+// can hold them all (review, Oct 31). A lower-case name ("jordan's") is not caught here.
+const POSSESSIVE = /\b([A-Z][A-Za-z.-]*)['’][sS]\b/g;
+/**
+ * Words that take 's in a question and are not names: contractions ("what's", "how's") and everyday nouns ("my
+ * team's"). The same words as NOT_A_NAME and EVERYDAY in explain.ts, plus deal, client and sales.
+ */
+const NOT_A_NAME = new Set(
+  ('what how why where who when it that there here this let everyone everybody anyone someone somebody nobody ' +
+    'team teams company quarter quarters year month week today region regions rep reps manager managers boss board ' +
+    'deck slide sheet chart dashboard report spreadsheet number figure coverage pipeline quota data ' +
+    'org organization department group division unit segment territory sector industry customer customers account accounts partner ' +
+    'market business forecast plan target goal one other he she deal deals client clients sales ' +
+    'owner owners seller sellers product products stage stages period yesterday tomorrow ' +
+    'palo alto crm salesforce vp svp evp ceo cfo cro coo cmo director directors').split(' '),
+);
+
+/**
+ * "What is Jordan's open pipeline?": a possessive that is not a region, rep, team or other name the question
+ * resolved. NAMED only catches names after "for", "at" and the like, so this one was dropped and the asker's whole
+ * scope answered (bug hunt, Oct 31; PRD A2). The explanation path has its own check, with "marketing's" and other
+ * outside figures allowed (explain.ts).
+ */
+function unknownPossessive(phrase: string, filters: SelectorFilters): boolean {
+  const names = [...(filters.products ?? []), ...(filters.accounts ?? []), ...(filters.sectors ?? []), ...(filters.people ?? []), ...(filters.teams ?? [])];
+  const resolved = new Set(names.flatMap((n) => words(n).split(' ')));
+  for (const m of phrase.matchAll(POSSESSIVE)) {
+    const word = m[1]!.toLowerCase();
+    if (!NOT_A_NAME.has(word) && !KNOWN_WORDS.has(word) && !resolved.has(word)) return true;
+  }
+  return false;
+}
+
 /**
  * The phrase's selectors win. A checked model amount fills a gap only when the question has no digits, so a
  * spelled-out amount the parser cannot read can still be used. A question with digits keeps the parser's
@@ -246,6 +282,7 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   const read = readSelectors(phrase);
   const modelAmount = /\d/.test(phrase) ? undefined : checkedAmount(intent.filters.amount);
   if (read.clarify && !(read.clarify === AMOUNT_CLARIFY && modelAmount)) return { kind: 'clarify', question: read.clarify };
+  if (unknownPossessive(phrase, read.filters)) return { kind: 'clarify', question: UNKNOWN_NAME };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
