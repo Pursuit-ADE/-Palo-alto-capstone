@@ -4,12 +4,12 @@ How someone watching the copilot (the team during the demo, or the client's SOC 
 
 ## What the log holds
 
-One row per question, dashboard tile or intent, written by `src/semantic/answer.ts`, including refusals.
+One row per question, dashboard tile or intent, written by `src/semantic/answer.ts`, including refusals. A question whose Claude attempt failed has two rows with the same `request_id` (see below).
 
 | Column | Use in detection |
 |---|---|
 | `at` | When (UTC, set by the app server's clock) |
-| `request_id`, `turn` | Ties a conversation's turns together |
+| `request_id`, `turn` | One request. Each turn gets its own `request_id`; `turn` is its place in the conversation. When Claude fails and the deterministic model answers instead, both rows share the `request_id`: the `error` row (reason `ProviderError`) carries no flags, and the fallback's row carries them, so each question is counted once |
 | `source` | `question`, `dashboard`, `intent` or `auth` (sign-in events). `comparison_side` is the second figure of a "why is my number different?" comparison: same `request_id` as its question row |
 | `user_id`, `role` | Who, and the role from the database (`sales_rep`, `technical_seller`, `sales_manager`, `analyst`). Sign-in rows with an unknown account use `unknown` |
 | `question_sha256` | Keyed hash of the question. Same text gives the same hash only while `AUDIT_HASH_KEY` stays the same |

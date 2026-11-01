@@ -99,20 +99,26 @@ export async function recordRefusal(database: Database, userId: string, question
 /** Who asked, copied onto linked rows so each row of a request names the same account and session. */
 const actorOf = (f: AuditFields) => ({ username: f.username ?? null, sessionId: f.sessionId ?? null, questionSha256: f.questionSha256 ?? null });
 
+/** A failed model attempt that askWithFallback retries leaves its flags to the retry's row (see AskOptions.fallbackFollows). */
+function failedFields(fields: AuditFields, e: unknown, request: Pick<AskOptions, 'fallbackFollows'>): AuditFields {
+  const retried = request.fallbackFollows && e instanceof Error && e.name === 'ProviderError';
+  return retried ? { ...fields, flags: [] } : fields;
+}
+
 async function audited<T extends Reply>(
   database: Database,
   userId: string,
   source: string,
   question: string | null,
-  actor: AskOptions['actor'],
+  request: Pick<AskOptions, 'actor' | 'requestId' | 'fallbackFollows'>,
   body: (fields: AuditFields, principal: () => Promise<Principal>, linked: AuditFields[]) => Promise<T>,
 ): Promise<T> {
-  const requestId = randomUUID();
+  const requestId = request.requestId ?? randomUUID();
   const auditId = randomUUID();
   const fields: AuditFields = {
     questionSha256: question === null ? null : questionFingerprint(question),
-    username: actor?.username ?? null,
-    sessionId: actor?.sessionId ?? null,
+    username: request.actor?.username ?? null,
+    sessionId: request.actor?.sessionId ?? null,
   };
   const principal = async () => {
     const p = await resolvePrincipal(database.db, userId);
@@ -124,7 +130,7 @@ async function audited<T extends Reply>(
   try {
     result = await body(fields, principal, linked);
   } catch (e) {
-    await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e) });
+    await audit(database, { ...failedFields(fields, e, request), id: auditId, userId, source, requestId, ...outcomeOf(e) });
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
@@ -143,7 +149,7 @@ async function audited<T extends Reply>(
 
 /** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
 export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent', actor?: AskOptions['actor']): Promise<Answer> {
-  return audited(database, userId, source, null, actor, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
+  return audited(database, userId, source, null, { actor }, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
 }
 
 export interface AskOptions {
@@ -156,6 +162,13 @@ export interface AskOptions {
   guard?: Guard;
   /** Which account and session asked, for the audit row. */
   actor?: { username?: string; sessionId?: string };
+  /** Set by askWithFallback, so a failed model attempt and its fallback are one request in the audit log. */
+  requestId?: string;
+  /**
+   * Set by askWithFallback on a model attempt it retries if the provider fails. That attempt's error row leaves the
+   * flags to the retry's row, so a flagged question is counted and notified once (D3; bug hunt, Oct 31).
+   */
+  fallbackFollows?: boolean;
 }
 
 /** Parses a client-supplied previous intent. It is only a starting point: the new intent is validated and scoped afresh. */
@@ -194,7 +207,7 @@ function checkMetric(proposal: NormalizeResult, expected: NormalizeResult, regis
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
-  return audited<Reply>(database, userId, 'question', phrase, opts.actor, async (fields, principal, linked) => {
+  return audited<Reply>(database, userId, 'question', phrase, opts, async (fields, principal, linked) => {
     // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
     Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
