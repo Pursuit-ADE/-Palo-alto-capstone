@@ -13,4 +13,4 @@
 - [ ] `npm run docs:dictionary` re-run if `registry/` changed
 - [ ] New or changed behavior has a test
 - [ ] No real customer data, secrets or `.env.local`
-- [ ] Touches a path in `.github/CODEOWNERS`: code owner review requested
+- [ ] Code owner review requested (every path is owned). GitHub doesn't request owners on this plan: `gh pr edit <number> --add-reviewer brovaset,MITRAKER`. See CONTRIBUTING.md, "Merge rule"

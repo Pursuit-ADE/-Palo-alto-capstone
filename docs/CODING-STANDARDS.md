@@ -119,7 +119,7 @@ is brought in line when it is next touched.
 | 10 | The strictest settings and static analysis on every change: `strict`, `noUncheckedIndexedAccess`, Biome, CodeQL and gitleaks in CI. CI fails on errors; Biome's warnings (22 on Oct 22) are a burn-down that only goes down. | CI |
 
 Security commitments from Palo Alto Networks' public posture (the CISA Secure by Design pledge and NIST SSDF) are in
-section 5. Branch protection on `main` and SSO with MFA are open items in `SECURITY.md` (item 17). The repo's
+section 5. Branch protection on `main` (blocked by the GitHub plan; the merge rule in `CONTRIBUTING.md` stands in) and SSO with MFA are open items in `SECURITY.md` (item 17). The repo's
 dependency graph is on, so GitHub can export an SBOM (Insights → Dependency graph → Export SBOM); producing one in CI
 is not set up yet.
 
