@@ -6,7 +6,7 @@ import type { Database } from '../db/client';
 import { catalog } from '../db/seed';
 import { appUsers, dataSnapshots, type queryAudit } from '../db/schema';
 import type { Registry } from '../registry/load';
-import { compile, validateIntent } from './compile';
+import { compile, quotaCohortQuery, validateIntent } from './compile';
 import type { Dimension, Intent, MetricDefinition } from '../registry/types';
 import { chartSpec, narrate, type OwnerNames } from './narrative';
 import { findPeriod } from './periods';
@@ -141,12 +141,14 @@ export async function run(database: Database, registry: Registry, principal: Pri
   const q = compile(intent, registry, principal, snapshot.id);
   Object.assign(fields, { regions: q.regions, ownerCount: principal.ownerIds?.length ?? null, snapshotId: snapshot.id });
   const res = await database.client.query<Record<string, unknown>>(q.text, q.params);
-  const rows = res.rows.map(numericRow);
+  // Before the hash, so the audit row's result is what the person is shown.
+  const quota = await withholdIncompleteQuota(database, registry, principal, intent, snapshot.id, res.rows.map(numericRow));
+  const rows = quota.rows;
   const resultHash = sha256(JSON.stringify({ intent, rows, snapshot: snapshot.id })).slice(0, 16);
   fields.resultHash = resultHash;
   const scope = scopeStatement(principal, q.regions);
   const names = intent.groupBy.includes('owner') ? await ownerNames(database, rows) : null;
-  return {
+  const answer: Answer = {
     kind: 'answer',
     metric: answerMetric(metric),
     intent,
@@ -166,10 +168,51 @@ export async function run(database: Database, registry: Registry, principal: Pri
       auditId: '',
     },
   };
+  if (!quota.note) return answer;
+  return { ...answer, narrative: quota.replacesNarrative ? quota.note : `${answer.narrative} ${quota.note}` };
 }
 
 function money(n: number): string {
   return n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 });
+}
+
+/**
+ * Coverage divides by the quota of the reps in scope. A rep who carries a quota in another period but has none for this
+ * one leaves the denominator smaller than the team's, so the ratio is overstated and nothing said so (project review,
+ * Nov 1). The value is withheld, as it already is when no quota exists at all, and the answer says how many reps are
+ * missing. The numerator and denominator stay in the row so the receipt shows what was found. By region, only the
+ * regions that are incomplete are withheld.
+ */
+async function withholdIncompleteQuota(
+  database: Database,
+  registry: Registry,
+  principal: Principal,
+  intent: Intent,
+  snapshotId: string,
+  rows: Answer['rows'],
+): Promise<{ rows: Answer['rows']; note: string; replacesNarrative: boolean }> {
+  const q = quotaCohortQuery(intent, registry, principal, snapshotId);
+  if (!q) return { rows, note: '', replacesNarrative: false };
+  const { rows: reps } = await database.client.query<{ region: string; has_quota: boolean }>(q.text, q.params);
+  const gapIn = (region?: string) => {
+    const inScope = reps.filter((r) => region === undefined || r.region === region);
+    return { missing: inScope.filter((r) => !r.has_quota).length, of: inScope.length };
+  };
+  const period = intent.filters.period!;
+  if (!intent.groupBy.includes('region')) {
+    const gap = gapIn();
+    if (gap.missing === 0) return { rows, note: '', replacesNarrative: false };
+    const name = registry.metrics.get(intent.metric)!.name;
+    const pipeline = money(Number(rows[0]?.numerator ?? 0));
+    const note = `${name} for ${period} is not available: the quota for ${period} is missing for ${gap.missing} of ${gap.of} reps with a quota in scope, so dividing by the quota that is there would overstate coverage. ${pipeline} of open pipeline closes in the period.`;
+    return { rows: rows.map((r) => ({ ...r, value: null })), note, replacesNarrative: true };
+  }
+  const gaps = rows.map((r) => ({ region: String(r.region), ...gapIn(String(r.region)) })).filter((g) => g.missing > 0);
+  if (gaps.length === 0) return { rows, note: '', replacesNarrative: false };
+  const incomplete = new Set(gaps.map((g) => g.region));
+  const words = gaps.map((g) => `${g.missing} of ${g.of} reps with a quota in ${g.region[0]!.toUpperCase()}${g.region.slice(1)}`).join(' and ');
+  const note = `The quota for ${period} is missing for ${words}, so coverage is not shown there.`;
+  return { rows: rows.map((r) => (incomplete.has(String(r.region)) ? { ...r, value: null } : r)), note, replacesNarrative: false };
 }
 
 function labelProduct(name: string): string {
