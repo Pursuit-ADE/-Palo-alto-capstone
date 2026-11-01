@@ -42,3 +42,24 @@ export function readingParts(a: Answer): string[] {
     f.groupBy.length ? `by ${list(f.groupBy.map(dimensionText))}` : null,
   ].filter((part): part is string => part !== null);
 }
+
+/**
+ * The slice in a scope sentence ("Scope: East region, Cara Losch's team (6 reps)." gives "Cara Losch's team (6 reps)"),
+ * or null for the whole company's "all teams". The sentence's form is scopeStatement() in src/semantic/scope.ts.
+ */
+export function narrowerSlice(scope: string): string | null {
+  const slice = /^Scope: .+? regions?, (.+)\.$/.exec(scope)?.[1];
+  return slice && slice !== 'all teams' ? slice : null;
+}
+
+/**
+ * The whole Read as line: the metric and version, then the reading, with a narrower slice named beside its region. Without
+ * the slice, "East region" right above the number would read as all of East when it is one team's (review, Nov 1).
+ */
+export function readAs(a: Answer): string {
+  const parts = readingParts(a);
+  const slice = narrowerSlice(a.scope);
+  // The regions are always the second part, after the period.
+  if (slice) parts[1] = `${slice}, ${parts[1]}`;
+  return [`${a.metric.name} v${a.metric.version}`, ...parts].join(' · ');
+}
