@@ -3,6 +3,8 @@
 export const ALERT_PROMPTS: Record<string, string> = {
   high_severity_case: 'What is our open pipeline?',
   cxo_engagement: 'how many open deals?',
+  // The copilot has no usage metric, so this opens the account team's open pipeline, as for a support case.
+  low_usage: 'What is our open pipeline?',
 };
 
 export function promptFor(id: string | undefined): string {
