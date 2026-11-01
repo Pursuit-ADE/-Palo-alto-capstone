@@ -18,6 +18,8 @@ import { ALL_REGIONS, resolvePrincipal, ScopeViolation, type Principal } from '.
 export { currentSnapshot, type Answer, type RatioPart } from './governed';
 
 export const MAX_QUESTION_LENGTH = 300;
+/** Characters of an over-limit question that are flagged before it is refused (see screen()). */
+export const OVER_LIMIT_SCAN = 1000;
 
 export type Reply = Answer | Explanation | { kind: 'clarify'; question: string; resume?: Intent } | { kind: 'unsupported'; message: string };
 
@@ -189,9 +191,14 @@ export function parsePrevious(raw: unknown): Intent | undefined {
  * refused as injection when it carries an override (review, Oct 31).
  */
 async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields) {
-  if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
-  const flags = flagQuestion(phrase, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
+  // Flagged once per question, before the lock check so a locked question's audit row still has its flags. The link
+  // pattern backtracks on long dotted text, so a question already over the limit is scanned only to OVER_LIMIT_SCAN:
+  // an override that opens a long paste is still caught, and a crafted 3,000-character paste can't block the server
+  // for half a second (review of #102, Nov 1).
+  const scanned = phrase.length > MAX_QUESTION_LENGTH ? phrase.slice(0, OVER_LIMIT_SCAN) : phrase;
+  const flags = flagQuestion(scanned, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
   fields.flags = flags;
+  if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
   if (flags.length) await opts.guard?.record(userId);
   // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
   // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
@@ -219,7 +226,7 @@ export function ask(database: Database, registry: Registry, userId: string, phra
   const model = opts.model ?? deterministicModel;
   return audited<Reply>(database, userId, 'question', phrase, opts, async (fields, principal, linked) => {
     // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
-    Object.assign(fields, { flags: flagQuestion(phrase), model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
+    Object.assign(fields, { model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
     await screen(phrase, userId, await principal(), opts, fields);
     // "Why is my coverage different?" gets a fixed explanation inside the asker's scope, before any model sees it.
