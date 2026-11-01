@@ -182,13 +182,44 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
  * reading had to ask which metric is meant, the user is asked; a different metric is never silently substituted.
  * The question names the two readings from the registry, so it stays current when a metric is added. A reading
  * that asks about anything else (a missing quarter, say) lets the model's proposal through (#52 review).
+ * When the metric agrees, the region, quarter and breakdown the question states in words are checked the same way
+ * (constraintConflict): a valid proposal can still answer the wrong question (project review, Nov 1).
  */
 function checkMetric(proposal: NormalizeResult, expected: NormalizeResult, registry: Registry): NormalizeResult {
   if (proposal.kind !== 'intent') return proposal;
   if (expected.kind === 'clarify' && expected.about === 'metric') return expected;
-  if (expected.kind !== 'intent' || proposal.intent.metric === expected.intent.metric) return proposal;
+  if (expected.kind !== 'intent') return proposal;
+  if (proposal.intent.metric === expected.intent.metric) {
+    const conflict = constraintConflict(proposal.intent, expected.intent);
+    return conflict ? { kind: 'clarify', question: conflict } : proposal;
+  }
   const names = [expected.intent.metric, proposal.intent.metric].map((id) => registry.metrics.get(id)?.name).join(' or ');
   return { kind: 'clarify', question: `Do you mean ${names}?`, about: 'metric' };
+}
+
+const sameSet = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((x) => b.includes(x));
+/** The regions an intent names: no repeats, in a fixed order, and all three means no region was named. */
+const namedRegions = (i: Intent) => {
+  const regions = [...new Set(i.filters.regions ?? [])].sort();
+  return regions.length === ALL_REGIONS.length ? [] : regions;
+};
+const regionWords = (regions: string[]) => (regions.length ? regions.map((r) => r.charAt(0).toUpperCase() + r.slice(1)).join(' and ') : 'all regions');
+const breakdownWords = (groupBy: readonly string[]) => (groupBy.length ? `by ${groupBy.map((d) => (d === 'owner' ? 'rep' : d)).join(' and ')}` : 'no breakdown');
+const either = (reading: string, proposed: string) => `Do you mean ${reading} or ${proposed}?`;
+
+/**
+ * Where the model's proposal contradicts a region, quarter or breakdown the deterministic reading found in the
+ * question. Only what the reading resolved is enforced: a proposal that adds a constraint the reading cannot see ("the
+ * western accounts") keeps the model's broader language. The sentence is built from validated names (regions,
+ * quarter labels, breakdown dimensions), never from model text, so it is safe to show and to fingerprint.
+ */
+function constraintConflict(proposal: Intent, expected: Intent): string | null {
+  const [wantRegions, gotRegions] = [namedRegions(expected), namedRegions(proposal)];
+  if (wantRegions.length > 0 && !sameSet(wantRegions, gotRegions)) return either(regionWords(wantRegions), regionWords(gotRegions));
+  const wantPeriod = expected.filters.period;
+  if (wantPeriod && wantPeriod !== proposal.filters.period) return either(wantPeriod, proposal.filters.period ?? 'any quarter');
+  if (expected.groupBy.length > 0 && !sameSet(expected.groupBy, proposal.groupBy)) return either(breakdownWords(expected.groupBy), breakdownWords(proposal.groupBy));
+  return null;
 }
 
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
