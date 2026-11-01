@@ -40,6 +40,21 @@ describe('a ranking question gets the breakdown it ranks by (PRD A2, bug hunt Oc
     expect(r.kind === 'answer' && r.narrative).toContain(words);
   });
 
+  it('a rep in scope with no open deals is said, so "lowest" is not read as the bottom of the team', async () => {
+    const r = await ask(database, reg, MELVIN, 'Who has the least open pipeline?');
+    expect(r.kind === 'answer' && r.rows).toHaveLength(5);
+    expect(r.kind === 'answer' && r.narrative).toContain('1 rep in scope has no matching open deals and isn\'t listed.');
+    const own = await ask(database, reg, 'u_darcel_schlecht', 'open pipeline by owner');
+    expect(own.kind === 'answer' && own.narrative).not.toContain('no matching open deals');
+  });
+
+  it('no note about unlisted reps when nothing matched at all (review, Oct 31)', async () => {
+    const r = await ask(database, reg, MELVIN, 'open pipeline by owner for deals over 10000000');
+    expect(r.kind === 'answer' && r.narrative).toMatch(/^No data matched/);
+    expect(r.kind === 'answer' && r.narrative).not.toContain("isn't listed");
+    expect(r.kind === 'answer' && r.narrative).not.toContain("aren't listed");
+  });
+
   it('coverage by region ranks regions', async () => {
     const r = await ask(database, reg, 'u_analyst', 'Which region has the lowest coverage this quarter?');
     expect(r.kind === 'answer' && r.filters.groupBy).toEqual(['region']);

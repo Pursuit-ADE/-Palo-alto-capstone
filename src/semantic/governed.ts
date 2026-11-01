@@ -154,7 +154,7 @@ export async function run(database: Database, registry: Registry, principal: Pri
     scope,
     filters: appliedFilters(intent, q.regions),
     parts: ratioParts(metric, registry, scope, intent.filters.period),
-    narrative: withFilterNote(narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined), intent),
+    narrative: withFilterNote(narrate(metric, rows, intent.groupBy, intent.filters.period, names ?? undefined) + unlistedOwners(rows, intent, principal), intent),
     chart: chartSpec(metric, rows, intent.groupBy, names ?? undefined),
     ownerNames: names,
     provenance: {
@@ -177,6 +177,20 @@ function labelProduct(name: string): string {
   if (products.some((p) => p.id.toLowerCase() === name.toLowerCase())) return name;
   if (products.some((p) => p.series.toLowerCase() === name.toLowerCase())) return `${name} series`;
   return name;
+}
+
+/**
+ * A breakdown by owner lists only reps with matching open deals, so "lowest" could name a rep above one who has none
+ * (bug hunt, Oct 31: "(5 owners)" under a 6-rep scope). Says how many reps of the asker's scope, or of the reps the
+ * question named, are missing. The analyst's scope has no fixed list of reps, so nothing is added there.
+ */
+function unlistedOwners(rows: Answer['rows'], intent: Intent, principal: Principal): string {
+  if (intent.groupBy.length !== 1 || intent.groupBy[0] !== 'owner' || intent.filters.teams?.length) return '';
+  const expected = intent.filters.people?.length ?? principal.ownerIds?.length;
+  const missing = expected == null ? 0 : expected - rows.length;
+  // With no rows at all the sentence already says nothing matched.
+  if (missing <= 0 || rows.length === 0) return '';
+  return missing === 1 ? " 1 rep in scope has no matching open deals and isn't listed." : ` ${missing} reps in scope have no matching open deals and aren't listed.`;
 }
 
 /** Says which extra filters the number used, so a filtered answer is not read as the whole scope. */
