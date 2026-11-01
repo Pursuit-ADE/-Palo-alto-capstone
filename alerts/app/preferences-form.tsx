@@ -41,6 +41,7 @@ export function PreferencesForm({ user, ruleId, ruleName, critical, sub }: { use
             <option value="inbox">In-app inbox</option>
             <option value="slack">Slack (your own link)</option>
             <option value="email">Email (your own address)</option>
+            <option value="slack_email">Slack and email</option>
           </select>
         </label>
         <label htmlFor={id('quietStartHour')}>Quiet from (UTC)

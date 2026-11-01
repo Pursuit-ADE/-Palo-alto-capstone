@@ -1,6 +1,6 @@
 // Delivery channels (L5). "inbox" is the in-app dev inbox: the delivery row itself is the message.
 // "slack" posts to a webhook that belongs to that one user (a DM or private channel). "email" posts
-// to a webhook with that user's own address as the only recipient. There is no shared fallback:
+// to a webhook with that user's own address as the only recipient. "slack_email" sends to both. There is no shared fallback:
 // a user without their own Slack webhook or email address gets nothing on that channel, so an
 // alert can never land where someone else can read it.
 import type { alertDeliveries } from '../db/schema';
@@ -103,6 +103,8 @@ export function createChannels(opts: {
   if (!opts.sendMail && Object.keys(emails).length > 0 && !isEmailWebhook(emailWebhook, env)) {
     (opts.warn ?? console.warn)(EMAIL_WEBHOOK_WARNING);
   }
+  // A typo in a Slack link would otherwise silently mean "no Slack" for that person (#104 review).
+  if (Object.keys(webhooks).length < rawEntryCount(opts.slackWebhooks ?? env.SLACK_USER_WEBHOOKS)) (opts.warn ?? console.warn)(SLACK_WEBHOOK_WARNING);
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
     if (!isEmailWebhook(emailWebhook, env)) return false;
@@ -114,32 +116,43 @@ export function createChannels(opts: {
       return false;
     }
   });
+  const toSlack = async (userId: string, items: Delivery[], isDigest: boolean) => {
+    const url = webhooks[userId];
+    if (!url) return false;
+    try {
+      const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+  const toEmail = async (userId: string, items: Delivery[], isDigest: boolean) => {
+    const to = emails[userId];
+    if (!to) return false;
+    try {
+      return await sendMail({
+        to,
+        subject: emailSubject(items, isDigest),
+        text: emailText(items, isDigest),
+        html: emailHtml(items, isDigest),
+      }, { signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
+    } catch {
+      return false;
+    }
+  };
   return {
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
-      if (channel === 'slack') {
-        const url = webhooks[userId];
-        if (!url) return false;
-        try {
-          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
-          return res.ok;
-        } catch {
-          return false;
-        }
-      }
-      if (channel === 'email') {
-        const to = emails[userId];
-        if (!to) return false;
-        try {
-          return await sendMail({
-            to,
-            subject: emailSubject(items, isDigest),
-            text: emailText(items, isDigest),
-            html: emailHtml(items, isDigest),
-          }, { signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
-        } catch {
-          return false;
-        }
+      if (channel === 'slack') return toSlack(userId, items, isDigest);
+      if (channel === 'email') return toEmail(userId, items, isDigest);
+      // Both: delivered only when both accept it. A person without both their own Slack link and their own address
+      // gets nothing, before either post, the same as Slack-only with no link; otherwise every retry would resend to
+      // the half that works (#104 review). In a real outage of one half, each retry (up to MAX_ATTEMPTS, engine.ts)
+      // sends to both again, so the half that works can get the alert up to that many times; a duplicate beats a missed P1.
+      if (channel === 'slack_email') {
+        if (!webhooks[userId] || !emails[userId]) return false;
+        const [slack, email] = await Promise.all([toSlack(userId, items, isDigest), toEmail(userId, items, isDigest)]);
+        return slack && email;
       }
       return false;
     },
@@ -155,6 +168,31 @@ export function isSlackWebhook(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+export const SLACK_WEBHOOK_WARNING =
+  'SLACK_USER_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those people get no Slack messages until they are fixed.';
+
+/** How many entries a raw per-user map has, before any are dropped as invalid. */
+function rawEntryCount(raw: string | Record<string, unknown> | undefined): number {
+  if (!raw) return 0;
+  try {
+    const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.keys(parsed).length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Which of their own destinations a person has: a valid Slack link, and an address email can actually reach. Read
+ * from the same settings as delivery, so the preferences page refuses a channel that would only ever fail (#104 review).
+ */
+export function destinationsFor(userId: string, env: Record<string, string | undefined> = process.env): { slack: boolean; email: boolean } {
+  return {
+    slack: userId in parseWebhooks(env.SLACK_USER_WEBHOOKS),
+    email: userId in parseEmails(env.EMAIL_USER_ADDRESSES) && isEmailWebhook(env.EMAIL_WEBHOOK_URL, env),
+  };
 }
 
 /** Keeps only valid per-user webhooks; anything malformed is dropped, so that user simply gets no Slack messages. */

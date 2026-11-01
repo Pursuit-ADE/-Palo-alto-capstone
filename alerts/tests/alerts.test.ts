@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { createChannels, EMAIL_WEBHOOK_WARNING, emailHtml, emailSubject, emailText, isEmailWebhook, parseEmails, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
+import { createChannels, EMAIL_WEBHOOK_WARNING, SLACK_WEBHOOK_WARNING, emailHtml, emailSubject, emailText, isEmailWebhook, parseEmails, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
 import { flushDigests, inbox, inQuietHours, MAX_ATTEMPTS, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
@@ -590,6 +590,16 @@ describe('Email channel (L5)', () => {
     expect(warned).toEqual([]);
   });
 
+  it('warns at start when a Slack link was dropped as invalid, so a typo is not silently "no Slack" (#104 review)', () => {
+    const warned: string[] = [];
+    const warn = (m: string) => { warned.push(m); };
+    createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x', u_ts_west: 'https://hooks.slack.com/servics/typo' }, env: {}, warn });
+    expect(warned).toEqual([SLACK_WEBHOOK_WARNING]);
+    warned.length = 0;
+    createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' }, env: {}, warn });
+    expect(warned).toEqual([]);
+  });
+
   it('rejects a localhost email webhook in production', () => {
     expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'production' })).toBe(false);
     expect(isEmailWebhook('http://127.0.0.1:8025/send', { NODE_ENV: 'development' })).toBe(true);
@@ -618,6 +628,45 @@ describe('Email channel (L5)', () => {
     expect(await ch.deliver('slack', 'u_ts_east', [item], false)).toBe(true);
     expect(await ch.deliver('email', 'u_ts_east', [item], false)).toBe(true);
     expect(seen).toEqual(['error', 'error']);
+  });
+
+  it('sends "Slack and email" to both of the person\'s own channels, and counts it delivered only when both accept', async () => {
+    const posted: string[] = [];
+    const both = (slackOk: boolean) => createChannels({
+      slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' },
+      emails: { u_ts_east: 'jordan@example.test' },
+      emailWebhook: 'https://mail.example/send',
+      env: { EMAIL_WEBHOOK_HOSTS: 'mail.example' },
+      fetch: async (url) => { posted.push(new URL(url).hostname); return { ok: slackOk || !url.includes('slack') }; },
+    });
+    expect(await both(true).deliver('slack_email', 'u_ts_east', [item], false)).toBe(true);
+    expect(posted.sort()).toEqual(['hooks.slack.com', 'mail.example']);
+    // One channel down means not delivered, so it is retried rather than marked sent.
+    expect(await both(false).deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    // Someone with neither of their own destinations gets nothing, and the alert isn't marked delivered.
+    expect(await both(true).deliver('slack_email', 'u_ts_west', [item], false)).toBe(false);
+  });
+
+  it('sends nothing for "Slack and email" when the person has only one of the two set up (#104 review)', async () => {
+    const half = (setup: { slack?: boolean; email?: boolean }) => {
+      const posted: string[] = [];
+      const ch = createChannels({
+        slackWebhooks: setup.slack ? { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' } : {},
+        emails: setup.email ? { u_ts_east: 'jordan@example.test' } : {},
+        emailWebhook: 'https://mail.example/send',
+        env: { EMAIL_WEBHOOK_HOSTS: 'mail.example' },
+        fetch: async (url) => { posted.push(new URL(url).hostname); return { ok: true }; },
+      });
+      return { ch, posted };
+    };
+    // Slack, no email: not delivered, and nothing is posted to Slack either, so a retry can't repeat it there.
+    const slackOnly = half({ slack: true });
+    expect(await slackOnly.ch.deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    expect(slackOnly.posted).toEqual([]);
+    // Email, no Slack: the same.
+    const emailOnly = half({ email: true });
+    expect(await emailOnly.ch.deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    expect(emailOnly.posted).toEqual([]);
   });
 
   it('posts the message to a laptop email webhook, never to a shared inbox URL as the recipient', async () => {
