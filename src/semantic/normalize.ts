@@ -12,9 +12,12 @@ const EXCLUSION = / (excluding|exclude|except|without|other than|apart from|besi
 const UNKNOWN_REGIONS = ['north', 'south', 'emea', 'apac', 'apj', 'americas', 'latam', 'europe', 'asia', 'japan'];
 const STAGE_WORDS: Record<string, string> = { prospecting: 'Prospecting', engaging: 'Engaging', won: 'Won', lost: 'Lost' };
 // Periods we can't answer: anything other than a single fiscal quarter in the snapshot. A month too ("in October" was
-// answered for all time; bug hunt, Oct 31), except "may", which is usually the verb.
+// answered for all time; bug hunt, Oct 31), except "may", which is usually the verb. A weekday too: "on Monday" was
+// answered for any close date once weekdays stopped being checked as names (review, Nov 1). "for friday's call" names a
+// meeting, not a period, so it reads as before.
 const MONTH_NAMES = 'january|february|march|april|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec';
-const UNSUPPORTED_PERIOD = new RegExp(` (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\\d\\d | (${MONTH_NAMES}) `);
+const WEEKDAY_NAMES = 'monday|tuesday|wednesday|thursday|friday|saturday|sunday';
+const UNSUPPORTED_PERIOD = new RegExp(` (last|previous|prior) (quarter|year|month)| (this|next|fiscal|calendar) (year|month)| (ytd|qtd|mtd|month|year|week|annual|yearly) | (19|20)\\d\\d | (${MONTH_NAMES}) | (${WEEKDAY_NAMES}) (?!s (call|meeting|review|standup|sync|demo|update) )`);
 
 const FOLLOW_UP = /^ (and|what about|how about|same for|same but|also|now|then|instead|ok|okay) /;
 const ALL_REGIONS_PHRASE = / (all regions|every region|everything|everyone|all teams|whole company|company wide|company-wide) /;
@@ -36,8 +39,7 @@ const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 
  * Words that are a period, region, weekday or currency, not a name: "in October", "in EMEA", "Monday's", "in USD".
  * Months and regions get their own question elsewhere; the rest are ignored, as before (review, Oct 31).
  */
-const WEEKDAYS = 'monday tuesday wednesday thursday friday saturday sunday';
-const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS, ...WEEKDAYS.split(' '), 'usd', 'us', 'dollar', 'dollars']);
+const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS, ...WEEKDAY_NAMES.split('|'), 'usd', 'us', 'dollar', 'dollars']);
 
 /**
  * A first name of a rep or manager in the data ("Darcel's", "for Melvin") is not unknown, just not enough to pick one

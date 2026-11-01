@@ -27,6 +27,19 @@ describe('an unknown name or a month after "in" is asked about (PRD A2)', () => 
     expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('FY27-Q1 and FY27-Q2') });
   });
 
+  // A weekday is a period the data doesn't have either, so it gets the same question, not the all-time total (review,
+  // Nov 1: "open pipeline on Monday" answered $4,966,215 once weekdays stopped being checked as names).
+  it.each(['open pipeline on Monday', 'open pipeline for Monday', 'What was open pipeline on Monday?', "Friday's open pipeline"])('%s asks which quarter', async (phrase) => {
+    const r = await ask(database, reg, 'u_analyst', phrase);
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('FY27-Q1 and FY27-Q2') });
+    expect(JSON.stringify(r)).not.toMatch(/monday|friday/i);
+  });
+
+  it('"for friday\'s call" names a meeting, not a period, so it answers as before', async () => {
+    const r = await ask(database, reg, 'u_analyst', "pipeline for friday's call");
+    expect(r.kind === 'answer' && r.narrative).toContain('$4,966,215');
+  });
+
   it('"in EMEA" keeps its own region message', async () => {
     const r = await ask(database, reg, 'u_analyst', 'open pipeline in EMEA');
     expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining("isn't a region here") });
