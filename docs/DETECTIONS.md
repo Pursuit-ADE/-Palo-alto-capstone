@@ -129,7 +129,7 @@ Run these by hand, for example once a day during the demo period.
 The same question from several people (a shared attack script, or a common question worth adding to the golden set):
 
 ```sql
-SELECT question_sha256, count(DISTINCT user_id) AS people, count(*) AS times, array_agg(DISTINCT outcome) AS outcomes
+SELECT question_sha256, count(DISTINCT user_id) AS people, count(DISTINCT request_id) AS times, array_agg(DISTINCT outcome) AS outcomes
 FROM query_audit
 WHERE question_sha256 IS NOT NULL AND at > now() - interval '7 days'
 GROUP BY question_sha256
@@ -150,7 +150,7 @@ HAVING count(*) >= 5
 ORDER BY flagged_pct DESC;
 ```
 
-Daily trend by outcome:
+Daily trend by outcome. This counts rows, not questions: a Claude attempt that failed before the fallback answered shows as an `error` here (its `source` is `question_attempt`). Add `AND source = 'question'` to count each question once:
 
 ```sql
 SELECT date_trunc('day', at) AS day, outcome, count(*) AS n
