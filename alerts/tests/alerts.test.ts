@@ -70,8 +70,8 @@ describe('rule catalog (L1)', () => {
   });
 
   it('treats only P1 as urgent, by the standard severity scale (PRD L5, evaluator #84)', () => {
-    expect(rules.get('high_severity_case')!.criticalSeverities).toEqual(['P1']);
-    expect(rules.get('cxo_engagement')!.criticalSeverities).toEqual([]);
+    // The whole catalog, so a new rule can't add a critical severity without failing here (#98 review).
+    for (const [id, rule] of rules) expect(rule.criticalSeverities).toEqual(id === 'high_severity_case' ? ['P1'] : []);
   });
 });
 
