@@ -676,3 +676,49 @@ describe('bug hunt, Oct 31: explanations', () => {
     expect(last!.reason).toMatch(/^clarify:[0-9a-f]{16}$/);
   });
 });
+
+// Review of the bug-hunt fixes (Oct 31): each case was reproduced by one reviewer and confirmed by a second.
+describe('bug hunt fixes, reviewed: no new regressions', () => {
+  it.each([
+    ['u_ts_east', 'why is my coverage lower for deals that are $1M or more?'],
+    ['u_analyst', 'why is east coverage lower than west for deals that are $500k and up?'],
+    ['u_analyst', 'Why is coverage lower when the deal is $100k or more?'],
+    ['u_mgr_melvin_marxen', "why is Darcel Schlecht's coverage lower than mine on deals that were $100,000 or larger?"],
+  ])('%s: "%s" keeps its deal-size condition and is asked back, not dropped', async (user, phrase) => {
+    expect((await ask(database, reg, user, phrase)).kind).toBe('clarify');
+  });
+
+  it.each([
+    'How is global coverage this quarter when you exclude east?',
+    'Why is coverage lower for the company when you exclude east?',
+    'How does coverage look across all regions when we leave out east?',
+    'How is coverage for all teams this quarter when you exclude Darcel Schlecht?',
+  ])('"%s" leaves something out, so the plain path asks back instead', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+
+  it.each(["Why is East's coverage 0.43x when the org is at 0.65x?", "Why is East's coverage 0.43x when we're at 0.65x?", "Why is east coverage 0.43x when global coverage is 0.65x?"])(
+    '"%s": the analyst\'s own whole scope is still the other figure',
+    async (phrase) => {
+      const e = explained(await ask(database, reg, 'u_analyst', phrase));
+      expect(row(e.other!).value).toBe(0.6544);
+    },
+  );
+
+  it.each([
+    ['u_analyst', 'Why is global coverage higher next quarter?'],
+    ['u_mgr_melvin_marxen', "why is my org's coverage lower next quarter"],
+  ])('%s: "%s" still compares this quarter with next', async (user, phrase) => {
+    const e = explained(await ask(database, reg, user, phrase));
+    expect([e.answer.filters.period?.label, e.other?.filters.period?.label]).toEqual(['FY27-Q1', 'FY27-Q2']);
+  });
+
+  it.each(['How is my coverage this quarter while the org reorganizes?', 'How is coverage calculated when a deal is $1M?'])('"%s" is a plain question', (phrase) => {
+    expect(isDiscrepancyQuestion(phrase, reg)).toBe(false);
+  });
+
+  it("a manager's own region compared with a rep still gets the direction checked", async () => {
+    const e = explained(await ask(database, reg, 'u_mgr_melvin_marxen', "why is Darcel Schlecht's coverage higher than central this quarter"));
+    expect(e.summary.startsWith('Coverage for Darcel Schlecht is lower than for')).toBe(true);
+  });
+});
