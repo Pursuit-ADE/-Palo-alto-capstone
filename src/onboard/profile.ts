@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { listCsvFiles, parseCsvFile } from './csv';
-import { PRODUCT_FIX } from '../db/seed';
+import { accountIdOf, DEMO_PERSON_IDS, hasIdCharacters, managerIdOf, PRODUCT_FIX, repIdOf } from '../db/seed';
 import { REQUIRED_CRM_FILES, type DatasetProfile } from './types';
 
 /** Reads a folder of CSVs. Does not load them into the database and does not create metrics. */
@@ -42,6 +42,42 @@ const REGION_NAMES = ['Central', 'East', 'West'];
 const STAGES = ['Prospecting', 'Engaging', 'Won', 'Lost'];
 const isNumber = (v: string) => v.trim() !== '' && Number.isFinite(Number(v));
 const isDate = (v: string) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
+
+/**
+ * The loader turns names into ids (accountIdOf, repIdOf, managerIdOf in src/db/seed.ts), and different names can make
+ * the same id: "Alpha Inc" and "Alpha-Inc" both become acc_alpha_inc. Literal-name uniqueness does not catch that, so
+ * the load would fail on a duplicate key after the folder had been confirmed. Reps, managers and the demo people share
+ * one users table, so their ids are checked together. Reports the names as they are written in the files.
+ */
+function checkGeneratedIds(accountNames: string[], agentNames: string[], managerNames: string[], add: (problem: string) => void) {
+  const distinct = (names: string[]) => [...new Set(names.filter((n) => n.trim() !== ''))];
+  const accounts = distinct(accountNames);
+  const reps = distinct(agentNames);
+  const managers = distinct(managerNames);
+  const noCharacters = (label: string, names: string[]) => {
+    for (const name of names.filter((n) => !hasIdCharacters(n))) add(`${label} "${name}" has no letters or digits, so it can't become an id.`);
+  };
+  noCharacters('accounts.csv account', accounts);
+  noCharacters('sales_teams.csv sales_agent', reps);
+  noCharacters('sales_teams.csv manager', managers);
+  for (const [id, who] of idClaims(accounts, reps, managers)) {
+    const names = [...who].join(' and ');
+    if (DEMO_PERSON_IDS.includes(id)) add(`${names} would take the id ${id}, which belongs to a demo person. Rename it.`);
+    else if (who.size > 1) add(`${names} ${who.size === 2 ? 'both' : 'all'} become the id ${id}. Rename one of them.`);
+  }
+}
+
+/** Which names want each id: the account ids, then the rep and manager ids, which share one users table. */
+function idClaims(accounts: string[], reps: string[], managers: string[]): Map<string, Set<string>> {
+  const claims = new Map<string, Set<string>>();
+  const claim = (kind: string, names: string[], idOf: (name: string) => string) => {
+    for (const name of names.filter(hasIdCharacters)) claims.set(idOf(name), (claims.get(idOf(name)) ?? new Set<string>()).add(`${kind} "${name}"`));
+  };
+  claim('account', accounts, accountIdOf);
+  claim('rep', reps, repIdOf);
+  claim('manager', managers, managerIdOf);
+  return claims;
+}
 
 /**
  * Checks the values the seed loader depends on, so a folder that passes here also loads. Reports at most
@@ -86,6 +122,7 @@ function checkValues(dir: string): string[] {
   const productNames = unique('products.csv product', products.map((p) => p.product ?? ''));
   const agents = unique('sales_teams.csv sales_agent', teams.map((t) => t.sales_agent ?? ''));
   unique('sales_pipeline.csv opportunity_id', deals.map((d) => d.opportunity_id ?? ''));
+  checkGeneratedIds(accounts.map((a) => a.account ?? ''), teams.map((t) => t.sales_agent ?? ''), teams.map((t) => t.manager ?? ''), add);
   // The two demo technical sellers support an East team and a West team.
   for (const region of ['East', 'West']) {
     if (!teams.some((t) => t.regional_office === region)) add(`sales_teams.csv needs at least one ${region} team for the demo technical sellers.`);

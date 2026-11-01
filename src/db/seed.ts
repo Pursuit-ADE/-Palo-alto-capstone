@@ -74,6 +74,17 @@ function slug(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
 }
 
+// The ids the loader makes from names, in one place so the onboarding profile (src/onboard/profile.ts) checks the
+// same ids the loader will write. Different names can slug to the same id ("Alpha Inc" and "Alpha-Inc"), which
+// would fail the load on a duplicate key after the folder had been confirmed (project review, Nov 1).
+export const accountIdOf = (name: string) => `acc_${slug(name)}`;
+export const repIdOf = (name: string) => `u_${slug(name)}`;
+export const managerIdOf = (name: string) => `u_mgr_${slug(name)}`;
+/** A name with no letters or digits has nothing to make an id from. */
+export const hasIdCharacters = (name: string) => slug(name) !== '';
+/** The people the loader adds itself (below). A rep's or manager's id must not equal one of these. */
+export const DEMO_PERSON_IDS = ['u_ts_east', 'u_ts_west', 'u_analyst'];
+
 function mulberry32(seedNum: number) {
   let a = seedNum >>> 0;
   return () => {
@@ -142,12 +153,12 @@ export function catalog(dataDir: string = resolveDataDir()): Catalog {
     hit = {
       products: parseCsv('products.csv', dataDir).map((p) => ({ id: p.product!, series: p.series! })),
       accounts: parseCsv('accounts.csv', dataDir).map((a) => ({
-        id: `acc_${slug(a.account!)}`,
+        id: accountIdOf(a.account!),
         name: a.account!,
         sector: SECTOR_FIX[a.sector!] ?? a.sector!,
       })),
-      owners: [...new Map(teams.map((t) => [t.sales_agent!, { id: `u_${slug(t.sales_agent!)}`, name: t.sales_agent!, managerId: `u_mgr_${slug(t.manager!)}`, managerName: t.manager! }])).values()],
-      managers: [...new Map(teams.map((t) => [t.manager!, { id: `u_mgr_${slug(t.manager!)}`, name: t.manager! }])).values()],
+      owners: [...new Map(teams.map((t) => [t.sales_agent!, { id: repIdOf(t.sales_agent!), name: t.sales_agent!, managerId: managerIdOf(t.manager!), managerName: t.manager! }])).values()],
+      managers: [...new Map(teams.map((t) => [t.manager!, { id: managerIdOf(t.manager!), name: t.manager! }])).values()],
     };
     catalogCache.set(dataDir, hit);
   }
@@ -183,7 +194,7 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
   const teams = parseCsv('sales_teams.csv', dataDir);
   const managerIds = new Map<string, { id: string; region: string }>();
   for (const t of teams) {
-    if (!managerIds.has(t.manager!)) managerIds.set(t.manager!, { id: `u_mgr_${slug(t.manager!)}`, region: t.regional_office!.toLowerCase() });
+    if (!managerIds.has(t.manager!)) managerIds.set(t.manager!, { id: managerIdOf(t.manager!), region: t.regional_office!.toLowerCase() });
   }
   const users: { id: string; displayName: string; role: string; regionId: string | null; managerId: string | null; source: string }[] = [];
   for (const [name, m] of managerIds) {
@@ -192,7 +203,7 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
   const agentIds = new Map<string, { id: string; region: string }>();
   for (const t of teams) {
     const region = t.regional_office!.toLowerCase();
-    const id = `u_${slug(t.sales_agent!)}`;
+    const id = repIdOf(t.sales_agent!);
     agentIds.set(t.sales_agent!, { id, region });
     users.push({ id, displayName: `${t.sales_agent} (Sales rep, ${t.regional_office})`, role: 'sales_rep', regionId: region, managerId: managerIds.get(t.manager!)!.id, source: 'maven' });
   }
@@ -208,7 +219,7 @@ export function buildSeed(seed?: string, options: { dataDir?: string } = {}) {
   const listPrice = new Map(products.map((p) => [p.id, Number(p.listPrice)]));
 
   const accounts = parseCsv('accounts.csv', dataDir).map((a) => ({
-    id: `acc_${slug(a.account!)}`,
+    id: accountIdOf(a.account!),
     snapshotId,
     name: a.account!,
     sector: SECTOR_FIX[a.sector!] ?? a.sector!,
