@@ -103,7 +103,7 @@ async function openPostgres(urls: { app: string; audit: string; auth: string; ow
   const app = pool({ connectionString: urls.app, max: 10, ...POOL, options: `-c statement_timeout=${STATEMENT_TIMEOUT_MS}` });
   const audit = pool({ connectionString: urls.audit, max: 4, ...POOL });
   const auth = pool({ connectionString: urls.auth, max: 4, ...POOL });
-  return {
+  const database: Database = {
     db: drizzlePg(app, { schema }) as unknown as Db,
     client: { query: async (text, params) => app.query(text, params as unknown[]) as never },
     auditDb: drizzlePg(audit, { schema }) as unknown as Db,
@@ -115,6 +115,17 @@ async function openPostgres(urls: { app: string; audit: string; auth: string; ow
       await auth.end();
     },
   };
+  // With the owner login, setupDatabase above has already run these checks. Without it, setup ran earlier in another
+  // process, so the server checks the choice itself before it takes a request, and lets go of its connections if not.
+  if (!urls.owner) {
+    try {
+      await verifyDataset(database.db, seed, options);
+    } catch (error) {
+      await database.close();
+      throw error;
+    }
+  }
+  return database;
 }
 
 /**
@@ -164,17 +175,35 @@ export class DatasetMismatch extends Error {
  * pass a folder explicitly are already choosing it in code.
  */
 export async function prepareDataset(db: Db, seed?: string, options: { dataDir?: string } = {}) {
+  const { empty, dataDir } = await checkDatasetChoice(db, seed, options);
+  if (empty) return loadSeed(db, seed, { dataDir });
+}
+
+/**
+ * The same checks as prepareDataset, for a server that starts without the owner login (the recommended deployment:
+ * setup loads the data, then the app runs on its read-only logins). Reads only, so it works on the read-only login,
+ * and never loads: an empty database is reported, not filled. Without this, a server pointed at another folder came
+ * up over this database, with labels, demo people and filter checks from the folder and results from the database
+ * (project review, Nov 1).
+ */
+export async function verifyDataset(db: Db, seed?: string, options: { dataDir?: string } = {}) {
+  const { empty } = await checkDatasetChoice(db, seed, options);
+  if (empty) throw new Error('This database holds no dataset yet. Run the setup step as the owner login first (npm run db:setup).');
+}
+
+/** Confirms a second dataset, then compares the folder this server was started for with what the database holds. Reads only. */
+async function checkDatasetChoice(db: Db, seed: string | undefined, options: { dataDir?: string }) {
   const envDir = process.env.DATASET_DIR;
   if (!options.dataDir && envDir && resolveDataDir(envDir) !== resolveDataDir(path.join('data', 'maven-crm'))) assertDatasetConfirmed(envDir);
   const dataDir = options.dataDir ?? envDir;
   const expected = `snap_${seed ?? defaultSeedForDir(dataDir)}`;
   const stored = await db.select({ id: schema.dataSnapshots.id }).from(schema.dataSnapshots);
-  if (stored.length === 0) return loadSeed(db, seed, { dataDir });
-  if (!stored.some((s) => s.id === expected)) {
+  if (stored.length > 0 && !stored.some((s) => s.id === expected)) {
     throw new DatasetMismatch(
       `This database already holds ${stored.map((s) => s.id).join(', ')}, but the app was started for ${expected} (${dataDir ?? 'data/maven-crm'}). Start with the matching DATASET_DIR, or use a fresh database for the other dataset.`,
     );
   }
+  return { empty: stored.length === 0, dataDir };
 }
 
 export async function loadSeed(db: Db, seed?: string, options: { dataDir?: string } = {}) {

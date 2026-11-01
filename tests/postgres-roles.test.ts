@@ -1,8 +1,9 @@
 // Runs only in Postgres mode (CI job "postgres-roles", or locally with docker compose and the three URLs set).
 // Proves the least-privilege setup (PRD S7): the app role can only read, the audit role can only append.
+import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
-import { openDatabase, type Database } from '@/db/client';
+import { DatasetMismatch, openDatabase, type Database } from '@/db/client';
 import { loadRegistry } from '@/registry/load';
 import { ask } from '@/semantic/answer';
 
@@ -103,5 +104,21 @@ describe.skipIf(!enabled)('Postgres least privilege', () => {
     await audit.query(`DELETE FROM session_guard WHERE user_id = 'u_guard'`);
     await denied(audit, 'SELECT * FROM opportunities');
     await denied(audit, "UPDATE accounts SET name = 'x'");
+  });
+});
+
+// Project review, Nov 1, finding 5: a normal start has no owner login, and used to skip the dataset checks that only
+// setup ran, so a server pointed at another folder came up over this database. Opened on the runtime logins alone.
+describe.skipIf(!enabled)('Postgres start without the owner login', () => {
+  it('refuses a dataset the database does not hold, and starts on the one it does', async () => {
+    const owner = process.env.MIGRATION_DATABASE_URL;
+    delete process.env.MIGRATION_DATABASE_URL;
+    try {
+      await expect(openDatabase(undefined, { dataDir: path.join(process.cwd(), 'data', 'northstar-crm') })).rejects.toBeInstanceOf(DatasetMismatch);
+      const matching = await openDatabase();
+      await matching.close();
+    } finally {
+      if (owner) process.env.MIGRATION_DATABASE_URL = owner;
+    }
   });
 });
