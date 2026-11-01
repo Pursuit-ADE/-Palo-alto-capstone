@@ -185,7 +185,50 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
       }
     }
   }
+  await refreshQueuedCases(db, rules, channels, now, opts);
   return created;
+}
+
+const UNCLAIMED = ['pending', 'queued_digest'];
+
+/**
+ * A queued case alert describes its case as it was when the alert was created, because the unique key keeps the first
+ * row. A case can escalate or close before the digest goes out, and the late-arrival window only looks back so far, so
+ * this reads each unclaimed case alert's case again, on every evaluation and every flush (project review, Nov 1).
+ * - The severity, title and text follow the case. The update keeps the status guard, so an alert a sender has claimed is
+ *   never overwritten, and a delivered alert is never touched.
+ * - A case that has newly become critical goes out at once to a subscriber whose P1 bypass is on, through quiet hours and
+ *   digests, as a new P1 case does. send() still claims it atomically and re-checks access.
+ * - A case that has since closed stays queued and its text says so: it is not dropped silently, and it is not promoted.
+ */
+async function refreshQueuedCases(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date, opts: EngineOptions) {
+  const caseRuleIds = [...rules.values()].filter((r) => r.event === 'support_case').map((r) => r.id);
+  if (caseRuleIds.length === 0) return;
+  const rows = await db
+    .select({ d: alertDeliveries, c: supportCases, accountName: accounts.name, s: alertSubscriptions })
+    .from(alertDeliveries)
+    .innerJoin(supportCases, eq(supportCases.id, alertDeliveries.eventId))
+    .innerJoin(accounts, eq(accounts.id, supportCases.accountId))
+    .leftJoin(alertSubscriptions, and(eq(alertSubscriptions.userId, alertDeliveries.userId), eq(alertSubscriptions.ruleId, alertDeliveries.ruleId)))
+    .where(and(inArray(alertDeliveries.status, UNCLAIMED), inArray(alertDeliveries.ruleId, caseRuleIds)));
+  const promote: string[] = [];
+  for (const { d, c, accountName, s } of rows) {
+    const rule = rules.get(d.ruleId);
+    if (rule?.event !== 'support_case') continue;
+    const closed = !(rule.conditions.statusIn as string[]).includes(c.status);
+    const values = { account: accountName, severity: c.severity, subject: c.subject, when: when(c.openedAt) };
+    const fresh = {
+      severity: c.severity,
+      title: render(rule.title, values),
+      explanation: `${render(rule.explain, values)} Rule: ${rule.id} v${d.ruleVersion}.${closed ? ' The case has since been closed.' : ''}`,
+    };
+    if (fresh.severity !== d.severity || fresh.title !== d.title || fresh.explanation !== d.explanation) {
+      await db.update(alertDeliveries).set(fresh).where(and(eq(alertDeliveries.id, d.id), inArray(alertDeliveries.status, UNCLAIMED)));
+    }
+    const escalated = c.severity !== d.severity && (rule.criticalSeverities as string[]).includes(c.severity);
+    if (escalated && !closed && s?.criticalBypass) promote.push(d.id);
+  }
+  await send(db, rules, channels, promote, now, undefined, opts);
 }
 
 /**
@@ -298,6 +341,8 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
  * every user who is not in quiet hours. Runs independently of the events, so a failed alert is never stranded.
  */
 export async function flushDigests(db: Db, rules: Map<string, AlertRule>, channels: Channels, now: Date, opts: EngineOptions = {}) {
+  // First, so a digest describes its cases as they are now and a newly critical case is not held for the slot.
+  await refreshQueuedCases(db, rules, channels, now, opts);
   const due = await db
     .select({ d: alertDeliveries, s: alertSubscriptions })
     .from(alertDeliveries)
