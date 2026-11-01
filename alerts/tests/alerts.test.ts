@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appUsers, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
-import { createChannels, EMAIL_WEBHOOK_WARNING, emailHtml, emailSubject, emailText, isEmailWebhook, parseEmails, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
+import { createChannels, EMAIL_WEBHOOK_WARNING, SLACK_WEBHOOK_WARNING, emailHtml, emailSubject, emailText, isEmailWebhook, parseEmails, parseWebhooks, slackText, type Channels } from '@/alerts/channels';
 import { flushDigests, inbox, inQuietHours, MAX_ATTEMPTS, runAlerts, STALE_CLAIM_MS } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
@@ -582,6 +582,16 @@ describe('Email channel (L5)', () => {
     expect(warned).toEqual([EMAIL_WEBHOOK_WARNING]);
     warned.length = 0;
     createChannels({ emails: { u_ts_east: 'jordan@example.test' }, emailWebhook: 'http://127.0.0.1:8025/send', env: { NODE_ENV: 'development' }, warn });
+    expect(warned).toEqual([]);
+  });
+
+  it('warns at start when a Slack link was dropped as invalid, so a typo is not silently "no Slack" (#104 review)', () => {
+    const warned: string[] = [];
+    const warn = (m: string) => { warned.push(m); };
+    createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x', u_ts_west: 'https://hooks.slack.com/servics/typo' }, env: {}, warn });
+    expect(warned).toEqual([SLACK_WEBHOOK_WARNING]);
+    warned.length = 0;
+    createChannels({ slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' }, env: {}, warn });
     expect(warned).toEqual([]);
   });
 

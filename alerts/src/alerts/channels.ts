@@ -103,6 +103,8 @@ export function createChannels(opts: {
   if (!opts.sendMail && Object.keys(emails).length > 0 && !isEmailWebhook(emailWebhook, env)) {
     (opts.warn ?? console.warn)(EMAIL_WEBHOOK_WARNING);
   }
+  // A typo in a Slack link would otherwise silently mean "no Slack" for that person (#104 review).
+  if (Object.keys(webhooks).length < rawEntryCount(opts.slackWebhooks ?? env.SLACK_USER_WEBHOOKS)) (opts.warn ?? console.warn)(SLACK_WEBHOOK_WARNING);
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
     if (!isEmailWebhook(emailWebhook, env)) return false;
@@ -166,6 +168,31 @@ export function isSlackWebhook(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+export const SLACK_WEBHOOK_WARNING =
+  'SLACK_USER_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those people get no Slack messages until they are fixed.';
+
+/** How many entries a raw per-user map has, before any are dropped as invalid. */
+function rawEntryCount(raw: string | Record<string, unknown> | undefined): number {
+  if (!raw) return 0;
+  try {
+    const parsed: unknown = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? Object.keys(parsed).length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Which of their own destinations a person has: a valid Slack link, and an address email can actually reach. Read
+ * from the same settings as delivery, so the preferences page refuses a channel that would only ever fail (#104 review).
+ */
+export function destinationsFor(userId: string, env: Record<string, string | undefined> = process.env): { slack: boolean; email: boolean } {
+  return {
+    slack: userId in parseWebhooks(env.SLACK_USER_WEBHOOKS),
+    email: userId in parseEmails(env.EMAIL_USER_ADDRESSES) && isEmailWebhook(env.EMAIL_WEBHOOK_URL, env),
+  };
 }
 
 /** Keeps only valid per-user webhooks; anything malformed is dropped, so that user simply gets no Slack messages. */

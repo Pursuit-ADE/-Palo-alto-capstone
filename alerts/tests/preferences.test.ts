@@ -4,6 +4,7 @@ import { openDatabase, type Database } from '@/db/client';
 import { alertSubscriptions } from '@/db/schema';
 import { PreferenceError, savePreference } from '@/alerts/preferences';
 import { loadRules } from '@/alerts/rules';
+import { destinationsFor } from '@/alerts/channels';
 
 const rules = loadRules();
 let database: Database;
@@ -34,8 +35,34 @@ describe('preferences (L3)', () => {
   });
 
   it('lets a user pick email as the channel', async () => {
-    await savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'email' });
+    await savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'email' }, () => ({ slack: false, email: true }));
     expect(await subOf('u_ts_east', 'high_severity_case')).toMatchObject({ channel: 'email' });
+  });
+
+  it('refuses Slack, email or both when that person has no destination for it, and always allows the inbox (#104 review)', async () => {
+    const none = () => ({ slack: false, email: false });
+    const slackOnly = () => ({ slack: true, email: false });
+    for (const channel of ['slack', 'email', 'slack_email']) {
+      await expect(savePreference(database.db, rules, 'u_ts_east', { ...base, channel }, none)).rejects.toBeInstanceOf(PreferenceError);
+    }
+    await expect(savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'slack_email' }, slackOnly)).rejects.toThrow('Email isn’t set up');
+    expect(await subOf('u_ts_east', 'high_severity_case')).toBeUndefined();
+    await savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'slack' }, slackOnly);
+    await savePreference(database.db, rules, 'u_ts_east', { ...base, channel: 'inbox' }, none);
+    expect(await subOf('u_ts_east', 'high_severity_case')).toMatchObject({ channel: 'inbox' });
+  });
+
+  it('reads destinations from the same settings as delivery', () => {
+    const env = {
+      SLACK_USER_WEBHOOKS: '{"u_ts_east":"https://hooks.slack.com/services/T0/B0/x","u_ts_west":"https://attacker.example/hook"}',
+      EMAIL_USER_ADDRESSES: '{"u_ts_east":"jordan@example.test"}',
+      EMAIL_WEBHOOK_URL: 'https://mail.example/send',
+      EMAIL_WEBHOOK_HOSTS: 'mail.example',
+    };
+    expect(destinationsFor('u_ts_east', env)).toEqual({ slack: true, email: true });
+    // A link that isn't hooks.slack.com doesn't count, and an address without an allowed mail service can't be reached.
+    expect(destinationsFor('u_ts_west', env)).toEqual({ slack: false, email: false });
+    expect(destinationsFor('u_ts_east', { ...env, EMAIL_WEBHOOK_HOSTS: '' })).toEqual({ slack: true, email: false });
   });
 
   it('refuses invalid values and unknown fields', async () => {
