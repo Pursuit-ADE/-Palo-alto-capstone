@@ -96,9 +96,10 @@ function joinSpacedDots(text: string): string {
 
 /**
  * Characters of a question that are checked. Questions over 300 characters are refused (MAX_QUESTION_LENGTH), so
- * every accepted question is checked whole. 3,000 matches the longest paste the question form accepts, so a long
- * override paste is still flagged and counts towards the lock (bug hunt, Oct 31); at 3,000 dotted characters the link
- * pattern takes about 0.1 s, against 1.2 s at 10,000.
+ * every accepted question is checked whole. 3,000 is ten times that, the longest question the server action accepts
+ * once #102 merges (bug hunt, Oct 31), so a long override paste is still flagged and counts towards the lock.
+ * The link pattern backtracks on long dotted runs: a few tenths of a second at 3,000 characters, seconds beyond
+ * (timings vary by machine; review of #99, Nov 1).
  */
 export const MAX_SCAN = 3000;
 
