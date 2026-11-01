@@ -171,6 +171,28 @@ function extraFilters(intent: Intent, alias: string, table: Source['table'], p: 
   return parts.length ? ` AND ${parts.join(' AND ')}` : '';
 }
 
+/**
+ * Who carries a quota in this scope, and whether each rep has one for the requested period: a row per region and rep
+ * with has_quota. The same snapshot, regions, owner limits, people and teams as the coverage query, so it looks at the
+ * reps the figure divides over. Only reps who carry a quota in some period are listed: in the sample, some reps have no
+ * quota in any period, and that is how the data says who carries one, not a gap. A rep who carries one but has none for
+ * this period leaves the denominator smaller than the team's, so the ratio is overstated (project review, Nov 1).
+ * Null for anything that is not a ratio over quota with a period.
+ */
+export function quotaCohortQuery(intent: Intent, registry: Registry, principal: Principal, snapshotId: string): CompiledQuery | null {
+  const metric = registry.metrics.get(intent.metric);
+  const period = intent.filters.period && findPeriod(intent.filters.period);
+  if (metric?.kind !== 'ratio' || metric.denominator.table !== 'quotas' || !period) return null;
+  const regions = effectiveRegions(principal, intent.filters.regions);
+  const p = new Params();
+  const people = limitPeople(resolvePeople(intent.filters.people, principal), resolveTeams(intent.filters.teams, principal));
+  const where = whereFor(metric.denominator, 'd', p, snapshotId, regions, principal) + extraFilters(intent, 'd', metric.denominator.table, p, people);
+  const column = metric.denominator.periodColumn;
+  const inPeriod = column === 'period' ? `d.period = ${p.add(period.period)}` : `d.${column} BETWEEN ${p.add(period.start)}::date AND ${p.add(period.end)}::date`;
+  const text = `SELECT d.region_id AS region, d.user_id AS rep, BOOL_OR(${inPeriod}) AS has_quota FROM ${metric.denominator.table} d WHERE ${where} GROUP BY d.region_id, d.user_id`;
+  return { text, params: p.values, regions };
+}
+
 export function compile(intent: Intent, registry: Registry, principal: Principal, snapshotId: string): CompiledQuery {
   const metric = registry.metrics.get(intent.metric)!;
   const regions = effectiveRegions(principal, intent.filters.regions);
