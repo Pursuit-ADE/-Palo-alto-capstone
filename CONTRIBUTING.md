@@ -25,8 +25,8 @@ npm run build
 
 After any change under `registry/`, also run `npm run docs:dictionary` and commit the result.
 
-CI runs the same checks plus the Postgres role tests, a fresh install, a secret scan and CodeQL. A red check
-blocks the merge.
+CI runs the same checks plus the Postgres role tests, a fresh install, a secret scan and CodeQL. Never merge
+on a red check: GitHub doesn't stop you on this plan, so the [merge rule](#merge-rule) does.
 
 ## Pull requests
 
@@ -36,6 +36,38 @@ blocks the merge.
   (governed definitions and security-sensitive code) need a code owner's review.
 - Answer every review comment, either with a fix (name the commit) or with the reason you are leaving it.
 - Merge with a merge commit, so each week's history keeps its pull request numbers.
+
+## Merge rule
+
+GitHub can't enforce review or required checks on `main` yet: it refuses branch protection for a private repository
+on the free plan ([SECURITY.md](SECURITY.md) item 17, evaluator finding #78). Until that changes, this rule is the
+control, and whoever presses merge answers for it:
+
+1. **Checks.** Every check that ran on the pull request's latest commit is green. A workflow that didn't run
+   because the change is outside its paths (`alerts-ci` without an `alerts/` change) is fine.
+2. **Code owner.** Every path has an owner (#88), so every pull request needs an approving review from a code owner
+   in [.github/CODEOWNERS](.github/CODEOWNERS) who is not its author. A pull request by one owner needs the
+   other. GitHub doesn't request owners on this plan, so ask by hand:
+   `gh pr edit <number> --add-reviewer brovaset,MITRAKER`.
+3. **No shortcuts.** Never push to `main`, force-push it, or merge your own pull request without that review. Check
+   it after the fact: `git log --first-parent --no-merges <last tag>..origin/main` lists any commit that reached
+   `main` without a merge commit, and should print nothing. (On Nov 1 it printed nothing for `v0.5.0..origin/main`,
+   which holds 31 pull request merges.)
+
+### When GitHub allows protection
+
+Whoever has admin on Pursuit-ADE turns this on once the organization is upgraded or the repository is public, and
+only after Actions billing is healthy, because a required check that can't run blocks every merge. In Settings,
+Branches (or a ruleset) for `main`:
+
+- Require a pull request with 1 approval and **Require review from Code Owners**.
+- Require status checks that report on every pull request: `test` and `fresh-install` from `ci`. Add `stack`
+  (docker) and `analyze` (codeql) only if those workflows run on every pull request, which #100 changes for
+  documentation-only ones. Don't require `alerts-ci`: it runs only when `alerts/` changes, so a pull request
+  without those changes would wait forever.
+- Block force pushes and deletions.
+
+Then update `SECURITY.md` item 17 and delete the by-hand request from the rule above.
 
 ## Commits
 

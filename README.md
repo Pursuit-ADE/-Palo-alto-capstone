@@ -91,7 +91,7 @@ Registry changes go through pull requests (reviewed, version-controlled); there 
 | Questions sent by POST (Server Action), never in the URL | `app/actions.ts`, `app/ask-panel.tsx` | |
 | Security headers and a per-request nonce Content Security Policy | `next.config.ts`, `proxy.ts` | |
 | Test identities off unless explicitly enabled | `src/server/identity.ts` | `tests/audit-and-limits.test.ts` |
-| Reviewed changes to metrics, rules, query code and CI | `.github/CODEOWNERS` (enable "Require review from Code Owners" on main) | |
+| Reviewed changes to metrics, rules, query code and CI | `.github/CODEOWNERS` and the merge rule in `CONTRIBUTING.md`; GitHub can't enforce either on a private repo on the free plan (`SECURITY.md` item 17) | |
 | Dependency audit, secret scan (gitleaks, full history), CodeQL | `.github/workflows/` | every push |
 
 ## Not done yet (by roadmap week)

@@ -1,5 +1,6 @@
 # Changes to governed definitions need review from the metric and alert stewards (T-10).
-# Pair with branch protection on main ("Require review from Code Owners").
+# With branch protection on main ("Require review from Code Owners") GitHub would request and require these owners.
+# It can't on the current plan (SECURITY.md item 17, #78), so request them by hand: CONTRIBUTING.md, "Merge rule".
 # Catch-all first (evaluator G-10, #79): every path has an owner. GitHub uses the LAST pattern that matches a file,
 # so broad lines go above narrow ones, and a narrower line further down can name a different owner.
 *                     @brovaset @MITRAKER
