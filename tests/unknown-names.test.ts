@@ -45,6 +45,24 @@ describe('an unknown possessive name is asked about (PRD A2, bug hunt Oct 31)', 
   });
 });
 
+describe('a known first name asks for the full name, not "I don\'t know that name" (review, Oct 31)', () => {
+  it.each([
+    ['u_darcel_schlecht', "Darcel's open pipeline"],
+    [MELVIN, "Melvin's team's open pipeline"],
+    [MELVIN, "What is Niesha's open pipeline?"],
+  ])('%s: %s', async (user, phrase) => {
+    const r = await ask(database, reg, user, phrase);
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('full name') });
+    expect(r.kind === 'clarify' && r.question).not.toContain("I don't know");
+    expect(JSON.stringify(r)).not.toMatch(/darcel|melvin|niesha/i);
+  });
+
+  it("a month's possessive gets the period question, like \"in October\"", async () => {
+    const r = await ask(database, reg, 'u_analyst', "October's open pipeline");
+    expect(r).toMatchObject({ kind: 'clarify', question: expect.stringContaining('FY27-Q1 and FY27-Q2') });
+  });
+});
+
 describe('everyday possessives are not names (review, Oct 31)', () => {
   it.each([
     "What is Palo Alto's open pipeline?",

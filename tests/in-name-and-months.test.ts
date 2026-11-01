@@ -43,6 +43,9 @@ describe('names after "in" that are in the data keep working', () => {
     ['open pipeline in Prospecting', '$1,073,986'],
     ['open pipeline in the Retail sector', '$274,227'],
     ['May I see the open pipeline?', '$4,966,215'],
+    // A currency is not a name (review, Oct 31).
+    ['open pipeline in USD', '$4,966,215'],
+    ['open pipeline in US dollars', '$4,966,215'],
   ])('%s', async (phrase, figure) => {
     const r = await ask(database, reg, 'u_analyst', phrase);
     expect(r.kind === 'answer' && r.narrative).toContain(figure);

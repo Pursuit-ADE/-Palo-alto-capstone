@@ -31,8 +31,30 @@ const ALL_STAGES = / (all stages|every stage|any stage|all open stages|both stag
 const NAMED = /\b(?:for|at|from|with|on|in)\s+([A-Z][A-Za-z0-9&'.-]*(?:\s+(?:[A-Z][A-Za-z0-9&'.-]*|\d[\w.&'-]*))*)/g;
 const KNOWN_WORDS = new Set(['central', 'east', 'west', 'this', 'next', 'last', 'the', 'our', 'my', 'all', 'every', 'each', 'fiscal', 'q1', 'q2', 'q3', 'q4', 'fy27', 'fy2027', 'prospecting', 'engaging', 'won', 'lost']);
 
-/** Words after "for" or "in" that are a period or region, asked about elsewhere ("in October", "in EMEA"). */
-const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS]);
+/**
+ * Words that are a period, region, weekday or currency, not a name: "in October", "in EMEA", "Monday's", "in USD".
+ * Months and regions get their own question elsewhere; the rest are ignored, as before (review, Oct 31).
+ */
+const WEEKDAYS = 'monday tuesday wednesday thursday friday saturday sunday';
+const NOT_A_NAME_HERE = new Set([...MONTH_NAMES.split('|'), 'may', ...UNKNOWN_REGIONS, ...WEEKDAYS.split(' '), 'usd', 'us', 'dollar', 'dollars']);
+
+/**
+ * A first name of a rep or manager in the data ("Darcel's", "for Melvin") is not unknown, just not enough to pick one
+ * person. A fixed sentence that names no one asks for the full name (review, Oct 31: "I don't know that name" was
+ * untrue for a demo persona's own first name).
+ */
+const FULL_NAME = "Use the person's full name, as it is in the data, so I don't answer for everything. For a manager's team, say the manager's full name and \"team\".";
+// A cache: the catalog is fixed for the process, so its first names are read once.
+let firstNames: Set<string> | undefined;
+function isFirstName(word: string): boolean {
+  firstNames ??= new Set([...catalog().owners, ...catalog().managers].map((p) => words(p.name).split(' ')[0]!));
+  return firstNames.has(word);
+}
+
+/** The question for a name after "for" or "in" that isn't in the data: a lone first name gets FULL_NAME. */
+function nameQuestion(parts: string[]): string {
+  return parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, '')) ? FULL_NAME : UNKNOWN_NAME;
+}
 
 const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
 
@@ -132,7 +154,7 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
     });
     const named = covered.some((c) => sameName(c, raw));
     // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
-    if (!known && !named) return { filters: {}, clarify: UNKNOWN_NAME };
+    if (!known && !named) return { filters: {}, clarify: nameQuestion(parts) };
   }
   if (/ (for|in|of|from|on|at|by) (the |a |an |our |my )?(product|sku)s? /.test(text) && products.length === 0) {
     return { filters: {}, clarify: "I don't know that product, so I won't answer for everything. I can filter by a product that is in the data." };
@@ -276,14 +298,16 @@ const NOT_A_NAME = new Set(
  * scope answered (bug hunt, Oct 31; PRD A2). The explanation path has its own check, with "marketing's" and other
  * outside figures allowed (explain.ts).
  */
-function unknownPossessive(phrase: string, filters: Omit<SelectorFilters, 'amount'>): boolean {
+/** The question to ask about a possessive that isn't a resolved name, or undefined when every possessive is known. */
+function unknownPossessive(phrase: string, filters: Omit<SelectorFilters, 'amount'>): string | undefined {
   const names = [...(filters.products ?? []), ...(filters.accounts ?? []), ...(filters.sectors ?? []), ...(filters.people ?? []), ...(filters.teams ?? [])];
   const resolved = new Set(names.flatMap((n) => words(n).split(' ')));
   for (const m of phrase.matchAll(POSSESSIVE)) {
     const word = m[1]!.toLowerCase();
-    if (!NOT_A_NAME.has(word) && !KNOWN_WORDS.has(word) && !resolved.has(word)) return true;
+    if (NOT_A_NAME.has(word) || KNOWN_WORDS.has(word) || NOT_A_NAME_HERE.has(word) || resolved.has(word)) continue;
+    return isFirstName(word) ? FULL_NAME : UNKNOWN_NAME;
   }
-  return false;
+  return undefined;
 }
 
 /**
@@ -303,7 +327,8 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
     teams: read.filters.teams ?? checkedTeams(intent.filters.teams),
   };
   // A name the model resolved ("my rep Darcel's" as Darcel Schlecht) is known too (review, Oct 31).
-  if (unknownPossessive(phrase, named)) return { kind: 'clarify', question: UNKNOWN_NAME };
+  const unknown = unknownPossessive(phrase, named);
+  if (unknown) return { kind: 'clarify', question: unknown };
   const filters: Intent['filters'] = {};
   if (intent.filters.regions?.length) filters.regions = intent.filters.regions;
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
