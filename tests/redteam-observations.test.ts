@@ -46,6 +46,10 @@ it('known outside-team and unknown person names have different public responses'
   expect(unknown.kind).toBe('refused');
   if (known.kind === 'refused' && unknown.kind === 'refused') {
     expect(known.message).toContain('do not have access');
-    expect(unknown.message).toContain('Unknown person');
+    // A fixed sentence that never repeats the name (evaluator B-03; bug hunt, Oct 31). The two replies still differ,
+    // which is the residual behaviour this probe records.
+    expect(unknown.message).toBe("That request names a person that isn't in the data.");
+    expect(unknown.message).not.toContain('Synthetic Missing Person');
+    expect(known.message).not.toBe(unknown.message);
   }
 });
