@@ -239,6 +239,9 @@ function checkedTeams(names: string[] | undefined): string[] | undefined {
   return [...new Set(out)];
 }
 
+/** The asker's whole team or reps, which replaces a rep or team named earlier in the conversation. */
+const WHOLE_TEAM = / (whole|entire|my|our) (team|reps)| all (of )?(my |our |the )?reps /;
+
 /** Any word with 's, in any case and with a straight or curly apostrophe ("Jordan's", "JORDAN'S", "Priya’s"). */
 // Capitalised words only: everyday nouns in lower case ("the owner's", "yesterday's") are not names, and no word list
 // can hold them all (review, Oct 31). A lower-case name ("jordan's") is not caught here.
@@ -288,6 +291,8 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   if (intent.filters.stages?.length) filters.stages = intent.filters.stages;
   if (intent.filters.period) filters.period = intent.filters.period;
   const source = inherited?.filters;
+  // "and the whole team?" after a question about one rep is about the team, not that rep again (bug hunt, Oct 31).
+  const wholeTeam = WHOLE_TEAM.test(clean(phrase));
   const amount = read.filters.amount ?? modelAmount ?? source?.amount;
   if (amount) filters.amount = amount;
   const products = read.filters.products ?? checkedProducts(intent.filters.products) ?? source?.products;
@@ -296,21 +301,23 @@ export function assignSelectors(intent: Intent, phrase: string, inherited?: Inte
   if (accounts?.length) filters.accounts = accounts;
   const sectors = read.filters.sectors ?? checkedSectors(intent.filters.sectors, phrase) ?? source?.sectors;
   if (sectors?.length) filters.sectors = sectors;
-  const people = read.filters.people ?? checkedPeople(intent.filters.people) ?? source?.people;
+  const people = read.filters.people ?? checkedPeople(intent.filters.people) ?? (wholeTeam ? undefined : source?.people);
   if (people?.length) filters.people = people;
-  const teams = read.filters.teams ?? checkedTeams(intent.filters.teams) ?? source?.teams;
+  const teams = read.filters.teams ?? checkedTeams(intent.filters.teams) ?? (wholeTeam ? undefined : source?.teams);
   if (teams?.length) filters.teams = teams;
   return { metric: intent.metric, filters, groupBy: intent.groupBy };
 }
 
 /** Whether the question changes something a follow-up can change: region, period, stage, breakdown or a ranking. */
-function hasModifier(text: string, registry: Registry): boolean {
+function hasModifier(text: string, registry: Registry, phrase: string): boolean {
   if (/ (central|east|west) /.test(text) || ALL_REGIONS_PHRASE.test(text) || NO_BREAKDOWN.test(text) || ALL_STAGES.test(text)) return true;
   if (/ (q[1-9]|fy ?-?\d+)/.test(text) || / (this|next|last|previous) quarter /.test(text)) return true;
   if (Object.keys(registry.glossary.dimensionPhrases).some((p) => text.includes(` ${p} `))) return true;
   // "Who has the most?" after an answer ranks that answer by its owners (bug hunt, Oct 31). A superlative is needed,
   // so "who are you?" doesn't become a breakdown.
   if (SUPERLATIVE.test(text) && rankedBy(text)) return true;
+  // "for Darcel Schlecht", "in the retail sector": a filter alone changes the previous question (bug hunt, Oct 31).
+  if (Object.values(readSelectors(phrase).filters).some((v) => v !== undefined)) return true;
   return findStages(text).length > 0;
 }
 
@@ -597,7 +604,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   const followUpCue = FOLLOW_UP.test(text);
   let continued = false; // this turn names no metric and only changes a modifier
   if (matches.length === 0) {
-    if (prior && (hasModifier(text, registry) || followUpCue)) {
+    if (prior && (hasModifier(text, registry, phrase) || followUpCue)) {
       matches = [prior.metric];
       continued = true;
     }
