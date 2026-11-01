@@ -80,7 +80,7 @@ function systemPrompt(registry: Registry, asOfDate: string): string {
 }
 
 /** Claude as the intent model. Used only when INTENT_MODEL=claude; needs Anthropic credentials. */
-// A question should fail fast to the deterministic fallback rather than hang: 5 s, no retry (see also the
+// A question should fail fast to the deterministic fallback rather than hang: one timeout, no retry (see also the
 // circuit breaker in src/server/ask.ts).
 // How long one question waits for Claude before the deterministic model answers. Measured Oct 17-18: median about
 // 2.2 s, slowest about 5 s, so 8 s by default; CLAUDE_TIMEOUT_MS (1-60 s) overrides it.
@@ -96,7 +96,11 @@ export function claudeModel(client: Anthropic = new Anthropic({ timeout: CLAUDE_
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
         output_config: { effort: 'low', format: betaZodOutputFormat(ModelOutput) },
-        system: systemPrompt(registry, asOfDate),
+        // The system prompt depends only on the registry and the snapshot date, so it is the same on every question
+        // and is cached: about 1,000 to 1,300 tokens, over Opus 5.5's 512-token minimum. Cache reads cost 0.05x input
+        // tokens on Opus 5.5 ($0.20 against $4 per million; most models are 0.1x). Source: Anthropic's prompt-caching
+        // and pricing docs (review of #99, Nov 1).
+        system: [{ type: 'text', text: systemPrompt(registry, asOfDate), cache_control: { type: 'ephemeral' } }],
         messages: [
           {
             role: 'user',

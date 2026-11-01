@@ -34,7 +34,7 @@ function tagged(model: IntentModel): IntentModel {
 
 /**
  * A circuit breaker for the AI model (audit AI2). After 3 provider failures within a minute, questions skip the
- * model for 5 minutes and go straight to the deterministic model, so a hung provider costs one 5-second timeout
+ * model for 5 minutes and go straight to the deterministic model, so a hung provider costs one timeout (CLAUDE_TIMEOUT_MS)
  * at most, not one per question. Per process.
  */
 export class ModelBreaker {

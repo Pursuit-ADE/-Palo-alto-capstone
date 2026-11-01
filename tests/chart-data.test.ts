@@ -219,4 +219,14 @@ describe('shared files', () => {
       expect(readFileSync(`alerts/app/${f}`, 'utf8'), f).toBe(readFileSync(`app/${f}`, 'utf8'));
     }
   });
+
+  // Optimization review, Oct 31: these security rules were copied into alerts with nothing checking the copies, so a
+  // fix to one app's password, HTTPS, config or identity rule could miss the other.
+  it('both apps carry byte-identical copies of the shared server rules and the synthetic-data badge', () => {
+    const server = ['require-user.ts', 'identity.ts', 'passwords.ts', 'client-address.ts', 'https.ts', 'config.ts'];
+    for (const f of server) {
+      expect(readFileSync(`alerts/src/server/${f}`, 'utf8'), f).toBe(readFileSync(`src/server/${f}`, 'utf8'));
+    }
+    expect(readFileSync('alerts/app/synthetic-badge.tsx', 'utf8')).toBe(readFileSync('app/synthetic-badge.tsx', 'utf8'));
+  });
 });
