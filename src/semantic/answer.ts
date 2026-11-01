@@ -99,10 +99,15 @@ export async function recordRefusal(database: Database, userId: string, question
 /** Who asked, copied onto linked rows so each row of a request names the same account and session. */
 const actorOf = (f: AuditFields) => ({ username: f.username ?? null, sessionId: f.sessionId ?? null, questionSha256: f.questionSha256 ?? null });
 
-/** A failed model attempt that askWithFallback retries leaves its flags to the retry's row (see AskOptions.fallbackFollows). */
-function failedFields(fields: AuditFields, e: unknown, request: Pick<AskOptions, 'fallbackFollows'>): AuditFields {
+/**
+ * A failed model attempt that askWithFallback retries is not the question: the retry's row is. So it leaves its flags to
+ * that row and is logged as a `question_attempt`, linked by request_id. The trends views, their detections and the
+ * flag counts read `source = 'question'`, so one submission counts once there (QA cycle 6, Oct 31: it counted twice,
+ * once as an error). D5 still sees the attempt, because it filters on outcome and model.
+ */
+function retriedAttempt(e: unknown, request: Pick<AskOptions, 'fallbackFollows'>): AuditFields {
   const retried = request.fallbackFollows && e instanceof Error && e.name === 'ProviderError';
-  return retried ? { ...fields, flags: [] } : fields;
+  return retried ? { flags: [], source: 'question_attempt' } : {};
 }
 
 async function audited<T extends Reply>(
@@ -130,7 +135,7 @@ async function audited<T extends Reply>(
   try {
     result = await body(fields, principal, linked);
   } catch (e) {
-    await audit(database, { ...failedFields(fields, e, request), id: auditId, userId, source, requestId, ...outcomeOf(e) });
+    await audit(database, { ...fields, id: auditId, userId, source, requestId, ...outcomeOf(e), ...retriedAttempt(e, request) });
     throw e;
   }
   const outcome = result.kind === 'answer' ? 'answered' : result.kind;
@@ -165,8 +170,9 @@ export interface AskOptions {
   /** Set by askWithFallback, so a failed model attempt and its fallback are one request in the audit log. */
   requestId?: string;
   /**
-   * Set by askWithFallback on a model attempt it retries if the provider fails. That attempt's error row leaves the
-   * flags to the retry's row, so a flagged question is counted and notified once (D3; bug hunt, Oct 31).
+   * Set by askWithFallback on a model attempt it retries if the provider fails. That attempt's error row is a
+   * `question_attempt` and leaves the flags to the retry's row, so the question is counted and notified once (D3, the
+   * trends views; bug hunt and QA cycle 6, Oct 31).
    */
   fallbackFollows?: boolean;
 }
