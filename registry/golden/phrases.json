@@ -632,6 +632,32 @@
       }
     },
     {
+      "phrase": "open pipeline by rep",
+      "expect": {
+        "metric": "open_pipeline",
+        "filters": {},
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "what's the open deal count per seller",
+      "expect": {
+        "metric": "open_opportunity_count",
+        "filters": {},
+        "groupBy": [
+          "owner"
+        ]
+      }
+    },
+    {
+      "phrase": "pipeline coverage by rep this quarter",
+      "expect": {
+        "clarify": true
+      }
+    },
+    {
       "phrase": "Who has the most open pipeline?",
       "expect": {
         "metric": "open_pipeline",

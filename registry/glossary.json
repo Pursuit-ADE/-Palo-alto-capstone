@@ -47,7 +47,14 @@
     "by stage": "stage",
     "per stage": "stage",
     "by owner": "owner",
-    "per owner": "owner"
+    "per owner": "owner",
+    "by rep": "owner",
+    "per rep": "owner",
+    "each rep": "owner",
+    "by sales rep": "owner",
+    "per sales rep": "owner",
+    "by seller": "owner",
+    "per seller": "owner"
   },
   "ambiguousTerms": {
     "weighted": "Do you mean total coverage (open pipeline / quota)? Weighted coverage is not defined in the metric registry yet."
