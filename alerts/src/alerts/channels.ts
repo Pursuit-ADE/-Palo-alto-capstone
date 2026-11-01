@@ -1,6 +1,6 @@
 // Delivery channels (L5). "inbox" is the in-app dev inbox: the delivery row itself is the message.
 // "slack" posts to a webhook that belongs to that one user (a DM or private channel). "email" posts
-// to a webhook with that user's own address as the only recipient. There is no shared fallback:
+// to a webhook with that user's own address as the only recipient. "slack_email" sends to both. There is no shared fallback:
 // a user without their own Slack webhook or email address gets nothing on that channel, so an
 // alert can never land where someone else can read it.
 import type { alertDeliveries } from '../db/schema';
@@ -114,32 +114,40 @@ export function createChannels(opts: {
       return false;
     }
   });
+  const toSlack = async (userId: string, items: Delivery[], isDigest: boolean) => {
+    const url = webhooks[userId];
+    if (!url) return false;
+    try {
+      const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  };
+  const toEmail = async (userId: string, items: Delivery[], isDigest: boolean) => {
+    const to = emails[userId];
+    if (!to) return false;
+    try {
+      return await sendMail({
+        to,
+        subject: emailSubject(items, isDigest),
+        text: emailText(items, isDigest),
+        html: emailHtml(items, isDigest),
+      }, { signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
+    } catch {
+      return false;
+    }
+  };
   return {
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
-      if (channel === 'slack') {
-        const url = webhooks[userId];
-        if (!url) return false;
-        try {
-          const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: slackText(items, isDigest), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
-          return res.ok;
-        } catch {
-          return false;
-        }
-      }
-      if (channel === 'email') {
-        const to = emails[userId];
-        if (!to) return false;
-        try {
-          return await sendMail({
-            to,
-            subject: emailSubject(items, isDigest),
-            text: emailText(items, isDigest),
-            html: emailHtml(items, isDigest),
-          }, { signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS) });
-        } catch {
-          return false;
-        }
+      if (channel === 'slack') return toSlack(userId, items, isDigest);
+      if (channel === 'email') return toEmail(userId, items, isDigest);
+      // Both: delivered only when both accept it. A retry sends to both again, so the channel that worked may get the
+      // alert twice; delivery is already at-least-once (engine.ts), and a duplicate beats a missed P1.
+      if (channel === 'slack_email') {
+        const [slack, email] = await Promise.all([toSlack(userId, items, isDigest), toEmail(userId, items, isDigest)]);
+        return slack && email;
       }
       return false;
     },

@@ -615,6 +615,23 @@ describe('Email channel (L5)', () => {
     expect(seen).toEqual(['error', 'error']);
   });
 
+  it('sends "Slack and email" to both of the person\'s own channels, and counts it delivered only when both accept', async () => {
+    const posted: string[] = [];
+    const both = (slackOk: boolean) => createChannels({
+      slackWebhooks: { u_ts_east: 'https://hooks.slack.com/services/T0/B0/x' },
+      emails: { u_ts_east: 'jordan@example.test' },
+      emailWebhook: 'https://mail.example/send',
+      env: { EMAIL_WEBHOOK_HOSTS: 'mail.example' },
+      fetch: async (url) => { posted.push(new URL(url).hostname); return { ok: slackOk || !url.includes('slack') }; },
+    });
+    expect(await both(true).deliver('slack_email', 'u_ts_east', [item], false)).toBe(true);
+    expect(posted.sort()).toEqual(['hooks.slack.com', 'mail.example']);
+    // One channel down means not delivered, so it is retried rather than marked sent.
+    expect(await both(false).deliver('slack_email', 'u_ts_east', [item], false)).toBe(false);
+    // Someone with no Slack link of their own gets nothing on Slack, and the alert isn't marked delivered.
+    expect(await both(true).deliver('slack_email', 'u_ts_west', [item], false)).toBe(false);
+  });
+
   it('posts the message to a laptop email webhook, never to a shared inbox URL as the recipient', async () => {
     const posted: { url: string; body: string }[] = [];
     const ch = createChannels({

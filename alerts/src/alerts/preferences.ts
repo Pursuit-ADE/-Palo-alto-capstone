@@ -17,7 +17,7 @@ export const PreferenceInput = z
     quietStartHour: Hour,
     quietEndHour: Hour,
     criticalBypass: z.boolean(),
-    channel: z.enum(['inbox', 'slack', 'email']),
+    channel: z.enum(['inbox', 'slack', 'email', 'slack_email']),
   })
   .strict();
 export type PreferenceInput = z.infer<typeof PreferenceInput>;
