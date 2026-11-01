@@ -8,6 +8,7 @@ import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { SyntheticBadge } from './synthetic-badge';
 import { promptFor } from '@/server/prompts';
+import { alertsLink } from '@/server/alerts-link';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
 import { FactChips, scopeText } from './fact-chips';
@@ -49,6 +50,12 @@ function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][num
       <span className="legend">{format(row.numerator, 'currency')} closing in {period} vs {format(row.denominator, 'currency')} quota{legend}</span>
     </div>
   );
+}
+
+/** A link to the alerts app. It has its own accounts, so the person signs in there separately. */
+function AlertsLink({ href }: { href: string | null }) {
+  if (!href) return null;
+  return <p><a href={href}>My alerts</a> (opens the alerts app, where you sign in separately)</p>;
 }
 
 const USERS = demoUsers();
@@ -93,6 +100,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   // In the Graphs view, a mouse drag on the page around the graphs turns them too.
   const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const quarter = coverage.filters.period ? `${period} (${dateRange(coverage.filters.period.start, coverage.filters.period.end)})` : period;
+  const alerts = alertsLink(process.env.ALERTS_URL);
 
   return (
     <>
@@ -134,6 +142,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           />
           <p>{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
           {me.role === 'analyst' && <p><a href="/trends">Question trends</a></p>}
+          <AlertsLink href={alerts} />
           <ViewSwitch view={view} />
         </div>
 
