@@ -1,4 +1,4 @@
-// Runs only in Postgres mode (CI job "postgres-roles", or locally with docker compose and the three URLs set).
+// Runs only in Postgres mode (the "Postgres roles" step of ci.yml's test job, or locally with docker compose and the three URLs set).
 // Proves the least-privilege setup (PRD S7): the app role can only read, the audit role can only append.
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

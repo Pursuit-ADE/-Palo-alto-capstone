@@ -1,4 +1,4 @@
-// Runs only in Postgres mode (CI job "alerts-postgres", or locally with docker compose and both URLs set).
+// Runs only in Postgres mode (the "Postgres roles" step of alerts-ci.yml's test job, or locally with docker compose and both URLs set).
 // The alerts login can read and record its own state, but cannot delete, change other data or the schema.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';

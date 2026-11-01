@@ -10,25 +10,19 @@ on:
 permissions:
   contents: read
 
+
+# A newer push to a PR cancels that PR's older run (Actions minutes are billed, review Oct 31). Every other run (a merge
+# to main, the schedule, a manual run) gets a group of its own, because a group keeps only one pending run and would
+# cancel the checks of a merge queued behind another.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run lint
-      - run: npm test
-      - run: npm run build
-      - name: Dependency scan
-        run: npm audit --audit-level=high
-
-  postgres-roles:
-    # Least-privilege check (PRD S7) against a real Postgres with the roles from docker/init-roles.sql.
+    # Also runs the Postgres roles check and the secret scan: each separate job is billed a minute minimum, and those
+    # two took 40 s and 6 s (review, Oct 31). Both run even when an earlier step fails, so one failure doesn't hide
+    # the others' results.
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -41,21 +35,48 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U copilot_owner"
           --health-interval 5s --health-timeout 5s --health-retries 10
-    env:
-      MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/copilot
-      DATABASE_URL: postgres://app_readonly:readonly_local_dev@localhost:5432/copilot
-      AUDIT_DATABASE_URL: postgres://app_audit:audit_local_dev@localhost:5432/copilot
-      AUTH_DATABASE_URL: postgres://app_auth:auth_local_dev@localhost:5432/copilot
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Dependency scan
+        run: npm audit --audit-level=high
+      # Least-privilege check (PRD S7) against a real Postgres with the roles from docker/init-roles.sql. The URLs are
+      # set on these steps only, so npm test above keeps using the embedded database.
       - name: Create roles
+        if: ${{ !cancelled() }}
+        env:
+          MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/copilot
         run: psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f docker/init-roles.sql
-      - run: npx vitest run tests/postgres-roles.test.ts
+      - name: Postgres roles
+        if: ${{ !cancelled() }}
+        env:
+          MIGRATION_DATABASE_URL: postgres://copilot_owner:ci_only@localhost:5432/copilot
+          DATABASE_URL: postgres://app_readonly:readonly_local_dev@localhost:5432/copilot
+          AUDIT_DATABASE_URL: postgres://app_audit:audit_local_dev@localhost:5432/copilot
+          AUTH_DATABASE_URL: postgres://app_auth:auth_local_dev@localhost:5432/copilot
+        run: npx vitest run tests/postgres-roles.test.ts
+      # Full history of this checkout. --log-opts=HEAD keeps the scan on this branch: fetch-depth 0
+      # also downloads every other branch, and gitleaks' default walks all of them. The gitleaks
+      # GitHub action builds a commit range from the push, which breaks on histories merged from other repos.
+      - name: Secret scan (gitleaks)
+        if: ${{ !cancelled() }}
+        run: |
+          V=8.24.3
+          SHA=9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
+          echo "${SHA}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks git --redact --verbose --log-opts=HEAD .
 
   fresh-install:
     # Handover check: a clean checkout installs, builds and starts both apps, and their sign-in pages load.
@@ -86,21 +107,3 @@ jobs:
           echo "Both apps start on a clean install and show their sign-in pages."
       - if: failure()
         run: tail -50 copilot.log alerts.log
-
-  secret-scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      # Full history of this checkout. --log-opts=HEAD keeps the scan on this branch: fetch-depth 0
-      # also downloads every other branch, and gitleaks' default walks all of them. The gitleaks
-      # GitHub action builds a commit range from the push, which breaks on histories merged from other repos.
-      - name: Secret scan (gitleaks)
-        run: |
-          V=8.24.3
-          SHA=9991e0b2903da4c8f6122b5c3186448b927a5da4deef1fe45271c3793f4ee29c
-          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz"
-          echo "${SHA}  gitleaks.tgz" | sha256sum -c -
-          tar -xzf gitleaks.tgz gitleaks
-          ./gitleaks git --redact --verbose --log-opts=HEAD .
