@@ -58,7 +58,7 @@ export function PreferencesForm({ user, ruleId, ruleName, critical, sub }: { use
       </div>
       {critical && (
         <label className="pref-sub" htmlFor={id('criticalBypass')}>
-          <input id={id('criticalBypass')} type="checkbox" name="criticalBypass" defaultChecked={sub?.criticalBypass ?? false} /> Let P1 cases through quiet hours and digests
+          <input id={id('criticalBypass')} type="checkbox" name="criticalBypass" defaultChecked={sub?.criticalBypass ?? false} /> Let P1 (critical: production or executive dashboard down) cases through quiet hours and digests
         </label>
       )}
       <div className="pref-actions">

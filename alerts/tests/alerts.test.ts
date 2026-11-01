@@ -68,6 +68,11 @@ describe('rule catalog (L1)', () => {
   it('rejects a misspelled case status instead of silently matching nothing', () => {
     expect(loadBad('high_severity_case.json', (r) => { r.conditions.statusIn = ['open']; })).toThrow();
   });
+
+  it('treats only P1 as urgent, by the standard severity scale (PRD L5, evaluator #84)', () => {
+    expect(rules.get('high_severity_case')!.criticalSeverities).toEqual(['P1']);
+    expect(rules.get('cxo_engagement')!.criticalSeverities).toEqual([]);
+  });
 });
 
 describe('private routing (L4)', () => {

@@ -95,7 +95,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | L2 | Triggers: high-severity support case (technical seller); CXO engagement (sales rep); **low usage, under 20% of what was bought, six months after purchase** (account team; Alex chose this on Oct 15). Large-deal CSM trigger stays a stretch. | Must: first two; Should: low usage | First two done; low usage PR (#68) |
 | L3 | User preferences: rules, frequency (real time or digest), quiet hours and channel. | Must | Done |
 | L4 | Private routing: one shared rule evaluated per user; no alert reveals another user's accounts; access re-checked at send time. | Must | Done |
-| L5 | **Channels by urgency** (Oct 24): Slack for urgent alerts (P1, for example an executive or production dashboard is broken), email for status updates and digests. | Must: one channel; Should: both | Both channels done; urgency mapping open |
+| L5 | **Channels by urgency** (Oct 24): Slack for urgent alerts (P1, for example an executive or production dashboard is broken), email for status updates and digests. | Must: one channel; Should: both | Done. **Urgency standard (team decision, Nov 1):** the usual support severity scale. P1 is critical: production, or an executive or production dashboard, is down with no workaround. P2 is high: degraded, with a workaround. P3 and P4 are lower. Only P1 is urgent. A P1 case goes right away, through quiet hours and digests, to whoever turned on the P1 bypass; everything else follows that person's frequency. A broken dashboard reaches us as a P1 support case, so no separate event type is needed. |
 | L6 | Alert explains why it fired and links to the copilot. | Should | Done |
 | L7 | **Active employees only** (Oct 24): check employee status before routing and again before every send, standing in for Active Directory. People who leave get no alerts and are signed out of the alerts app (#55); the copilot does the same in #89. The check is on when the status list is set (off in the plain demo). If the directory is down or can’t tell, the alert is held and retried; today that uses the same 5 attempts as a channel failure, and #90 makes it wait without using them. Only a confirmed “inactive” is final. | Must | Done in alerts (#55); copilot #89 and outages #90 open |
 | L8 | Distribution lists (Oct 24 question): a list expands to members, and each member passes the same checks. | Could | Design only, waiting on Alex |
@@ -181,7 +181,7 @@ bottom of the Should and Could items first. Timing and the cut order are in the 
 2. Is the 2x boundary for red and amber right, or does he use a different one? (A11)
 3. Which day and time works for a 30-minute dry run by Sun Nov 1, before Pursuit's code freeze on Nov 2?
 4. May we name Palo Alto Networks at Demo Day? (He was checking with Pursuit, Oct 15.)
-5. Which alerts count as urgent (Slack) beyond a P1 dashboard outage? (L5)
+5. ~~Which alerts count as urgent (Slack) beyond a P1 dashboard outage? (L5)~~ Decided by the team on Nov 1 without an answer: only P1, by the standard severity scale in L5.
 
 ## 9. Change log
 
