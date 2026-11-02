@@ -55,10 +55,16 @@ async function audit(database: Database, entry: AuditRow, linked: AuditRow[] = [
   }
 }
 
-/** Thrown when a user is locked out after repeated flagged questions (S3). */
+/** How long the session lock lasts (S3). Both guards in src/server/limits.ts use it, so the message names the real time. */
+export const LOCK_MINUTES = 10;
+
+/**
+ * Thrown when a user is locked out after repeated flagged questions (S3). The message gives the time and says that
+ * signing out doesn't help: "a few minutes" left people retrying, and signing in again (UX review, Nov 2).
+ */
 export class SessionLocked extends Error {
   constructor() {
-    super('Too many questions were flagged as unsafe. Asking is paused for a few minutes.');
+    super(`Too many questions were flagged as unsafe. Asking is paused for up to ${LOCK_MINUTES} minutes, and signing out doesn't reset it.`);
     this.name = 'SessionLocked';
   }
 }

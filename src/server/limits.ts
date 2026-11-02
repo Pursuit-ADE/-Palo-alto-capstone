@@ -5,6 +5,9 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { sessionGuard } from '../db/schema';
+import { LOCK_MINUTES } from '../semantic/answer';
+
+const LOCK_MS = LOCK_MINUTES * 60_000;
 
 export class RateLimiter {
   private hits = new Map<string, number[]>();
@@ -29,7 +32,7 @@ export class RateLimiter {
 export class FlagGuard {
   private flagged = new Map<string, number[]>();
   private lockedUntil = new Map<string, number>();
-  constructor(private readonly maxFlagged = 3, private readonly windowMs = 10 * 60_000, private readonly lockMs = 10 * 60_000) {}
+  constructor(private readonly maxFlagged = 3, private readonly windowMs = 10 * 60_000, private readonly lockMs = LOCK_MS) {}
 
   isLocked(user: string, now: number = Date.now()): boolean {
     return (this.lockedUntil.get(user) ?? 0) > now;
@@ -60,7 +63,7 @@ const parseTimes = (raw: string): number[] => {
  * same instant are counted one after the other instead of both reading the old count. A gateway limit is
  * still the place to stop floods before they reach the app.
  */
-export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = 10 * 60_000) {
+export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = LOCK_MS) {
   return {
     async allow(user: string, now: number = Date.now()): Promise<boolean> {
       return db.transaction(async (tx) => {
