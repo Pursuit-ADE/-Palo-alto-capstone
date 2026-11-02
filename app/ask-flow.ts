@@ -45,6 +45,8 @@ export function takeKeptQuestion(store: KeepStore | null, user: string, now = Da
 
 /** A kept conversation older than a session (SESSION_HOURS, src/server/auth.ts) isn't put back. */
 const CONVERSATION_MS = 8 * 3_600_000;
+/** Bump when a turn's shape changes in a way an older kept copy couldn't render. */
+const CONVERSATION_VERSION = 1;
 
 export interface KeptConversation<T> {
   turns: T[];
@@ -53,13 +55,19 @@ export interface KeptConversation<T> {
 }
 
 /**
- * Keeps the conversation in this tab (sessionStorage), so a reload or a trip to /trends and back doesn't lose it (BH 7,
- * REC). Answers are what the server already sent this user, and follow-ups still go through the server's scope checks.
- * Too big to keep means not kept, rather than an old copy.
+ * Whose a kept conversation is: the user and the scope the server applied to them on this page load. A promotion or a
+ * demotion changes the scope, and answers from the old scope must not come back (UX review, Nov 2, D1).
  */
-export function saveConversation<T>(store: KeepStore | null, user: string, conversation: KeptConversation<T>, now = Date.now()): void {
+export const conversationOwner = (user: string, scope: string) => JSON.stringify([user, scope]);
+
+/**
+ * Keeps the conversation in this tab (sessionStorage), so a reload or a trip to /trends and back doesn't lose it (BH 7,
+ * REC). Answers are what the server already sent this user in this scope, and follow-ups still go through the server's
+ * scope checks. Too big to keep means not kept, rather than an old copy.
+ */
+export function saveConversation<T>(store: KeepStore | null, owner: string, conversation: KeptConversation<T>, now = Date.now()): void {
   try {
-    store?.setItem(CONVERSATION_KEY, JSON.stringify({ user, at: now, ...conversation }));
+    store?.setItem(CONVERSATION_KEY, JSON.stringify({ owner, version: CONVERSATION_VERSION, at: now, ...conversation }));
   } catch {
     try {
       store?.removeItem(CONVERSATION_KEY);
@@ -67,14 +75,27 @@ export function saveConversation<T>(store: KeepStore | null, user: string, conve
   }
 }
 
-/** This user's kept conversation, or null. Someone else's, a stale or a malformed one is removed. */
-export function loadConversation<T>(store: KeepStore | null, user: string, now = Date.now()): KeptConversation<T> | null {
+/** A kept turn the panel can render: an id, the question, and a reply of a known kind (or none). */
+function isTurn(t: unknown): boolean {
+  if (!t || typeof t !== 'object') return false;
+  const { id, question, result } = t as Record<string, unknown>;
+  if (typeof id !== 'number' || typeof question !== 'string') return false;
+  if (result === null) return true;
+  const kind = (result as { kind?: unknown } | undefined)?.kind;
+  return typeof kind === 'string' && ['answer', 'explanation', 'clarify', 'unsupported', 'refused'].includes(kind);
+}
+
+/**
+ * This owner's kept conversation, or null. Another user's or another scope's, a stale one, one from an older version or
+ * a malformed one is removed, not shown.
+ */
+export function loadConversation<T>(store: KeepStore | null, owner: string, now = Date.now()): KeptConversation<T> | null {
   try {
     const raw = store?.getItem(CONVERSATION_KEY);
     if (!raw) return null;
     const kept = JSON.parse(raw) as Record<string, unknown> | null;
-    const fresh = kept?.user === user && typeof kept.at === 'number' && now >= kept.at && now - kept.at <= CONVERSATION_MS;
-    if (!kept || !fresh || !Array.isArray(kept.turns) || typeof kept.dropped !== 'number') {
+    const fresh = kept?.owner === owner && kept.version === CONVERSATION_VERSION && typeof kept.at === 'number' && now >= kept.at && now - kept.at <= CONVERSATION_MS;
+    if (!kept || !fresh || !Array.isArray(kept.turns) || !kept.turns.every(isTurn) || typeof kept.dropped !== 'number') {
       store?.removeItem(CONVERSATION_KEY);
       return null;
     }

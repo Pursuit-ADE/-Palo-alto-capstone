@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
+import { addTurn, AskTimeout, conversationOwner, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -46,22 +46,23 @@ type Shown = { turns: Turn[]; dropped: number };
 
 /**
  * A reload, or /trends and back, used to lose the whole conversation (BH 7, REC). This puts back what the tab kept for
- * this user, then keeps each change; the server still checks every follow-up's intent and scope. It returns the last
- * turn put back (not scrolled to), or null until the tab has been read, so the first, empty render can't overwrite it.
+ * this owner (the user and the scope the server applied on this load), then keeps each change; the server still checks
+ * every follow-up's intent and scope. With no owner (the page passed no scope), nothing is kept. It returns the last turn
+ * put back (not scrolled to), or null until the tab has been read, so the first, empty render can't overwrite it.
  */
-function useKeptConversation(user: string, shown: Shown, setShown: (s: Shown) => void, previous: unknown, setPrevious: (p: unknown) => void) {
+function useKeptConversation(owner: string | null, shown: Shown, setShown: (s: Shown) => void, previous: unknown, setPrevious: (p: unknown) => void) {
   const restored = useRef<{ lastId: number | undefined } | null>(null);
   useEffect(() => {
-    const kept = loadConversation<Turn>(tabStore(), user);
+    const kept = owner ? loadConversation<Turn>(tabStore(), owner) : null;
     if (kept) {
       setShown({ turns: kept.turns, dropped: kept.dropped });
       setPrevious(kept.previous);
     }
     restored.current = { lastId: kept?.turns.at(-1)?.id };
-  }, [user, setShown, setPrevious]);
+  }, [owner, setShown, setPrevious]);
   useEffect(() => {
-    if (restored.current) saveConversation(tabStore(), user, { turns: shown.turns, dropped: shown.dropped, previous });
-  }, [shown, previous, user]);
+    if (owner && restored.current) saveConversation(tabStore(), owner, { turns: shown.turns, dropped: shown.dropped, previous });
+  }, [shown, previous, owner]);
   return restored;
 }
 
@@ -72,6 +73,7 @@ export function AskPanel({
   initialQuestion = '',
   view = 'numbers',
   metricDims = {},
+  scope,
 }: {
   user: string;
   name: string;
@@ -79,6 +81,8 @@ export function AskPanel({
   initialQuestion?: string;
   view?: View;
   metricDims?: Record<string, string[]>;
+  /** The scope the server applied on this page load (e.g. the dashboard answer's `scope`). Without it nothing is kept. */
+  scope?: string;
 }) {
   const [shown, setShown] = useState<Shown>({ turns: [], dropped: 0 });
   const turns = shown.turns;
@@ -89,7 +93,7 @@ export function AskPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const lastId = turns.at(-1)?.id;
-  const restored = useKeptConversation(user, shown, setShown, previous, setPrevious);
+  const restored = useKeptConversation(scope === undefined ? null : conversationOwner(user, scope), shown, setShown, previous, setPrevious);
 
   // A new turn lands above the question box, and the browser keeps the box where it was, so a long answer started off
   // screen: by turn 5 at 1024 × 768 the reader had to scroll back 3,700 px to find it (UX review, Nov 2, row 6). Bring its

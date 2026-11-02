@@ -1,7 +1,7 @@
 // The ask panel's browser-free rules (app/ask-flow.ts), from the UX review of Nov 2.
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
+import { addTurn, AskTimeout, conversationOwner, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
 import { CONVERSATION_KEY } from '../app/auth-form';
 
 describe('the turn cap (REC)', () => {
@@ -94,31 +94,44 @@ describe('the conversation kept in the tab (BH 7, REC)', () => {
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), size: () => m.size };
   };
   const conversation = { turns: [{ id: 1, question: 'open pipeline', result: { kind: 'answer', rows: [{ value: 1004925 }] } }], dropped: 0, previous: { metric: 'open_pipeline' } };
+  const sam = conversationOwner('u_ts_west', "West region, Celia Rouche's team (6 reps)");
 
-  it('comes back for the same user within a session, as it was', () => {
+  it('comes back for the same user in the same scope within a session, as it was', () => {
     const store = memory();
-    saveConversation(store, 'u_ts_west', conversation, 0);
-    expect(loadConversation(store, 'u_ts_west', 8 * 3_600_000)).toEqual(conversation);
+    saveConversation(store, sam, conversation, 0);
+    expect(loadConversation(store, sam, 8 * 3_600_000)).toEqual(conversation);
   });
 
   it("is removed, not shown, for another user, after a session's length, or when it's malformed", () => {
     const store = memory();
-    saveConversation(store, 'u_ts_west', conversation, 0);
-    expect(loadConversation(store, 'u_ts_east', 1)).toBeNull();
+    saveConversation(store, sam, conversation, 0);
+    expect(loadConversation(store, conversationOwner('u_ts_east', "West region, Celia Rouche's team (6 reps)"), 1)).toBeNull();
     expect(store.size()).toBe(0);
-    saveConversation(store, 'u_ts_west', conversation, 0);
-    expect(loadConversation(store, 'u_ts_west', 8 * 3_600_000 + 1)).toBeNull();
+    saveConversation(store, sam, conversation, 0);
+    expect(loadConversation(store, sam, 8 * 3_600_000 + 1)).toBeNull();
     expect(store.size()).toBe(0);
-    store.setItem(CONVERSATION_KEY, JSON.stringify({ user: 'u_ts_west', at: 0, turns: 'nope', dropped: 0 }));
-    expect(loadConversation(store, 'u_ts_west', 1)).toBeNull();
+    for (const turns of ['nope', [{ id: 1, question: 'q', result: { kind: 'something else' } }], [{ id: '1', question: 'q', result: null }]]) {
+      store.setItem(CONVERSATION_KEY, JSON.stringify({ owner: sam, version: 1, at: 0, turns, dropped: 0 }));
+      expect(loadConversation(store, sam, 1)).toBeNull();
+      expect(store.size()).toBe(0);
+    }
+    store.setItem(CONVERSATION_KEY, JSON.stringify({ owner: sam, version: 0, at: 0, ...conversation }));
+    expect(loadConversation(store, sam, 1)).toBeNull(); // an older version
+  });
+
+  it('is removed when the same user comes back with a different scope (UX review, Nov 2, D1)', () => {
+    // Promoted to all regions, asked, demoted: a reload must not show the all-regions answer to the seller.
+    const store = memory();
+    saveConversation(store, conversationOwner('u_ts_east', 'all regions'), conversation, 0);
+    expect(loadConversation(store, conversationOwner('u_ts_east', "East region, Cara Losch's team (6 reps)"), 1)).toBeNull();
     expect(store.size()).toBe(0);
   });
 
   it('is dropped rather than left stale when the tab is full', () => {
     const store = memory();
-    saveConversation(store, 'u_ts_west', conversation, 0);
+    saveConversation(store, sam, conversation, 0);
     const full = { ...store, setItem: () => { throw new Error('QuotaExceededError'); } };
-    saveConversation(full, 'u_ts_west', { ...conversation, dropped: 1 }, 1);
+    saveConversation(full, sam, { ...conversation, dropped: 1 }, 1);
     expect(store.size()).toBe(0);
   });
 
