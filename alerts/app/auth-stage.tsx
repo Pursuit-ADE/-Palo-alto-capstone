@@ -6,7 +6,7 @@
 // and nothing else: no lookup, so it rises for any name and never tells anyone whether an account exists.
 import { useActionState, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { logInAction, signUpAction, type AuthState } from './auth-actions';
-import { AuthForm, formAction, type InviteField } from './auth-form';
+import { AuthForm, formAction, headingFor, type InviteField } from './auth-form';
 import { TILE_ASPECT, TileFloor, newFloorSignal, type CardLabel, type FloorPhase, type ScreenRect } from './tile-floor';
 import './auth-stage.css';
 
@@ -373,7 +373,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
         </header>
         <section className="auth-panel" aria-labelledby="auth-title">
           <div className="page-head">
-            <h1 id="auth-title">{title}</h1>
+            <h1 id="auth-title">{headingFor(mode, creating, title)}</h1>
             <p>{intro}</p>
           </div>
           {enabled ? (

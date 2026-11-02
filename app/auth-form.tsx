@@ -33,6 +33,14 @@ function fieldHints(invite: InviteField): { password: string; invite: string } |
     : { password: 'At least 12 characters.', invite: 'The invite code decides which demo person and role your account gets.' };
 }
 
+/**
+ * The page's heading. Typing an invite code on the log-in page makes the form create the account, and the button says so,
+ * so the heading says so too instead of "Log in" over "Create account" (UX review, Nov 2, REC).
+ */
+export function headingFor(mode: 'login' | 'signup', creating: boolean, title: string): string {
+  return mode === 'login' && creating ? 'Create an account' : title;
+}
+
 // The fields themselves. State lives in AuthStage, which also lets the name card submit this form.
 export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset, prompt }: {
   ref: Ref<HTMLFormElement>;
