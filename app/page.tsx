@@ -52,10 +52,14 @@ function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][num
   );
 }
 
-/** A link to the alerts app. It has its own accounts, so the person signs in there separately. */
+/**
+ * A link to the alerts app. It has its own accounts, so the person signs in there separately. A new tab, as the alerts
+ * app's link back does: in the same tab, Back reloaded the copilot and the conversation was gone (UX review, Nov 2).
+ * noopener: the alerts page gets no handle back to this one.
+ */
 function AlertsLink({ href }: { href: string | null }) {
   if (!href) return null;
-  return <p><a href={href}>My alerts</a> (opens the alerts app, where you sign in separately)</p>;
+  return <p><a href={href} target="_blank" rel="noopener noreferrer">My alerts</a> (opens the alerts app in a new tab, where you sign in separately)</p>;
 }
 
 const USERS = demoUsers();
