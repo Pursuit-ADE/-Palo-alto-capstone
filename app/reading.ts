@@ -11,9 +11,6 @@ const money = (n: number) => n.toLocaleString('en-US', { style: 'currency', curr
 const regionText = (regions: string[]) =>
   ALL_REGIONS.every((r) => regions.includes(r)) ? 'all regions' : `${list(regions.map(titleCase))} region${regions.length > 1 ? 's' : ''}`;
 
-/** The app calls the owner breakdown "by rep" everywhere else; "owner" is the column's id. */
-const dimensionText = (d: string) => (d === 'owner' ? 'rep' : d);
-
 function amountText(amount: NonNullable<Answer['filters']['amount']>): string {
   if (amount.min != null && amount.max != null && amount.min === amount.max && amount.minInclusive !== false && amount.maxInclusive !== false) return `amount ${money(amount.min)}`;
   const bits: string[] = [];
@@ -39,7 +36,9 @@ export function readingParts(a: Answer): string[] {
     f.sectors?.length ? `sector ${list(f.sectors)}` : null,
     f.people?.length ? `rep ${list(f.people)}` : null,
     f.teams?.length ? list(f.teams.map((name) => `${name}'s team`)) : null,
-    f.groupBy.length ? `by ${list(f.groupBy.map(dimensionText))}` : null,
+    // Breakdowns in the answer's own words ("by owner", as the answer, chart heading and chips say). It said "by rep"
+    // under "Open pipeline by owner: …" (UX review, Nov 2); typing "by rep" still works through the glossary.
+    f.groupBy.length ? `by ${list(f.groupBy)}` : null,
   ].filter((part): part is string => part !== null);
 }
 
