@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, MAX_TURNS_SHOWN } from './ask-flow';
+import { addTurn, keepQuestion, MAX_TURNS_SHOWN, tabStore, takeKeptQuestion } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -72,13 +72,16 @@ export function AskPanel({
   }, [lastId]);
 
   // Arriving from an alert, the question is filled in but the box sat at the bottom edge of the window, so the link
-  // looked dead (row 6). Show the box and put the cursor in it, so Enter asks.
+  // looked dead (row 6). Show the box and put the cursor in it, so Enter asks. The same after signing in again from an
+  // ended session, with the question that wasn't asked put back (row 7).
   useEffect(() => {
     const input = inputRef.current;
-    if (!input || !initialQuestion) return;
+    const kept = takeKeptQuestion(tabStore(), user);
+    if (input && kept) input.value = kept;
+    if (!input || !(kept || initialQuestion)) return;
     input.focus({ preventScroll: true });
     input.scrollIntoView({ block: 'center', behavior: 'auto' });
-  }, [initialQuestion]);
+  }, [initialQuestion, user]);
 
   function send(question: string, refocus = false) {
     const q = question.trim();
@@ -94,7 +97,9 @@ export function AskPanel({
         const result = await askCopilot(null, fd);
         setShown((s) => addTurn(s, { id: Date.now(), question: q, result }));
         setPrevious((current: unknown) => nextPrevious(result, current));
-        if (inputRef.current) inputRef.current.value = '';
+        // A question the server didn't take because the session ended stays in the box, and in this tab for after sign-in.
+        if (signedOut(result)) keepQuestion(tabStore(), user, q);
+        else if (inputRef.current) inputRef.current.value = '';
         // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
         if (refocus) inputRef.current?.focus();
       } catch {
@@ -157,8 +162,19 @@ interface GraphsView {
   busy: boolean;
 }
 
+const signedOut = (result: AskResult) => result?.kind === 'refused' && result.signedOut === true;
+
 function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView | null }) {
   if (!result) return null;
+  // The session ended mid-conversation (row 7): say how to get back, and that the question is kept.
+  if (result.kind === 'refused' && result.signedOut) {
+    return (
+      <div className="answer notice refused" role="status">
+        <span className="notice-tag">Not answered</span>
+        {result.message} <a href="/login">Log in again</a>, and it will be back in the box.
+      </div>
+    );
+  }
   if (result.kind === 'answer') return <AnswerView a={result} graphs={graphs} />;
   if (result.kind === 'explanation') return <ExplanationView e={result} />;
   // A clarifying question is the copilot asking back, not a refusal, so it gets its own look.
