@@ -87,7 +87,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
         <div className="page-head">
           <h1>Your alerts</h1>
           <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. {snapshot ? <>Data as of {snapshotDay(snapshot.asOfDate)}, snapshot <code>{snapshot.id}</code>, the same as the copilot&apos;s. Times are UTC, with Eastern beside them. </> : null}{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
-          <ViewSwitch view={view} />
+          {/* Nothing to show as numbers or graphs when no rule covers the role (UX sustained hour R1). */}
+          {noRules ? null : <ViewSwitch view={view} />}
         </div>
 
         {noRules ? (
