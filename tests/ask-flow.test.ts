@@ -88,12 +88,49 @@ describe('scrolling to a new turn (row 6)', () => {
   });
 });
 
+// A kept answer with every field the panel reads, and kept turns it can't render (checked per kind).
+const answer = {
+  kind: 'answer',
+  narrative: 'Open pipeline is $1,004,925.',
+  scope: "West region, Celia Rouche's team (6 reps)",
+  intent: { metric: 'open_pipeline', filters: {}, groupBy: [] },
+  rows: [{ value: 1004925 }],
+  metric: { id: 'open_pipeline', name: 'Open pipeline', unit: 'usd', version: 1 },
+  filters: { groupBy: [], regions: ['west'] },
+  provenance: { asOfDate: '2026-10-08', snapshotId: 'snap' },
+};
+
+const hollow = [
+  'nope',
+  [{ id: 1, question: 'q', result: { kind: 'something else' } }],
+  [{ id: '1', question: 'q', result: null }],
+  [{ id: 1, question: 'hollow', result: { kind: 'answer' } }], // passed the first check, then crashed AnswerView (R4)
+  [{ id: 1, question: 'q', result: { ...answer, metric: { name: 'Open pipeline' } } }],
+  [{ id: 1, question: 'q', result: { kind: 'explanation', answer: { kind: 'answer' }, other: null, summary: 's', reasons: [], checks: [] } }],
+  [{ id: 1, question: 'q', result: { kind: 'clarify' } }],
+  // The explanation panel reads the answer's intent (review, R4).
+  [{ id: 1, question: 'q', result: { kind: 'explanation', answer: { ...answer, intent: undefined }, other: null, summary: 's', reasons: [], checks: [] } }],
+  [{ id: 1, question: 'q', result: { ...answer, rows: [null] } }],
+  [{ id: 1, question: 'q', result: { ...answer, chart: { data: {} } } }],
+  [{ id: 1, question: 'q', result: { ...answer, chart: { data: { values: [] } } } }], // no encoding.y.field for the bars
+];
+
 describe('the conversation kept in the tab (BH 7, REC)', () => {
   const memory = () => {
     const m = new Map<string, string>();
     return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), size: () => m.size };
   };
-  const conversation = { turns: [{ id: 1, question: 'open pipeline', result: { kind: 'answer', rows: [{ value: 1004925 }] } }], dropped: 0, previous: { metric: 'open_pipeline' } };
+  const conversation = {
+    turns: [
+      { id: 1, question: 'open pipeline', result: answer },
+      { id: 2, question: 'why is mine different?', result: { kind: 'explanation', answer, other: null, summary: 'One figure.', reasons: [], checks: [] } },
+      { id: 3, question: 'coverage', result: { kind: 'clarify', question: 'Which quarter?' } },
+      { id: 4, question: 'East?', result: { kind: 'refused', message: 'No access.' } },
+      { id: 5, question: 'q', result: null },
+    ],
+    dropped: 0,
+    previous: { metric: 'open_pipeline' },
+  };
   const sam = conversationOwner('u_ts_west', "West region, Celia Rouche's team (6 reps)");
 
   it('comes back for the same user in the same scope within a session, as it was', () => {
@@ -110,7 +147,7 @@ describe('the conversation kept in the tab (BH 7, REC)', () => {
     saveConversation(store, sam, conversation, 0);
     expect(loadConversation(store, sam, 8 * 3_600_000 + 1)).toBeNull();
     expect(store.size()).toBe(0);
-    for (const turns of ['nope', [{ id: 1, question: 'q', result: { kind: 'something else' } }], [{ id: '1', question: 'q', result: null }]]) {
+    for (const turns of hollow) {
       store.setItem(CONVERSATION_KEY, JSON.stringify({ owner: sam, version: 1, at: 0, turns, dropped: 0 }));
       expect(loadConversation(store, sam, 1)).toBeNull();
       expect(store.size()).toBe(0);

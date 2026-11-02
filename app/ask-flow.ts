@@ -76,14 +76,41 @@ export function saveConversation<T>(store: KeepStore | null, owner: string, conv
   }
 }
 
-/** A kept turn the panel can render: an id, the question, and a reply of a known kind (or none). */
+const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const isText = (v: unknown) => typeof v === 'string';
+
+/** The bar chart's spec as AnswerView reads it: data values and the y field. */
+const isChart = (c: unknown) => isObject(c) && isObject(c.data) && Array.isArray(c.data.values) && isObject(c.encoding) && isObject(c.encoding.y) && isText(c.encoding.y.field);
+
+/** An answer with every field the panel reads (AnswerView, the receipt, Read as, the explanation panel, the charts). */
+function isAnswer(a: unknown): boolean {
+  if (!isObject(a) || a.kind !== 'answer' || !isText(a.narrative) || !isText(a.scope) || !isObject(a.intent)) return false;
+  if (!Array.isArray(a.rows) || !a.rows.every(isObject)) return false;
+  const { metric, filters, provenance, chart } = a;
+  return (
+    isObject(metric) && isText(metric.id) && isText(metric.name) && isText(metric.unit) && typeof metric.version === 'number' &&
+    isObject(filters) && Array.isArray(filters.groupBy) && Array.isArray(filters.regions) &&
+    isObject(provenance) && isText(provenance.asOfDate) && isText(provenance.snapshotId) &&
+    (chart === null || chart === undefined || isChart(chart))
+  );
+}
+
+/**
+ * A reply the panel can render, checked per kind: a kept copy from an older build, or one edited by hand, must not reach
+ * AnswerView half-formed ({ kind: 'answer' } alone crashed the page; UX hour, Nov 2, R4).
+ */
+function isReply(r: unknown): boolean {
+  if (r === null) return true;
+  if (!isObject(r)) return false;
+  if (r.kind === 'answer') return isAnswer(r);
+  if (r.kind === 'explanation') return isAnswer(r.answer) && (r.other === null || isAnswer(r.other)) && isText(r.summary) && Array.isArray(r.reasons) && Array.isArray(r.checks);
+  if (r.kind === 'clarify') return isText(r.question);
+  return (r.kind === 'refused' || r.kind === 'unsupported') && isText(r.message);
+}
+
+/** A kept turn the panel can render: an id, the question, and a reply it can show. */
 function isTurn(t: unknown): boolean {
-  if (!t || typeof t !== 'object') return false;
-  const { id, question, result } = t as Record<string, unknown>;
-  if (typeof id !== 'number' || typeof question !== 'string') return false;
-  if (result === null) return true;
-  const kind = (result as { kind?: unknown } | undefined)?.kind;
-  return typeof kind === 'string' && ['answer', 'explanation', 'clarify', 'unsupported', 'refused'].includes(kind);
+  return isObject(t) && typeof t.id === 'number' && isText(t.question) && isReply(t.result);
 }
 
 /**
