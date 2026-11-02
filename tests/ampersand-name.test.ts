@@ -18,6 +18,11 @@ describe('a name with an ampersand', () => {
     expect(asked).toEqual([]);
   });
 
+  it('two names joined by "&" are both kept, as with "and"', () => {
+    expect(read('open pipeline for Acme Corporation & Gekko & Co')).toMatchObject({ kind: 'intent', intent: { filters: { accounts: ['Acme Corporation', 'Gekko & Co'] } } });
+    expect(read('open pipeline for GTX Pro & GTX Basic')).toMatchObject({ kind: 'intent', intent: { filters: { products: ['GTX Pro', 'GTX Basic'] } } });
+  });
+
   it('only a name that continues with "&" counts, so "Gekko" alone is still unknown', () => {
     expect(read('open pipeline for Gekko').kind).toBe('clarify');
     expect(read('open pipeline for East & West')).toMatchObject({ kind: 'intent', intent: { filters: { regions: ['east', 'west'] } } });

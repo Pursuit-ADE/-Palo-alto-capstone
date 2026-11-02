@@ -217,10 +217,12 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   ].sort((a, b) => b.len - a.len || a.at - b.at);
   const used: [number, number][] = [];
   const picked: Hit[] = [];
+  // A hit's range is its name without the spaces around it: two names side by side share a space ("for Acme Corporation &
+  // Gekko & Co" cleans to "acme corporation gekko co"), and counting it dropped the second name silently.
   for (const hit of hits) {
-    const end = hit.at + hit.len;
-    if (used.some(([start, stop]) => hit.at < stop && end > start)) continue;
-    used.push([hit.at, end]);
+    const [from, to] = [hit.at + 1, hit.at + hit.len - 1];
+    if (used.some(([start, stop]) => from < stop && to > start)) continue;
+    used.push([from, to]);
     picked.push(hit);
   }
   const managers = picked.filter((h) => h.kind === 'manager').map((h) => h.name);
