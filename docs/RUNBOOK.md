@@ -38,6 +38,7 @@ For the alerts app, put `DEMO_INVITE_SECRET` (the same value), `ALLOW_EMBEDDED_D
 - **One person per browser profile.** Sessions are cookies, and cookies are per host name. Signing in as a second person in the same browser, on `localhost`, silently replaces the first person's session in every open tab. To show two people from one laptop, use a separate browser profile for each, or a separate host name (`jordan.localhost:3000`, `avery.localhost:3000`; every `*.localhost` name reaches this machine).
 - **Sign in to both apps shortly before the demo.** An alert's copilot link opens the copilot, which has its own sign-in.
 - **Answer "Did you mean …?" with the full name** ("Darcel Schlecht"), not "yes": a bare "yes" isn't read as the name.
+- **Rehearse the live P1 alert on the Docker stack, not the laptop one.** The test alert is a SQL insert into the alerts database, and the laptop demo's database lives inside the server process, out of reach of `psql`. Slack and email delivery also need the webhook settings in the Docker `.env`. The same goes for promoting or demoting someone live (the access moment): it changes the employee directory with `psql`, which only the Docker stack allows.
 
 ## Run on Postgres
 
