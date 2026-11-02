@@ -516,9 +516,30 @@ function measureContradiction(text: string, metric: MetricDefinition, registry: 
   return undefined;
 }
 
+/** "by account", "per product", "each sector": a breakdown no metric has, by a kind of name the data can filter on. */
+const NAME_BREAKDOWN = / (?:by|per|each) (?:the |an? )?(account|customer|client|product|sku|sector|industry|vertical)s? /;
+const NAME_KIND: Record<string, string> = { customer: 'account', client: 'account', sku: 'product', industry: 'sector', vertical: 'sector' };
+
+/**
+ * "open pipeline by account" asks for a breakdown, so it gets the breakdown reply ("can't be broken down by account")
+ * and a way to filter instead, not "I don't know that account", which read the word "account" as a name (UX round 1,
+ * BH 2, Nov 2). The example names come from the data, so a rep learns one that works.
+ */
+function nameBreakdown(text: string, metric: MetricDefinition): string | undefined {
+  const m = NAME_BREAKDOWN.exec(text);
+  if (!m) return undefined;
+  const kind = NAME_KIND[m[1]!] ?? m[1]!;
+  const cannot = `${metric.name} can't be broken down by ${kind}. It can be broken down by ${metric.dimensions.join(', ')}.`;
+  if (metric.kind === 'ratio') return `${cannot} Quota isn't split by ${kind}, so coverage can't be filtered by one either.`;
+  const cat = catalog();
+  const example = kind === 'account' ? cat.accounts[0]?.name : kind === 'product' ? cat.products[0]?.id : cat.accounts[0]?.sector;
+  const named = kind === 'sector' ? `the ${example} sector` : example;
+  return example ? `${cannot} I can filter by one ${kind} you name, for example "${metric.name.toLowerCase()} for ${named}".` : cannot;
+}
+
 /** Questions that can't be read exactly once the metric is known: contradicting measure words, or leaving something out. */
 function unreadableQuestion(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
-  const contradiction = measureContradiction(text, metric, registry);
+  const contradiction = measureContradiction(text, metric, registry) ?? nameBreakdown(text, metric);
   if (contradiction) return contradiction;
   // Leaving a region or stage out can't be represented yet.
   return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
