@@ -59,6 +59,14 @@ function nameQuestion(parts: string[]): string {
   return parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, '')) ? FULL_NAME : UNKNOWN_NAME;
 }
 
+/**
+ * The reply to a question about no governed metric ("what can you do?", "asdf", "won revenue last quarter"). It says
+ * what can be asked, with two questions that work for every role (UX row 9, BH 5, Nov 2: "I can only answer questions
+ * about the governed metrics in the registry" told a manager nothing). Fixed text, so it never repeats the question.
+ */
+export const UNSUPPORTED_TEXT =
+  'I answer three governed metrics: open pipeline, pipeline coverage and open opportunity count, each within what you can see. Try "What is our open pipeline by stage?" or "pipeline coverage this quarter".';
+
 const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
 
 type SelectorFilters = Pick<Intent['filters'], 'amount' | 'products' | 'accounts' | 'sectors' | 'people' | 'teams'>;
@@ -754,7 +762,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
       matches = [prior.metric];
       continued = true;
     }
-    else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
+    else return { kind: 'unsupported', message: UNSUPPORTED_TEXT };
   }
   if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry), about: 'metric' };
   const metric = registry.metrics.get(matches[0]!)!;
