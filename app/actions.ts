@@ -7,7 +7,7 @@ import { MAX_QUESTION_LENGTH, recordRefusal, type Reply } from '@/semantic/answe
 import { selectModel } from '@/semantic/model';
 import { askWithFallback } from '@/server/ask';
 import { requireUser } from '@/server/require-user';
-import { dbSessionGuard } from '@/server/limits';
+import { dbSessionGuard, rateLimitMessage } from '@/server/limits';
 import { getDatabase, getRegistry } from '@/server/runtime';
 
 /** `signedOut`: the session ended (expired, revoked, or the server restarted), so the panel offers a way back in. */
@@ -35,7 +35,7 @@ export async function askCopilot(_prev: AskResult, formData: FormData): Promise<
   const userId = actor.userId;
   if (!(await guard.allow(userId))) {
     await recordRefusal(database, userId, parsed.data, 'refused_rate', 'rate_limit', actor);
-    return { kind: 'refused', message: 'Too many questions in the last minute. Please wait a moment and ask again.' };
+    return { kind: 'refused', message: rateLimitMessage(await guard.waitSeconds(userId)) };
   }
 
   let previous: unknown;

@@ -51,6 +51,15 @@ export class FlagGuard {
   }
 }
 
+/**
+ * The refusal for a question over the per-minute limit, with the wait it needs (REC; UX round 1, finding 11): "a
+ * moment" left people retrying into the limit. The wait is until the oldest question in the window drops out.
+ */
+export function rateLimitMessage(waitSeconds: number): string {
+  const wait = waitSeconds <= 1 ? 'a second' : `about ${waitSeconds} seconds`;
+  return `Too many questions in the last minute. Please wait ${wait} and ask again.`;
+}
+
 const parseTimes = (raw: string): number[] => {
   try {
     const v = JSON.parse(raw) as unknown;
@@ -81,6 +90,12 @@ export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged =
         await tx.update(sessionGuard).set({ hits: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
         return true;
       });
+    },
+    /** Whole seconds until the oldest question in the window drops out, so one more is allowed (1 at least). */
+    async waitSeconds(user: string, now: number = Date.now()): Promise<number> {
+      const [found] = await db.select({ hits: sessionGuard.hits }).from(sessionGuard).where(eq(sessionGuard.userId, user));
+      const recent = parseTimes(found?.hits ?? '[]').filter((t) => now - t < windowMs);
+      return recent.length ? Math.max(1, Math.ceil((Math.min(...recent) + windowMs - now) / 1000)) : 1;
     },
     async isLocked(user: string, now: number = Date.now()): Promise<boolean> {
       const [found] = await db.select({ lockedUntil: sessionGuard.lockedUntil }).from(sessionGuard).where(eq(sessionGuard.userId, user));
