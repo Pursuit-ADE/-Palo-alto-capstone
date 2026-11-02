@@ -4,7 +4,7 @@ import { authStageInfo } from '../auth-info';
 import { AuthStage } from '../auth-stage';
 import { SyntheticBadge } from '../synthetic-badge';
 import { activeDatasetLabel } from '@/db/seed';
-import { homePath, signupPath } from '@/server/return-to';
+import { homePath, safePromptId, signupPath } from '@/server/return-to';
 import { currentSession } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       badge={<SyntheticBadge dataset={activeDatasetLabel()} />}
       title="Log in"
       intro={`Demo accounts only; a real rollout uses company single sign-on.${signupEnabled ? ' First time here? Add your invite code below.' : ''}`}
+      prompt={safePromptId(params.prompt)}
       signupEnabled={signupEnabled}
       foot={signupEnabled ? <>Prefer a separate page? <Link href={signupPath(params)}>Create an account</Link>.</> : <>Sign-up is turned off here, so ask for an account.</>}
     />
