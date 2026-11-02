@@ -171,7 +171,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   const registry = getRegistry();
   const database = await getDatabase();
   // From an alert: its account's name, read from the data by id, never text from the URL (UX review, Nov 2).
-  const initialQuestion = await alertQuestion(database.db, params.prompt, params.account);
+  const initialQuestion = await alertQuestion(database.db, params.prompt, params.account, user);
   const me = USERS.find((u) => u.id === user)!;
   const period = resolvePeriod('current', AS_OF_DATE)!;
   const view = await readView();

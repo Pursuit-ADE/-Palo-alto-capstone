@@ -1,9 +1,10 @@
 // Questions the alerts app can open the copilot with. An alert links to /?prompt=<rule id>&account=<account id>; the
 // copilot looks the rule id up here and the account name up in its own accounts table, so a link can only ever pre-fill
 // one of these fixed questions, never arbitrary text.
-import { eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import type { Db } from '../db/client';
-import { accounts } from '../db/schema';
+import { accounts, opportunities } from '../db/schema';
+import { resolvePrincipal, ScopeViolation } from '../semantic/scope';
 
 export const ALERT_PROMPTS: Record<string, string> = {
   high_severity_case: 'What is our open pipeline?',
@@ -41,10 +42,29 @@ export function alertQuery(params: { prompt?: string; account?: string }): strin
   return `?${q}`;
 }
 
-/** The question to pre-fill: about the account when it exists, otherwise the rule's own question. */
-export async function alertQuestion(db: Db, prompt: string | undefined, account: string | undefined): Promise<string> {
+/**
+ * The question to pre-fill: about the account when the asker has a deal on it within their own scope, otherwise the
+ * rule's own question. A crafted link with another region's account id used to put that account's exact name in the
+ * box (the answer was still scoped); now an account outside scope is dropped (PR #114 follow-up). "A deal" counts any
+ * stage, as the alerts app's account team does, so every alert the asker got still names its account.
+ */
+export async function alertQuestion(db: Db, prompt: string | undefined, account: string | undefined, asker: string): Promise<string> {
   const plain = promptFor(prompt);
   if (!plain || !isAlertAccount(account)) return plain;
   const [row] = await db.select({ name: accounts.name }).from(accounts).where(eq(accounts.id, account)).limit(1);
-  return row ? ACCOUNT_PROMPTS[prompt!]!(row.name) : plain;
+  if (!row || !(await askerHasDeal(db, asker, account))) return plain;
+  return ACCOUNT_PROMPTS[prompt!]!(row.name);
+}
+
+/** Whether the asker can see at least one deal on the account: same regions and owners as every answer's scope. */
+async function askerHasDeal(db: Db, asker: string, account: string): Promise<boolean> {
+  const p = await resolvePrincipal(db, asker).catch((e: unknown) => {
+    if (e instanceof ScopeViolation) return undefined;
+    throw e;
+  });
+  if (!p) return false;
+  const conditions = [eq(opportunities.accountId, account), inArray(opportunities.regionId, p.regions)];
+  if (p.ownerIds) conditions.push(inArray(opportunities.ownerUserId, p.ownerIds.length ? p.ownerIds : ['']));
+  const [hit] = await db.select({ id: opportunities.id }).from(opportunities).where(and(...conditions)).limit(1);
+  return !!hit;
 }
