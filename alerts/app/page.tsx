@@ -1,8 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { demoUsers } from '@/db/seed';
-import { alertSubscriptions } from '@/db/schema';
+import { alertSubscriptions, dataSnapshots } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
-import { DEMO_NOW } from '@/alerts/demo';
+import { easternHour, snapshotDay } from '@/alerts/time';
+import { destinationsFor } from '@/alerts/channels';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
@@ -17,6 +18,10 @@ import { ViewSwitch } from './view-switch';
 export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
+
+// The tag on a non-case alert names what kind of signal it is. "Info" read as low priority, but a CXO engagement is
+// the rep's actionable signal (UX review Nov 2, OPT 7). Case alerts keep their P1/P2 severity.
+const TAG_BY_EVENT: Record<string, string> = { engagement: 'CXO', low_usage: 'Usage' };
 
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
@@ -38,6 +43,14 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   // In the Graphs view, a mouse drag on the page around the graph turns it too.
   const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
+  const noRules = myRules.length === 0;
+  const audiences = [...new Set([...rules.values()].flatMap((r) => r.audience))].map((a) => `${a.replace('_', ' ')}s`).join(' and ');
+  // The same snapshot the copilot answers from, written the same way ("Oct 8, 2026"). Before, this line showed the demo
+  // run's clock, 15:00 UTC, beside the copilot's 6:00 AM load time for the same data (UX review Nov 2, BH r2 5).
+  const [snapshot] = await database.db.select().from(dataSnapshots).orderBy(desc(dataSnapshots.loadedAt)).limit(1);
+  const now = new Date();
+  const has = destinationsFor(user);
+  const etHours = Array.from({ length: 24 }, (_, h) => easternHour(h, now));
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
   return (
@@ -73,10 +86,20 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
       <main {...surface}>
         <div className="page-head">
           <h1>Your alerts</h1>
-          <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. Data as of {DEMO_NOW.toISOString().slice(0, 16).replace('T', ' ')} UTC. {signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
-          <ViewSwitch view={view} />
+          <p><strong>Private to {me.displayName.split(' (')[0]}.</strong> Alerts only cover accounts on your account team, and access is checked again right before each one is sent. {snapshot ? <>Data as of {snapshotDay(snapshot.asOfDate)}, snapshot <code>{snapshot.id}</code>, the same as the copilot&apos;s. Times are UTC, with Eastern beside them. </> : null}{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
+          {/* Nothing to show as numbers or graphs when no rule covers the role (UX sustained hour R1). */}
+          {noRules ? null : <ViewSwitch view={view} />}
         </div>
 
+        {noRules ? (
+          // A role with no rules gets one honest line. Before, three tiles of 0 sat over an inbox that suggested
+          // subscribing and a settings card that said you can't (UX review Nov 2, OPT 4).
+          <section className="card" aria-labelledby="inbox-title">
+            <h2 id="inbox-title">No alerts for your role yet</h2>
+            <p className="empty">No alert rules cover your role yet, so there is nothing to subscribe to and no alerts to show. Today&apos;s rules are for {audiences}. The rule catalog below lists them.</p>
+          </section>
+        ) : (
+        <>
         {graphs ? (
           <section className="card" aria-label="Alert summary">
             <Chart3D
@@ -116,42 +139,46 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               {mine.map((a) => (
                 <li key={a.id} className={`alert sev-${a.severity.toLowerCase()}`}>
                   <div className="alert-head">
-                    <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? 'Info' : a.severity}</span>
+                    <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? (TAG_BY_EVENT[rules.get(a.ruleId)?.event ?? ''] ?? 'Info') : a.severity}</span>
                     <b>{a.title}</b>
                   </div>
                   <p>{a.explanation}</p>
-                  {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one. */}
-                  <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this (opens in a new tab)</a>
+                  {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one.
+                      The link pre-fills a fixed question about this alert's account (src/server/prompts.ts), so the label can say "about this
+                      account" again. It only pre-fills: the reader still presses Ask (UX review, Nov 2). */}
+                  <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this account (opens in a new tab)</a>
                 </li>
               ))}
             </ul>
           )}
         </section>
+        </>
+        )}
 
-        <div className="grid2">
+        <div className={noRules ? undefined : 'grid2'}>
+          {noRules ? null : (
           <section className="card" aria-labelledby="subs-title">
             <h2 id="subs-title">Your subscriptions</h2>
             <p className="sub">Choose the alerts you want, how often, where, and your quiet hours. Only alerts meant for your role are listed. Changes apply to new alerts; ones already waiting keep their channel.</p>
-            {myRules.length === 0 ? (
-              <p className="empty">No alerts are available for your role yet.</p>
-            ) : (
-              <div className="prefs">
-                {myRules.map((r) => {
-                  const s = subs.find((x) => x.ruleId === r.id) ?? null;
-                  return (
-                    <PreferencesForm
-                      key={`${user}-${r.id}`}
-                      user={user}
-                      ruleId={r.id}
-                      ruleName={r.name}
-                      critical={r.criticalSeverities.length > 0}
-                      sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <div className="prefs">
+              {myRules.map((r) => {
+                const s = subs.find((x) => x.ruleId === r.id) ?? null;
+                return (
+                  <PreferencesForm
+                    key={`${user}-${r.id}`}
+                    user={user}
+                    ruleId={r.id}
+                    ruleName={r.name}
+                    critical={r.criticalSeverities.length > 0}
+                    etHours={etHours}
+                    has={has}
+                    sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
+                  />
+                );
+              })}
+            </div>
           </section>
+          )}
 
           <section className="card" aria-labelledby="rules-title">
             <h2 id="rules-title">Rule catalog</h2>

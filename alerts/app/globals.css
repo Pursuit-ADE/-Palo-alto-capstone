@@ -120,9 +120,12 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .prefs { display: grid; gap: 14px; }
 .pref { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; }
 .pref-sub { display: flex; gap: 8px; align-items: center; font-size: 14px; }
-.pref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.pref-grid label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
-.pref-grid select { font: 14px var(--font); padding: 7px 8px; border: 1px solid var(--field); border-radius: 6px; background: var(--card); color: var(--fg); }
+/* 200px: the narrowest select that shows its longest choice, "Weekly digest (Mondays)", whole (measured, review Nov 2). */
+.pref-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.pref-grid label { display: grid; gap: 4px; font-size: 12px; font-weight: 700; color: var(--muted); min-width: 0; }
+/* width and min-width: a select keeps its longest option's width unless told to fill its column, so at 800-1024 px
+   the three overlapped by 25-32 px (UX review, Nov 2). */
+.pref-grid select { font: 14px var(--font); padding: 7px 8px; border: 1px solid var(--field); border-radius: 6px; background: var(--card); color: var(--fg); width: 100%; min-width: 0; }
 .pref-actions { display: flex; gap: 12px; align-items: center; }
 .pref-actions button { font: 700 14px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
 .pref-actions button:hover { background: var(--orange-deep); }

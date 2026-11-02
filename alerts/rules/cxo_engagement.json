@@ -17,5 +17,5 @@
   },
   "criticalSeverities": [],
   "title": "CXO engagement at {account}",
-  "explain": "Fired because the {contactTitle} at {account}, an account where you own deals, engaged with \"{asset}\" ({type}) {when}."
+  "explain": "Fired because the {contactTitle} at {account}, an account where you have deals, open or closed, engaged with \"{asset}\" ({type}) {when}."
 }

@@ -31,7 +31,14 @@ npm start         # http://localhost:3000
 
 Open the app, choose **Create one with an invite code**, and use the code for the person you want to be (Jordan Lee is the East technical seller). The code decides the person and role.
 
-For the alerts app, put the same two lines in `alerts/.env.local`, then in `alerts/`: `npm ci`, `npm run build`, `npm start -- -p 3001`. The same invite codes work there; accounts are separate per app. Set `COPILOT_URL=http://localhost:3000` so "Ask the copilot" links open the copilot.
+For the alerts app, put `DEMO_INVITE_SECRET` (the same value), `ALLOW_EMBEDDED_DB=true` and `EMPLOYEE_STATUS=off` in `alerts/.env.local` (it doesn't need `AUDIT_HASH_KEY`), then in `alerts/`: `npm ci`, `npm run build`, `npm start -- -p 3001`. The same invite codes work there; accounts are separate per app. Set `COPILOT_URL=http://localhost:3000` so "Ask the copilot" links open the copilot.
+
+**On the day (UX review, Nov 2):**
+- **Start both servers from a terminal window that stays open,** not from an editor's or a tool's preview pane. A server stops with whatever started it, and the laptop demo's database is in memory, so a stop wipes every account. If that happens, run `npm start` again and sign up again with the same invite codes; they work again on the empty database.
+- **One person per browser profile.** Sessions are cookies, and cookies are per host name. Signing in as a second person in the same browser, on `localhost`, silently replaces the first person's session in every open tab. To show two people from one laptop, use a separate browser profile for each, or a separate host name (`jordan.localhost:3000`, `avery.localhost:3000`; every `*.localhost` name reaches this machine).
+- **Sign in to both apps shortly before the demo.** An alert's copilot link opens the copilot, which has its own sign-in.
+- **Answer "Did you mean …?" with the full name** ("Darcel Schlecht"), not "yes": a bare "yes" isn't read as the name.
+- **Rehearse the live P1 alert on the Docker stack, not the laptop one.** The test alert is a SQL insert into the alerts database, and the laptop demo's database lives inside the server process, out of reach of `psql`. Slack and email delivery also need the webhook settings in the Docker `.env`. The same goes for promoting or demoting someone live (the access moment): it changes the employee directory with `psql`, which only the Docker stack allows.
 
 ## Run on Postgres
 

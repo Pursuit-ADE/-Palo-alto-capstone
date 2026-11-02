@@ -15,7 +15,7 @@
     "db:generate": "drizzle-kit generate",
     "eval:golden": "tsx --env-file-if-exists=.env.local scripts/eval-golden.ts",
     "eval:redteam": "tsx --env-file-if-exists=.env.local scripts/eval-redteam.ts",
-    "invites": "tsx scripts/invites.ts",
+    "invites": "tsx --env-file-if-exists=.env.local scripts/invites.ts",
     "accounts": "tsx scripts/accounts.ts",
     "docs:dictionary": "tsx scripts/data-dictionary.ts",
     "onboard:profile": "tsx scripts/onboard-dataset.ts profile",

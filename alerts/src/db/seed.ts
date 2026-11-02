@@ -253,15 +253,21 @@ export function buildSeed(seed: string = DEFAULT_SEED) {
 
   const engagements = contacts
     .filter(() => rand() < 0.35)
-    .map((c, i) => ({
-      id: `eng_${i + 1}`,
-      snapshotId,
-      accountId: c.accountId,
-      contactId: c.id,
-      type: rand() < 0.7 ? 'whitepaper_download' : 'campaign_response',
-      asset: pick(ASSETS),
-      occurredAt: new Date(`${addDays('2026-09-01', int(0, 37))}T${String(int(0, 23)).padStart(2, '0')}:00:00Z`),
-    }));
+    .map((c, i) => {
+      // Draw in the same order as before, so every other seeded value stays the same.
+      const download = rand() < 0.7;
+      const asset = pick(ASSETS);
+      return {
+        id: `eng_${i + 1}`,
+        snapshotId,
+        accountId: c.accountId,
+        contactId: c.id,
+        // A webinar is attended, not downloaded: it was labelled "whitepaper download" (UX review Nov 2, BH r2 6).
+        type: download && !asset.endsWith('webinar') ? 'whitepaper_download' : 'campaign_response',
+        asset,
+        occurredAt: new Date(`${addDays('2026-09-01', int(0, 37))}T${String(int(0, 23)).padStart(2, '0')}:00:00Z`),
+      };
+    });
 
   const usageProduct = [...products].sort((a, b) => a.id.localeCompare(b.id))[0];
   const usageAccounts = [...new Set(accountTeam.map((t) => t.accountId))].sort();

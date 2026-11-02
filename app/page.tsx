@@ -1,13 +1,14 @@
 import { activeDatasetLabel, AS_OF_DATE, demoUsers } from '@/db/seed';
 import { answerIntent } from '@/semantic/answer';
-import { coverageSpec, coverageStanding, coverageTrackMax, type CoverageTarget } from '@/semantic/coverage-target';
+import { capitalize, coverageSpec, coverageStanding, coverageTrackMax, type CoverageTarget } from '@/semantic/coverage-target';
 import type { Answer } from '@/semantic/answer';
 import { resolvePeriod } from '@/semantic/periods';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { SyntheticBadge } from './synthetic-badge';
-import { promptFor } from '@/server/prompts';
+import { alertQuestion } from '@/server/prompts';
+import { loginPath } from '@/server/return-to';
 import { alertsLink } from '@/server/alerts-link';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -36,7 +37,7 @@ function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][num
   const v = row.value === null || row.value === undefined ? null : Number(row.value);
   const regionStanding = goal && v != null ? coverageStanding(v, goal) : null;
   const tone = regionStanding ? `tone-${regionStanding.tone}` : undefined;
-  const legend = v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}` : '';
+  const legend = v === null ? ' (no quota, so not available)' : regionStanding ? ` · ${regionStanding.standing}, ${regionStanding.words}.` : '';
   return (
     <div className="bar-row">
       <div className="bar-head">
@@ -52,10 +53,14 @@ function CoverageBar({ row, period, goal, max, line }: { row: Answer['rows'][num
   );
 }
 
-/** A link to the alerts app. It has its own accounts, so the person signs in there separately. */
+/**
+ * A link to the alerts app. It has its own accounts, so the person signs in there separately. A new tab, as the alerts
+ * app's link back does: in the same tab, Back reloaded the copilot and the conversation was gone (UX review, Nov 2).
+ * noopener: the alerts page gets no handle back to this one.
+ */
 function AlertsLink({ href }: { href: string | null }) {
   if (!href) return null;
-  return <p><a href={href}>My alerts</a> (opens the alerts app, where you sign in separately)</p>;
+  return <p><a href={href} target="_blank" rel="noopener noreferrer">My alerts</a> (opens the alerts app in a new tab, where you sign in separately)</p>;
 }
 
 const USERS = demoUsers();
@@ -63,16 +68,19 @@ const USERS = demoUsers();
 // Each example answers for every demo person: coverage needs a quarter, and a technical seller sees one region and one stage.
 const EXAMPLES = ['What is our open pipeline?', 'open pipeline by owner', 'open opportunities by owner', 'pipeline coverage this quarter'];
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string; account?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
   const actor = await requireUser(params.user, 'u_ts_east');
-  if (!actor) redirect('/login');
+  // Signed out from an alert's link: sign-in keeps its question and account (checked ids only, see return-to.ts).
+  if (!actor) redirect(loginPath(params));
   const user = actor.userId;
   const signedIn = actor.username ? user : undefined;
   const registry = getRegistry();
   const database = await getDatabase();
+  // From an alert: its account's name, read from the data by id, never text from the URL (UX review, Nov 2).
+  const initialQuestion = await alertQuestion(database.db, params.prompt, params.account);
   const me = USERS.find((u) => u.id === user)!;
   const period = resolvePeriod('current', AS_OF_DATE)!;
   const view = await readView();
@@ -165,7 +173,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <section className="card coverage" aria-labelledby="cov-title">
             <span className="label" id="cov-title">Pipeline coverage · {period}</span>
             <span className={standing ? `cov-value tone-${standing.tone}` : 'cov-value'}>{format(cov, 'ratio')}</span>
-            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : standing ? `${standing.standing}, ${standing.words}. 1.00x means pipeline equals quota.` : '1.00x means pipeline equals quota.'}</p>
+            <p className="sub">{format(coverage.rows[0]?.numerator, 'currency')} open pipeline closing in {period} ÷ {format(coverage.rows[0]?.denominator, 'currency')} quota for {period}. {cov === null ? 'There is no quota for this period, so coverage is not available.' : standing ? `${capitalize(standing.standing)}, ${standing.words}. 1.00x means pipeline equals quota.` : '1.00x means pipeline equals quota.'}</p>
             {graphs ? (
               <Chart3D charts={coverageRegionCharts(byRegion, period, 'coverage-region')} kinds={kinds} />
             ) : (
@@ -182,9 +190,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           user={user}
           name={me.displayName.split(' (')[0]!}
           examples={EXAMPLES}
-          initialQuestion={promptFor(params.prompt)}
+          initialQuestion={initialQuestion}
           view={view}
           metricDims={Object.fromEntries([...registry.metrics.values()].map((m) => [m.id, m.dimensions]))}
+          scope={pipeline.scope}
         />
 
         <section className="card" aria-labelledby="metrics-title">

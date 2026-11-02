@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
+import { addTurn, AskTimeout, conversationOwner, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, spokenReply, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -19,9 +20,19 @@ interface Turn {
   result: AskResult;
 }
 
-// The browser keeps only what it displays plus the last answer's structured intent. The server re-validates
-// that intent and re-checks scope on every turn, so editing it can't widen access.
-const MAX_TURNS_SHOWN = 20;
+// The browser keeps only what it displays (the last MAX_TURNS_SHOWN turns) plus the last answer's structured intent.
+// The server re-validates that intent and re-checks scope on every turn, so editing it can't widen access.
+
+const WORKING = 'Working out the governed query…';
+const SLOW = 'Still working: this is taking longer than usual…';
+
+const FAILED = {
+  unreachable: 'The copilot could not be reached. Check your connection and try again.',
+  timeout: `No answer after ${GIVE_UP_MS / 1000} seconds, so the copilot stopped waiting. Your question is still in the box: ask again, and if it's still stuck, reload the page.`,
+};
+
+/** Smooth scrolling, unless the person asked for less motion. */
+const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 /** The conversation state the next question sends, after this reply. A refusal leaves it as it was. */
 function nextPrevious(result: AskResult, current: unknown): unknown {
@@ -34,6 +45,30 @@ function nextPrevious(result: AskResult, current: unknown): unknown {
   return current;
 }
 
+type Shown = { turns: Turn[]; dropped: number };
+
+/**
+ * A reload, or /trends and back, used to lose the whole conversation (BH 7, REC). This puts back what the tab kept for
+ * this owner (the user and the scope the server applied on this load), then keeps each change; the server still checks
+ * every follow-up's intent and scope. With no owner (the page passed no scope), nothing is kept. It returns the last turn
+ * put back (not scrolled to), or null until the tab has been read, so the first, empty render can't overwrite it.
+ */
+function useKeptConversation(owner: string | null, shown: Shown, setShown: (s: Shown) => void, previous: unknown, setPrevious: (p: unknown) => void) {
+  const restored = useRef<{ lastId: number | undefined } | null>(null);
+  useEffect(() => {
+    const kept = owner ? loadConversation<Turn>(tabStore(), owner) : null;
+    if (kept) {
+      setShown({ turns: kept.turns, dropped: kept.dropped });
+      setPrevious(kept.previous);
+    }
+    restored.current = { lastId: kept?.turns.at(-1)?.id };
+  }, [owner, setShown, setPrevious]);
+  useEffect(() => {
+    if (owner && restored.current) saveConversation(tabStore(), owner, { turns: shown.turns, dropped: shown.dropped, previous });
+  }, [shown, previous, owner]);
+  return restored;
+}
+
 export function AskPanel({
   user,
   name,
@@ -41,6 +76,7 @@ export function AskPanel({
   initialQuestion = '',
   view = 'numbers',
   metricDims = {},
+  scope,
 }: {
   user: string;
   name: string;
@@ -48,12 +84,53 @@ export function AskPanel({
   initialQuestion?: string;
   view?: View;
   metricDims?: Record<string, string[]>;
+  /** The scope the server applied on this page load (e.g. the dashboard answer's `scope`). Without it nothing is kept. */
+  scope?: string;
 }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [shown, setShown] = useState<Shown>({ turns: [], dropped: 0 });
+  const turns = shown.turns;
   const [previous, setPrevious] = useState<unknown>(null);
   const [pending, startTransition] = useTransition();
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<'unreachable' | 'timeout' | null>(null);
+  const [slow, setSlow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const lastId = turns.at(-1)?.id;
+  const restored = useKeptConversation(scope === undefined ? null : conversationOwner(user, scope), shown, setShown, previous, setPrevious);
+
+  // A new turn lands above the question box, and the browser keeps the box where it was, so a long answer started off
+  // screen: by turn 5 at 1024 × 768 the reader had to scroll back 3,700 px to find it (UX review, Nov 2, row 6). Bring its
+  // start to the top when it starts above the window, or runs past the bottom from lower than the top quarter (an answer
+  // starting at 542 px ran to 1,543). One that fits where it is stays put. Focus stays in the box.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restored is a ref read when the last turn changes; only a new turn scrolls.
+  useEffect(() => {
+    if (lastId === undefined || lastId === restored.current?.lastId) return;
+    const turn = listRef.current?.querySelector<HTMLElement>(`[data-turn="${lastId}"]`);
+    if (turn && offScreen(turn.getBoundingClientRect(), window.innerHeight)) turn.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+  }, [lastId]);
+
+  // Arriving from an alert, the question is filled in but the box sat at the bottom edge of the window, so the link
+  // looked dead (row 6). Show the box and put the cursor in it, so Enter asks. The same after signing in again from an
+  // ended session, with the question that wasn't asked put back (row 7).
+  useEffect(() => {
+    const input = inputRef.current;
+    const kept = takeKeptQuestion(tabStore(), user);
+    if (input && kept) input.value = kept;
+    if (!input || !(kept || initialQuestion)) return;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, [initialQuestion, user]);
+
+  /** What a reply changes on the page. */
+  function showReply(q: string, result: AskResult, refocus: boolean) {
+    setShown((s) => addTurn(s, { id: Date.now(), question: q, result }));
+    setPrevious((current: unknown) => nextPrevious(result, current));
+    // A question the server didn't take because the session ended stays in the box, and in this tab for after sign-in.
+    if (signedOut(result)) keepQuestion(tabStore(), user, q);
+    else if (inputRef.current) inputRef.current.value = '';
+    // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
+    if (refocus) inputRef.current?.focus();
+  }
 
   function send(question: string, refocus = false) {
     const q = question.trim();
@@ -63,17 +140,18 @@ export function AskPanel({
     fd.set('q', q);
     fd.set('turn', String(turns.length + 1));
     if (previous) fd.set('previous', JSON.stringify(previous));
-    setFailed(false);
+    setFailed(null);
+    // A request that never comes back used to leave "Working out the governed query…" up for good (REC, Nov 2). Say when
+    // it's slow, and stop waiting after GIVE_UP_MS with the question still in the box.
+    const slowTimer = setTimeout(() => setSlow(true), SLOW_MS);
     startTransition(async () => {
       try {
-        const result = await askCopilot(null, fd);
-        setTurns((t) => [...t, { id: Date.now(), question: q, result }].slice(-MAX_TURNS_SHOWN));
-        setPrevious((current: unknown) => nextPrevious(result, current));
-        if (inputRef.current) inputRef.current.value = '';
-        // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
-        if (refocus) inputRef.current?.focus();
-      } catch {
-        setFailed(true);
+        showReply(q, await withTimeout(askCopilot(null, fd), GIVE_UP_MS), refocus);
+      } catch (e) {
+        setFailed(e instanceof AskTimeout ? 'timeout' : 'unreachable');
+      } finally {
+        clearTimeout(slowTimer);
+        setSlow(false);
       }
     });
   }
@@ -86,15 +164,23 @@ export function AskPanel({
           <p className="sub">Answers come only from the governed metrics below, scoped to {name}. Ask follow-ups like “and next quarter?”.</p>
         </div>
         {turns.length > 0 && (
-          <button type="button" className="link-button" onClick={() => { setTurns([]); setPrevious(null); }} disabled={pending}>
+          <button type="button" className="link-button" onClick={() => { setShown({ turns: [], dropped: 0 }); setPrevious(null); }} disabled={pending}>
             New conversation
           </button>
         )}
       </div>
 
-      <ol className="turns" aria-live="polite">
+      {/* Older turns drop off silently otherwise (REC, Nov 2). */}
+      {shown.dropped > 0 && <p className="sub">Only your last {MAX_TURNS_SHOWN} questions are shown. Earlier ones were cleared from this page.</p>}
+      {/* The one live region: the latest reply's sentence, or that it's working. Turns put back from the tab aren't announced.
+          The text sits in a node keyed by the turn, so a reply that repeats the one before (an ask-back asked again) is
+          still a change, and is still read out. */}
+      <p className="visually-hidden" role="status">
+        <span key={pending ? 'pending' : lastId}>{pending ? (slow ? SLOW : WORKING) : lastId === restored.current?.lastId ? '' : spokenReply(turns.at(-1)?.result)}</span>
+      </p>
+      <ol ref={listRef} className="turns">
         {turns.map((t, i) => (
-          <li key={t.id} className="turn">
+          <li key={t.id} className="turn" data-turn={t.id}>
             <p className="you"><span>You</span>{t.question}</p>
             <TurnResult
               result={t.result}
@@ -102,9 +188,9 @@ export function AskPanel({
             />
           </li>
         ))}
-        {pending && <li className="turn thinking" role="status">Working out the governed query…</li>}
+        {pending && <li className="turn thinking">{slow ? SLOW : WORKING}</li>}
       </ol>
-      {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>The copilot could not be reached. Check your connection and try again.</div>}
+      {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>{FAILED[failed]}</div>}
 
       <form className="ask" onSubmit={(e) => { e.preventDefault(); send(inputRef.current?.value ?? ''); }}>
         <input ref={inputRef} id="q" name="q" defaultValue={initialQuestion} placeholder={turns.length ? 'Ask a follow-up' : 'Ask about open pipeline, pipeline coverage or open opportunities'} maxLength={300} aria-label="Question" autoComplete="off" />
@@ -130,13 +216,24 @@ interface GraphsView {
   busy: boolean;
 }
 
+const signedOut = (result: AskResult) => result?.kind === 'refused' && result.signedOut === true;
+
 function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView | null }) {
   if (!result) return null;
+  // The session ended mid-conversation (row 7): say how to get back, and that the question is kept.
+  if (result.kind === 'refused' && result.signedOut) {
+    return (
+      <div className="answer notice refused">
+        <span className="notice-tag">Not answered</span>
+        {result.message} <a href="/login">Log in again</a>, and it will be back in the box.
+      </div>
+    );
+  }
   if (result.kind === 'answer') return <AnswerView a={result} graphs={graphs} />;
   if (result.kind === 'explanation') return <ExplanationView e={result} />;
   // A clarifying question is the copilot asking back, not a refusal, so it gets its own look.
-  if (result.kind === 'clarify') return <div className="answer notice clarify" role="status"><span className="notice-tag">Question</span>{result.question}</div>;
-  return <div className="answer notice refused" role="status"><span className="notice-tag">Not answered</span>{result.message}</div>;
+  if (result.kind === 'clarify') return <div className="answer notice clarify"><span className="notice-tag">Question</span>{result.question}</div>;
+  return <div className="answer notice refused"><span className="notice-tag">Not answered</span>{result.message}</div>;
 }
 
 export function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {

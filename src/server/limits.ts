@@ -5,6 +5,9 @@
 import { eq } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { sessionGuard } from '../db/schema';
+import { LOCK_MINUTES } from '../semantic/answer';
+
+const LOCK_MS = LOCK_MINUTES * 60_000;
 
 export class RateLimiter {
   private hits = new Map<string, number[]>();
@@ -29,20 +32,32 @@ export class RateLimiter {
 export class FlagGuard {
   private flagged = new Map<string, number[]>();
   private lockedUntil = new Map<string, number>();
-  constructor(private readonly maxFlagged = 3, private readonly windowMs = 10 * 60_000, private readonly lockMs = 10 * 60_000) {}
+  constructor(private readonly maxFlagged = 3, private readonly windowMs = 10 * 60_000, private readonly lockMs = LOCK_MS) {}
 
   isLocked(user: string, now: number = Date.now()): boolean {
     return (this.lockedUntil.get(user) ?? 0) > now;
   }
 
-  record(user: string, now: number = Date.now()): void {
+  /** Records a flagged question and returns how many more lock the user (0: this one did), so ask() can warn first. */
+  record(user: string, now: number = Date.now()): number {
     const recent = [...(this.flagged.get(user) ?? []).filter((t) => now - t < this.windowMs), now];
     this.flagged.set(user, recent);
     if (recent.length >= this.maxFlagged) {
       this.lockedUntil.set(user, now + this.lockMs);
       this.flagged.set(user, []);
+      return 0;
     }
+    return this.maxFlagged - recent.length;
   }
+}
+
+/**
+ * The refusal for a question over the per-minute limit, with the wait it needs (REC; UX round 1, finding 11): "a
+ * moment" left people retrying into the limit. The wait is until the oldest question in the window drops out.
+ */
+export function rateLimitMessage(waitSeconds: number): string {
+  const wait = waitSeconds <= 1 ? 'a second' : `about ${waitSeconds} seconds`;
+  return `Too many questions in the last minute. Please wait ${wait} and ask again.`;
 }
 
 const parseTimes = (raw: string): number[] => {
@@ -60,7 +75,7 @@ const parseTimes = (raw: string): number[] => {
  * same instant are counted one after the other instead of both reading the old count. A gateway limit is
  * still the place to stop floods before they reach the app.
  */
-export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = 10 * 60_000) {
+export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged = 3, flagWindowMs = 10 * 60_000, lockMs = LOCK_MS) {
   return {
     async allow(user: string, now: number = Date.now()): Promise<boolean> {
       return db.transaction(async (tx) => {
@@ -76,21 +91,29 @@ export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged =
         return true;
       });
     },
+    /** Whole seconds until the oldest question in the window drops out, so one more is allowed (1 at least). */
+    async waitSeconds(user: string, now: number = Date.now()): Promise<number> {
+      const [found] = await db.select({ hits: sessionGuard.hits }).from(sessionGuard).where(eq(sessionGuard.userId, user));
+      const recent = parseTimes(found?.hits ?? '[]').filter((t) => now - t < windowMs);
+      return recent.length ? Math.max(1, Math.ceil((Math.min(...recent) + windowMs - now) / 1000)) : 1;
+    },
     async isLocked(user: string, now: number = Date.now()): Promise<boolean> {
       const [found] = await db.select({ lockedUntil: sessionGuard.lockedUntil }).from(sessionGuard).where(eq(sessionGuard.userId, user));
       return (found?.lockedUntil?.getTime() ?? 0) > now;
     },
-    async record(user: string, now: number = Date.now()): Promise<void> {
-      await db.transaction(async (tx) => {
+    /** As FlagGuard.record: how many more flagged questions lock the user, or undefined while already locked. */
+    async record(user: string, now: number = Date.now()): Promise<number | undefined> {
+      return db.transaction(async (tx) => {
         await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
         const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
-        if ((current?.lockedUntil?.getTime() ?? 0) > now) return;
+        if ((current?.lockedUntil?.getTime() ?? 0) > now) return undefined;
         const recent = [...parseTimes(current?.flagged ?? '[]').filter((t) => now - t < flagWindowMs), now];
         if (recent.length >= maxFlagged) {
           await tx.update(sessionGuard).set({ flagged: '[]', lockedUntil: new Date(now + lockMs) }).where(eq(sessionGuard.userId, user));
-        } else {
-          await tx.update(sessionGuard).set({ flagged: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+          return 0;
         }
+        await tx.update(sessionGuard).set({ flagged: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+        return maxFlagged - recent.length;
       });
     },
   };

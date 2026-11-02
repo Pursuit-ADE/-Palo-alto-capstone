@@ -30,10 +30,10 @@ describe('the reading of a question, in words (review, Nov 1)', () => {
     expect(readingParts(await answer('u_analyst', 'open pipeline in east and west'))).toContain('East and West regions');
   });
 
-  it('calls the owner breakdown "by rep", as the rest of the app does', async () => {
-    expect(readingParts(await answer('u_mgr_melvin_marxen', 'open pipeline by owner'))).toContain('by rep');
+  it('calls the owner breakdown "by owner", as the answer above it does', async () => {
+    expect(readingParts(await answer('u_mgr_melvin_marxen', 'open pipeline by owner'))).toContain('by owner');
     const twoWay = await answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: {}, groupBy: ['owner', 'stage'] });
-    expect(readingParts(twoWay)).toContain('by rep and stage');
+    expect(readingParts(twoWay)).toContain('by owner and stage');
   });
 
   it('keeps the quarter, deal size, product and sector in a fixed order', async () => {

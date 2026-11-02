@@ -2,7 +2,7 @@
   "id": "high_severity_case",
   "version": 1,
   "name": "High-severity support case on my account",
-  "description": "A P1 or P2 support case is opened and still open on an account where you are on the account team. P1 is critical: production, or an executive or production dashboard, is down with no workaround. P2 is high: degraded, with a workaround. Only P1 can skip quiet hours and digests (PRD L5).",
+  "description": "A P1 or P2 support case is opened and still open on an account where you are on the account team. P1 is critical: production, or an executive or production dashboard, is down with no workaround. P2 is high: degraded, with a workaround. Only P1 can skip quiet hours and digests.",
   "owner": "Customer Analytics (alert steward)",
   "audience": [
     "technical_seller"

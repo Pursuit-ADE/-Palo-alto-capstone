@@ -1,11 +1,15 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { authStageInfo } from '../auth-info';
 import { AuthStage } from '../auth-stage';
 import { SyntheticBadge } from '../synthetic-badge';
+import { currentSession } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
-export default function SignUpPage() {
+export default async function SignUpPage() {
+  // Already signed in (UX review, Nov 2): go to the inbox rather than show the form again.
+  if (await currentSession()) redirect('/');
   return (
     <AuthStage
       mode="signup"

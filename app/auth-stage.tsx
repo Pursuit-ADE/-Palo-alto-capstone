@@ -6,7 +6,7 @@
 // and nothing else: no lookup, so it rises for any name and never tells anyone whether an account exists.
 import { useActionState, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { logInAction, signUpAction, type AuthState } from './auth-actions';
-import { AuthForm, formAction, type InviteField } from './auth-form';
+import { AuthForm, formAction, headingFor, type InviteField } from './auth-form';
 import { TILE_ASPECT, TileFloor, newFloorSignal, type CardLabel, type FloorPhase, type ScreenRect } from './tile-floor';
 import './auth-stage.css';
 
@@ -72,7 +72,7 @@ function Hub({ info }: { info: StageInfo }) {
   );
 }
 
-export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled = true, disabledNote }: {
+export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled = true, disabledNote, prompt, account }: {
   mode: 'login' | 'signup';
   info: StageInfo;
   badge: ReactNode;
@@ -81,6 +81,10 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   foot: ReactNode;
   signupEnabled?: boolean;
   disabledNote?: string;
+  /** An alert's question id (src/server/prompts.ts), already checked by the page, so signing in brings it back (UX row 10). */
+  prompt?: string;
+  /** The alert's account id, checked like `prompt` (isAlertAccount), so the question is about that account. */
+  account?: string;
 }) {
   const [loginState, loginAction, loginPending] = useActionState<AuthState, FormData>(logInAction, null);
   const [signupState, signupAction, signupPending] = useActionState<AuthState, FormData>(signUpAction, null);
@@ -371,7 +375,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
         </header>
         <section className="auth-panel" aria-labelledby="auth-title">
           <div className="page-head">
-            <h1 id="auth-title">{title}</h1>
+            <h1 id="auth-title">{headingFor(mode, creating, title)}</h1>
             <p>{intro}</p>
           </div>
           {enabled ? (
@@ -389,6 +393,8 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
               onUsername={onUsername}
               onInput={onInput}
               onReset={onReset}
+              prompt={prompt}
+              account={account}
             />
           ) : (
             <p className="auth-error">{disabledNote}</p>

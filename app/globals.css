@@ -71,7 +71,12 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 .card h2 { font-size: 16px; font-weight: 800; margin: 0 0 4px; }
 .card .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 
-form.ask { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Room for the sticky question bar (about its height): a focused link or chip near the bottom scrolls clear of it
+   instead of sitting hidden under it (WCAG 2.4.11), and scrollIntoView honours it too (review, Nov 2). */
+html { scroll-padding-bottom: 80px; }
+/* Sticky at the bottom of the screen while the conversation runs past it: after a long answer the box was 3-4 screens
+   down, out of sight on a projector (UX review, Nov 2). The card background keeps answers from showing through. */
+form.ask { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2; background: var(--card); padding: 10px 0; }
 form.ask input { flex: 1 1 260px; font: 16px var(--font); padding: 11px 12px; border: 1px solid var(--field); border-radius: 6px; }
 form.ask input::placeholder { color: var(--muted); }
 form.ask input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }

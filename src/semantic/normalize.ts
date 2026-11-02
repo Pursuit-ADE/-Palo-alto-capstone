@@ -56,8 +56,48 @@ function isFirstName(word: string): boolean {
 
 /** The question for a name after "for" or "in" that isn't in the data: a lone first name gets FULL_NAME. */
 function nameQuestion(parts: string[]): string {
-  return parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, '')) ? FULL_NAME : UNKNOWN_NAME;
+  if (parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, ''))) return FULL_NAME;
+  const near = nearestName(parts.join(' '));
+  return near ? didYouMean(near) : UNKNOWN_NAME;
 }
+
+/** Edits (insert, delete, change one letter) between two short strings. */
+function editDistance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length]!;
+}
+
+/**
+ * The one rep, manager, account or product within two letters of a name that isn't in the data, for "Did you mean?"
+ * (UX round 1, BH 6, Nov 2: "Darcel Schlect" got "I don't know that name" with nothing to try). Names of six letters
+ * or more only, and only when one name is closest, so a short or ambiguous typo still gets UNKNOWN_NAME. Names are
+ * already shown in scope refusals ("You do not have access to Gladys Colclough"), so this reveals nothing new.
+ */
+function nearestName(typed: string): string | undefined {
+  const t = words(typed);
+  if (t.length < 6) return undefined;
+  const cat = catalog();
+  const names = [...cat.owners.map((o) => o.name), ...cat.managers.map((m) => m.name), ...cat.accounts.map((a) => a.name), ...cat.products.map((p) => p.id)];
+  const scored = names.map((name) => ({ name, d: editDistance(t, words(name)) })).filter((x) => x.d > 0 && x.d <= 2).sort((a, b) => a.d - b.d);
+  return scored.length && (scored.length === 1 || scored[1]!.d > scored[0]!.d) ? scored[0]!.name : undefined;
+}
+
+/** Starts every "Did you mean" ask-back, so a reply to it resumes the question (resumable). */
+const DID_YOU_MEAN = "I don't know that name. Did you mean ";
+const didYouMean = (name: string) => `${DID_YOU_MEAN}${name}? Reply with the full name, so I don't answer for everything.`;
+
+/**
+ * The reply to a question about no governed metric ("what can you do?", "asdf", "won revenue last quarter"). It says
+ * what can be asked, with two questions that work for every role (UX row 9, BH 5, Nov 2: "I can only answer questions
+ * about the governed metrics in the registry" told a manager nothing). Fixed text, so it never repeats the question.
+ */
+export const UNSUPPORTED_TEXT =
+  'I answer three governed metrics: open pipeline, pipeline coverage and open opportunity count, each within what you can see. Try "What is our open pipeline by stage?" or "pipeline coverage this quarter".';
 
 const UNKNOWN_NAME = "I don't know that name, so I won't answer for everything. I can filter by a product, account, sector or sales rep that is in the data.";
 
@@ -177,10 +217,12 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
   ].sort((a, b) => b.len - a.len || a.at - b.at);
   const used: [number, number][] = [];
   const picked: Hit[] = [];
+  // A hit's range is its name without the spaces around it: two names side by side share a space ("for Acme Corporation &
+  // Gekko & Co" cleans to "acme corporation gekko co"), and counting it dropped the second name silently.
   for (const hit of hits) {
-    const end = hit.at + hit.len;
-    if (used.some(([start, stop]) => hit.at < stop && end > start)) continue;
-    used.push([hit.at, end]);
+    const [from, to] = [hit.at + 1, hit.at + hit.len - 1];
+    if (used.some(([start, stop]) => from < stop && to > start)) continue;
+    used.push([from, to]);
     picked.push(hit);
   }
   const managers = picked.filter((h) => h.kind === 'manager').map((h) => h.name);
@@ -215,7 +257,9 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
       // Months and regions we don't have get their own question below, not "I don't know that name".
       return KNOWN_WORDS.has(token) || NOT_A_NAME_HERE.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
-    const named = covered.some((c) => sameName(c, raw));
+    // NAMED stops at a spaced "&", so "Gekko & Co" is seen as "Gekko": it counts when the data's name continues with "&"
+    // (optimization review, Nov 2). The pattern itself is unchanged, so "for East & West" is still two regions.
+    const named = covered.some((c) => sameName(c, raw) || (c.includes(' & ') && words(c).startsWith(`${words(raw)} `)));
     // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
     if (!known && !named) return { filters: {}, clarify: nameQuestion(parts) };
   }
@@ -508,9 +552,30 @@ function measureContradiction(text: string, metric: MetricDefinition, registry: 
   return undefined;
 }
 
+/** "by account", "per product", "each sector": a breakdown no metric has, by a kind of name the data can filter on. */
+const NAME_BREAKDOWN = / (?:by|per|each) (?:the |an? )?(account|customer|client|product|sku|sector|industry|vertical)s? /;
+const NAME_KIND: Record<string, string> = { customer: 'account', client: 'account', sku: 'product', industry: 'sector', vertical: 'sector' };
+
+/**
+ * "open pipeline by account" asks for a breakdown, so it gets the breakdown reply ("can't be broken down by account")
+ * and a way to filter instead, not "I don't know that account", which read the word "account" as a name (UX round 1,
+ * BH 2, Nov 2). The example names come from the data, so a rep learns one that works.
+ */
+function nameBreakdown(text: string, metric: MetricDefinition): string | undefined {
+  const m = NAME_BREAKDOWN.exec(text);
+  if (!m) return undefined;
+  const kind = NAME_KIND[m[1]!] ?? m[1]!;
+  const cannot = `${metric.name} can't be broken down by ${kind}. It can be broken down by ${metric.dimensions.join(', ')}.`;
+  if (metric.kind === 'ratio') return `${metric.name} can't be broken down or filtered by ${kind}, because quota isn't split that way. ${otherBreakdowns(metric)}`;
+  const cat = catalog();
+  const example = kind === 'account' ? cat.accounts[0]?.name : kind === 'product' ? cat.products[0]?.id : cat.accounts[0]?.sector;
+  const named = kind === 'sector' ? `the ${example} sector` : example;
+  return example ? `${cannot} I can filter by one ${kind} you name, for example "${metric.name.toLowerCase()} for ${named}".` : cannot;
+}
+
 /** Questions that can't be read exactly once the metric is known: contradicting measure words, or leaving something out. */
 function unreadableQuestion(text: string, metric: MetricDefinition, registry: Registry): string | undefined {
-  const contradiction = measureContradiction(text, metric, registry);
+  const contradiction = measureContradiction(text, metric, registry) ?? nameBreakdown(text, metric);
   if (contradiction) return contradiction;
   // Leaving a region or stage out can't be represented yet.
   return EXCLUSION.test(text) ? "I can't leave out a region or stage yet. Which regions or stages do you want included?" : undefined;
@@ -687,10 +752,29 @@ function askedBreakdown(text: string, phrase: string, metric: MetricDefinition, 
   if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
   if (ranked) groupBy.push(ranked);
   const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
-  if (unsupportedDim) {
-    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
-  }
+  if (unsupportedDim) return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. ${otherBreakdowns(metric)}` };
   return groupBy;
+}
+
+/**
+ * The question for a period that can't be answered. "Last quarter" isn't one of the answerable quarters, so asking which
+ * of this quarter and next was meant didn't help (OPT round 2, finding 5, Nov 2: "How does that compare to last
+ * quarter?" got "Which of those do you mean?").
+ */
+function periodQuestion(text: string): string {
+  const quarters = QUOTA_PERIODS.map((p) => p.period).join(' and ');
+  if (/ (last|previous|prior) quarter /.test(text)) return `I can't answer for last quarter, only for ${quarters}.`;
+  return `I can only answer for ${quarters}. Which of those do you mean?`;
+}
+
+/**
+ * The breakdowns a metric does have. With only one, it says how to ask for it instead of "Which do you want?", which
+ * offered a choice of one (REC, Nov 2: coverage "by stage" got "It can be broken down by region. Which do you want?").
+ */
+function otherBreakdowns(metric: MetricDefinition): string {
+  const [only] = metric.dimensions;
+  if (metric.dimensions.length === 1 && only) return `It can only be broken down by ${only}: ask for "${metric.name.toLowerCase()} by ${only}".`;
+  return `It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?`;
 }
 
 const DIMENSION_WORDS: Record<string, Dimension> = { region: 'region', stage: 'stage', owner: 'owner', rep: 'owner', seller: 'owner' };
@@ -732,6 +816,30 @@ function cannotRank(metric: MetricDefinition, by: Dimension): string {
   return `${metric.name} can't be broken down by ${what}, so I can't rank ${what}s by it. I can show ${name} for one ${what} you name, or ${name} by ${metric.dimensions.join(' or ')}.`;
 }
 
+/** Ask-backs about a name or a breakdown, whose reply ("Darcel Schlecht", "what about next quarter?") should finish the question. */
+const RESUMED_ASK_BACKS = new Set([FULL_NAME, UNKNOWN_NAME]);
+const resumesAfter = (question: string) => RESUMED_ASK_BACKS.has(question) || question.startsWith(DID_YOU_MEAN) || / can't be broken down by (account|product|sector)\. /.test(question);
+
+/**
+ * The question an ask-back about a name or a breakdown is waiting on: its metric, regions, quarter and breakdown, without
+ * the name it couldn't read. The client sends it back as the previous intent, so "Darcel Schlecht" after "Use the person's
+ * full name", or "what about next quarter?" after "can't be broken down by product", continues it (UX round 1, BH 4,
+ * Nov 2: both got the generic refusal, because the ask-back carried nothing forward). Like every previous intent it is
+ * only a starting point: the reply is validated and scoped afresh.
+ */
+function resumable(question: string, text: string, metric: MetricDefinition, registry: Registry, asOfDate: string, prior: Intent | undefined, continued: boolean): { resume?: Intent } {
+  if (!resumesAfter(question)) return {};
+  const base = continued && prior ? prior : undefined;
+  const regions = (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
+  const periods = findPeriods(text, registry.glossary, asOfDate);
+  const period = periods.labels.size === 1 && !periods.unsupported ? [...periods.labels][0] : base?.filters.period;
+  const dims = Object.entries(registry.glossary.dimensionPhrases).filter(([p]) => text.includes(` ${p} `)).map(([, d]) => d).filter((d) => metric.dimensions.includes(d));
+  const filters: Intent['filters'] = { ...(base?.filters ?? {}) };
+  if (regions.length) filters.regions = [...regions];
+  if (period) filters.period = period;
+  return { resume: { metric: metric.id, filters, groupBy: dims.length ? [...new Set(dims)] : (base?.groupBy ?? []) } };
+}
+
 /**
  * Follow-ups (PRD A5): with a previous intent, a question that names no metric but changes a region, period,
  * stage or breakdown ("what about West?", "by stage", "and next quarter?") starts from the previous intent.
@@ -754,7 +862,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
       matches = [prior.metric];
       continued = true;
     }
-    else return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics in the registry.' };
+    else return { kind: 'unsupported', message: UNSUPPORTED_TEXT };
   }
   if (matches.length > 1) return { kind: 'clarify', question: whichMetric(matches, registry), about: 'metric' };
   const metric = registry.metrics.get(matches[0]!)!;
@@ -762,9 +870,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
   // never a quietly different answer.
   const unreadable = unreadableQuestion(text, metric, registry);
-  if (unreadable) return { kind: 'clarify', question: unreadable };
+  if (unreadable) return { kind: 'clarify', question: unreadable, ...resumable(unreadable, text, metric, registry, asOfDate, prior, continued) };
   const read = readSelectors(phrase);
-  if (read.clarify) return { kind: 'clarify', question: read.clarify };
+  if (read.clarify) return { kind: 'clarify', question: read.clarify, ...resumable(read.clarify, text, metric, registry, asOfDate, prior, continued) };
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
   if (unknownRegion) {
     return { kind: 'clarify', question: `"${unknownRegion.toUpperCase()}" isn't a region here. The regions are Central, East and West.` };
@@ -806,7 +914,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   };
 
   const selected = assignSelectors({ metric: metric.id, filters: {}, groupBy }, phrase, inherit);
-  if ('kind' in selected) return selected;
+  if ('kind' in selected) return { ...selected, ...resumable(selected.question, text, metric, registry, asOfDate, prior, continued) };
   if (metric.kind === 'ratio') {
     const blocked = quotaBlocked(selected.filters);
     if (blocked) return { kind: 'clarify', question: blocked };
@@ -816,7 +924,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   if (periods.unsupported) {
     // Resumable, like the other period questions, so replying "FY27-Q1" or "next quarter" finishes the request instead of
     // starting a new one (review, Nov 1: "in October" then "FY27-Q1" was unsupported).
-    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?`, resume: partial() };
+    return { kind: 'clarify', question: periodQuestion(text), resume: partial() };
   }
   if (periods.labels.size > 1) {
     return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?`, resume: partial() };

@@ -9,6 +9,7 @@ import type { Channels } from './channels';
 import { employeeStatusOf, type EmployeeDirectory } from './employee-status';
 import { lowUsageEvents } from './low-usage';
 import { render, type AlertRule } from './rules';
+import { utcWithEastern } from './time';
 import { digestDue, lastSlot, normalizeFrequency } from './schedule';
 
 export interface AlertEvent {
@@ -46,9 +47,7 @@ export const STALE_CLAIM_MS = 10 * 60 * 1000;
  */
 export const MAX_ATTEMPTS = 5;
 
-function when(d: Date): string {
-  return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-}
+const when = utcWithEastern;
 
 /** Events in [since, until] that match a rule's conditions. */
 export async function matchingEvents(db: Db, rule: AlertRule, since: Date, until: Date): Promise<AlertEvent[]> {
@@ -160,9 +159,10 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
             severity: ev.severity,
             title: render(rule.title, ev.values),
             explanation: `${render(rule.explain, ev.values)} Rule: ${rule.id} v${rule.version}.`,
-            // The link names a fixed prompt (the rule id), which the copilot maps to a known question. Identity
-            // comes from the copilot's own sign-in; only in test mode is the test identity carried along.
-            link: `${copilotUrl}/?prompt=${encodeURIComponent(rule.id)}${opts.testIdentityInLinks ? `&user=${encodeURIComponent(sub.userId)}` : ''}`,
+            // The link names a fixed prompt (the rule id) and the account id, which the copilot maps to a known question
+            // about that account (src/server/prompts.ts), so the link is about this alert (UX review Nov 2, BH r2 3).
+            // Identity comes from the copilot's own sign-in; only in test mode is the test identity carried along.
+            link: `${copilotUrl}/?prompt=${encodeURIComponent(rule.id)}&account=${encodeURIComponent(ev.accountId)}${opts.testIdentityInLinks ? `&user=${encodeURIComponent(sub.userId)}` : ''}`,
             status: 'pending',
             channel: sub.channel,
             createdAt: now,

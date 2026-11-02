@@ -53,7 +53,7 @@ describe('coverage target', () => {
   });
 
   it('puts the receipt Target row and the Against target chart on the same 3x line', () => {
-    expect(coverageReceipt(0.52, spec)).toBe('off target, below 2.00x. The target is 3.00x.');
+    expect(coverageReceipt(0.52, spec)).toBe('Off target, below 2.00x. The target is 3.00x.');
     const answer = {
       metric: { id: 'pipeline_coverage', name: 'Pipeline coverage', unit: 'ratio', target: 3, caution: 2 },
       filters: { groupBy: [], period: { label: 'FY27-Q1' } },

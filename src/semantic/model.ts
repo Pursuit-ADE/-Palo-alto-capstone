@@ -9,7 +9,7 @@ import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
 import { z } from 'zod';
 import type { Registry } from '../registry/load';
 import { Intent } from '../registry/types';
-import { asResult, assignSelectors, compared, continuesPrevious, normalize, proposalQuestion, quotaBlocked, withoutCarryOver, type NormalizeResult } from './normalize';
+import { asResult, assignSelectors, compared, continuesPrevious, normalize, proposalQuestion, quotaBlocked, UNSUPPORTED_TEXT, withoutCarryOver, type NormalizeResult } from './normalize';
 
 export interface IntentModel {
   readonly name: string;
@@ -109,7 +109,7 @@ export function claudeModel(client: Anthropic = new Anthropic({ timeout: CLAUDE_
         ],
       });
       if (response.stop_reason === 'refusal' || !response.parsed_output) {
-        return { kind: 'unsupported', message: 'I can only answer questions about the governed metrics.' };
+        return { kind: 'unsupported', message: UNSUPPORTED_TEXT };
       }
       return followUpRule(toResult(response.parsed_output), question, registry, previous);
     },
@@ -163,8 +163,8 @@ function baseFilters(out: z.infer<typeof ModelOutput>): Record<string, unknown> 
 // What the person reads is always one of these fixed sentences, chosen from the model's structured fields. The
 // model's own free text (`message`) is never shown: if it echoed its instructions or text planted by an attacker,
 // that would otherwise land on screen. It is dropped, not stored: the audit row's reason carries a fingerprint of
-// the fixed sentence that was shown.
-export const UNSUPPORTED_TEXT = 'I can only answer questions about the governed metrics: open pipeline, pipeline coverage and open opportunities.';
+// the fixed sentence that was shown. The unsupported sentence is the deterministic model's, so both models say the same.
+export { UNSUPPORTED_TEXT };
 export const CLARIFY_TEXT = {
   metric: 'Which metric do you mean: open pipeline, pipeline coverage or open opportunities?',
   period: 'Which quarter do you mean? For example, this quarter, next quarter or FY27-Q2.',
