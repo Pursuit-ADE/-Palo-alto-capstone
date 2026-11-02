@@ -7,7 +7,7 @@ import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { SyntheticBadge } from './synthetic-badge';
-import { promptFor } from '@/server/prompts';
+import { alertQuestion } from '@/server/prompts';
 import { alertsLink } from '@/server/alerts-link';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -67,7 +67,7 @@ const USERS = demoUsers();
 // Each example answers for every demo person: coverage needs a quarter, and a technical seller sees one region and one stage.
 const EXAMPLES = ['What is our open pipeline?', 'open pipeline by owner', 'open opportunities by owner', 'pipeline coverage this quarter'];
 
-export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string }> }) {
+export default async function Home({ searchParams }: { searchParams: Promise<{ user?: string; prompt?: string; account?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
@@ -77,6 +77,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   const signedIn = actor.username ? user : undefined;
   const registry = getRegistry();
   const database = await getDatabase();
+  // From an alert: its account's name, read from the data by id, never text from the URL (UX review, Nov 2).
+  const initialQuestion = await alertQuestion(database.db, params.prompt, params.account);
   const me = USERS.find((u) => u.id === user)!;
   const period = resolvePeriod('current', AS_OF_DATE)!;
   const view = await readView();
@@ -186,7 +188,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           user={user}
           name={me.displayName.split(' (')[0]!}
           examples={EXAMPLES}
-          initialQuestion={promptFor(params.prompt)}
+          initialQuestion={initialQuestion}
           view={view}
           metricDims={Object.fromEntries([...registry.metrics.values()].map((m) => [m.id, m.dimensions]))}
         />
