@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, keepQuestion, MAX_TURNS_SHOWN, tabStore, takeKeptQuestion } from './ask-flow';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -22,6 +22,11 @@ interface Turn {
 
 // The browser keeps only what it displays (the last MAX_TURNS_SHOWN turns) plus the last answer's structured intent.
 // The server re-validates that intent and re-checks scope on every turn, so editing it can't widen access.
+
+const FAILED = {
+  unreachable: 'The copilot could not be reached. Check your connection and try again.',
+  timeout: `No answer after ${GIVE_UP_MS / 1000} seconds, so the copilot stopped waiting. Your question is still in the box: ask again, and if it's still stuck, reload the page.`,
+};
 
 /** Smooth scrolling, unless the person asked for less motion. */
 const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
@@ -56,7 +61,8 @@ export function AskPanel({
   const turns = shown.turns;
   const [previous, setPrevious] = useState<unknown>(null);
   const [pending, startTransition] = useTransition();
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<'unreachable' | 'timeout' | null>(null);
+  const [slow, setSlow] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const lastId = turns.at(-1)?.id;
@@ -83,6 +89,17 @@ export function AskPanel({
     input.scrollIntoView({ block: 'center', behavior: 'auto' });
   }, [initialQuestion, user]);
 
+  /** What a reply changes on the page. */
+  function showReply(q: string, result: AskResult, refocus: boolean) {
+    setShown((s) => addTurn(s, { id: Date.now(), question: q, result }));
+    setPrevious((current: unknown) => nextPrevious(result, current));
+    // A question the server didn't take because the session ended stays in the box, and in this tab for after sign-in.
+    if (signedOut(result)) keepQuestion(tabStore(), user, q);
+    else if (inputRef.current) inputRef.current.value = '';
+    // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
+    if (refocus) inputRef.current?.focus();
+  }
+
   function send(question: string, refocus = false) {
     const q = question.trim();
     if (!q || pending) return;
@@ -91,19 +108,18 @@ export function AskPanel({
     fd.set('q', q);
     fd.set('turn', String(turns.length + 1));
     if (previous) fd.set('previous', JSON.stringify(previous));
-    setFailed(false);
+    setFailed(null);
+    // A request that never comes back used to leave "Working out the governed query…" up for good (REC, Nov 2). Say when
+    // it's slow, and stop waiting after GIVE_UP_MS with the question still in the box.
+    const slowTimer = setTimeout(() => setSlow(true), SLOW_MS);
     startTransition(async () => {
       try {
-        const result = await askCopilot(null, fd);
-        setShown((s) => addTurn(s, { id: Date.now(), question: q, result }));
-        setPrevious((current: unknown) => nextPrevious(result, current));
-        // A question the server didn't take because the session ended stays in the box, and in this tab for after sign-in.
-        if (signedOut(result)) keepQuestion(tabStore(), user, q);
-        else if (inputRef.current) inputRef.current.value = '';
-        // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
-        if (refocus) inputRef.current?.focus();
-      } catch {
-        setFailed(true);
+        showReply(q, await withTimeout(askCopilot(null, fd), GIVE_UP_MS), refocus);
+      } catch (e) {
+        setFailed(e instanceof AskTimeout ? 'timeout' : 'unreachable');
+      } finally {
+        clearTimeout(slowTimer);
+        setSlow(false);
       }
     });
   }
@@ -134,9 +150,9 @@ export function AskPanel({
             />
           </li>
         ))}
-        {pending && <li className="turn thinking" role="status">Working out the governed query…</li>}
+        {pending && <li className="turn thinking" role="status">{slow ? 'Still working: this is taking longer than usual…' : 'Working out the governed query…'}</li>}
       </ol>
-      {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>The copilot could not be reached. Check your connection and try again.</div>}
+      {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>{FAILED[failed]}</div>}
 
       <form className="ask" onSubmit={(e) => { e.preventDefault(); send(inputRef.current?.value ?? ''); }}>
         <input ref={inputRef} id="q" name="q" defaultValue={initialQuestion} placeholder={turns.length ? 'Ask a follow-up' : 'Ask about open pipeline, pipeline coverage or open opportunities'} maxLength={300} aria-label="Question" autoComplete="off" />

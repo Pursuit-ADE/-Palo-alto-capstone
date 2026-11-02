@@ -50,3 +50,27 @@ export function tabStore(): KeepStore | null {
     return null;
   }
 }
+
+/** After this long the waiting line says it's slow. The model's own limit is 8 s by default (src/semantic/model.ts). */
+export const SLOW_MS = 15_000;
+/** After this long the panel stops waiting. CLAUDE_TIMEOUT_MS is at most 60 s, so a working server has answered by then. */
+export const GIVE_UP_MS = 90_000;
+
+export class AskTimeout extends Error {}
+
+/** The reply, or an AskTimeout after `ms`. The request itself isn't cancelled; a reply that comes later is dropped. */
+export function withTimeout<T>(reply: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new AskTimeout()), ms);
+    reply.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}

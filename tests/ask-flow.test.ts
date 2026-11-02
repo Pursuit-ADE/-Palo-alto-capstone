@@ -1,6 +1,6 @@
 // The ask panel's browser-free rules (app/ask-flow.ts), from the UX review of Nov 2.
-import { describe, expect, it } from 'vitest';
-import { addTurn, keepQuestion, MAX_TURNS_SHOWN, takeKeptQuestion } from '../app/ask-flow';
+import { describe, expect, it, vi } from 'vitest';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
 
 describe('the turn cap (REC)', () => {
   it('keeps the last MAX_TURNS_SHOWN turns and counts the ones that drop off', () => {
@@ -49,5 +49,29 @@ describe('the question kept across a new sign-in (row 7)', () => {
     expect(takeKeptQuestion(store, 'u')).toBeNull();
     store.setItem('copilot.unsent-question', JSON.stringify({ user: 'u', question: 42, at: 0 }));
     expect(takeKeptQuestion(store, 'u', 1)).toBeNull();
+  });
+});
+
+describe('a reply that never comes (REC)', () => {
+  it('stops waiting after the limit, and passes a reply or an error through before it', async () => {
+    vi.useFakeTimers();
+    try {
+      const never = withTimeout(new Promise<string>(() => {}), GIVE_UP_MS);
+      const caught = never.catch((e: unknown) => e);
+      await vi.advanceTimersByTimeAsync(GIVE_UP_MS);
+      expect(await caught).toBeInstanceOf(AskTimeout);
+
+      await expect(withTimeout(Promise.resolve('answer'), GIVE_UP_MS)).resolves.toBe('answer');
+      const offline = new TypeError('Failed to fetch');
+      await expect(withTimeout(Promise.reject(offline), GIVE_UP_MS)).rejects.toBe(offline);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('gives a working server its whole model time limit first', () => {
+    // CLAUDE_TIMEOUT_MS is capped at 60 s (src/semantic/model.ts); the slow notice comes well before the limit.
+    expect(GIVE_UP_MS).toBeGreaterThan(60_000);
+    expect(SLOW_MS).toBeLessThan(GIVE_UP_MS);
   });
 });
