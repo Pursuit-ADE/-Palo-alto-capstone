@@ -56,8 +56,40 @@ function isFirstName(word: string): boolean {
 
 /** The question for a name after "for" or "in" that isn't in the data: a lone first name gets FULL_NAME. */
 function nameQuestion(parts: string[]): string {
-  return parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, '')) ? FULL_NAME : UNKNOWN_NAME;
+  if (parts.length === 1 && isFirstName(parts[0]!.replace(/['’]s$/, ''))) return FULL_NAME;
+  const near = nearestName(parts.join(' '));
+  return near ? didYouMean(near) : UNKNOWN_NAME;
 }
+
+/** Edits (insert, delete, change one letter) between two short strings. */
+function editDistance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) next[j] = Math.min(row[j]! + 1, next[j - 1]! + 1, row[j - 1]! + (a[i - 1] === b[j - 1] ? 0 : 1));
+    row = next;
+  }
+  return row[b.length]!;
+}
+
+/**
+ * The one rep, manager, account or product within two letters of a name that isn't in the data, for "Did you mean?"
+ * (UX round 1, BH 6, Nov 2: "Darcel Schlect" got "I don't know that name" with nothing to try). Names of six letters
+ * or more only, and only when one name is closest, so a short or ambiguous typo still gets UNKNOWN_NAME. Names are
+ * already shown in scope refusals ("You do not have access to Gladys Colclough"), so this reveals nothing new.
+ */
+function nearestName(typed: string): string | undefined {
+  const t = words(typed);
+  if (t.length < 6) return undefined;
+  const cat = catalog();
+  const names = [...cat.owners.map((o) => o.name), ...cat.managers.map((m) => m.name), ...cat.accounts.map((a) => a.name), ...cat.products.map((p) => p.id)];
+  const scored = names.map((name) => ({ name, d: editDistance(t, words(name)) })).filter((x) => x.d > 0 && x.d <= 2).sort((a, b) => a.d - b.d);
+  return scored.length && (scored.length === 1 || scored[1]!.d > scored[0]!.d) ? scored[0]!.name : undefined;
+}
+
+/** Starts every "Did you mean" ask-back, so a reply to it resumes the question (resumable). */
+const DID_YOU_MEAN = "I don't know that name. Did you mean ";
+const didYouMean = (name: string) => `${DID_YOU_MEAN}${name}? Reply with the full name, so I don't answer for everything.`;
 
 /**
  * The reply to a question about no governed metric ("what can you do?", "asdf", "won revenue last quarter"). It says
@@ -763,7 +795,7 @@ function cannotRank(metric: MetricDefinition, by: Dimension): string {
 
 /** Ask-backs about a name or a breakdown, whose reply ("Darcel Schlecht", "what about next quarter?") should finish the question. */
 const RESUMED_ASK_BACKS = new Set([FULL_NAME, UNKNOWN_NAME]);
-const resumesAfter = (question: string) => RESUMED_ASK_BACKS.has(question) || / can't be broken down by (account|product|sector)\. /.test(question);
+const resumesAfter = (question: string) => RESUMED_ASK_BACKS.has(question) || question.startsWith(DID_YOU_MEAN) || / can't be broken down by (account|product|sector)\. /.test(question);
 
 /**
  * The question an ask-back about a name or a breakdown is waiting on: its metric, regions, quarter and breakdown, without
