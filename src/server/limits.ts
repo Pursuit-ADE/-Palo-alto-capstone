@@ -38,13 +38,16 @@ export class FlagGuard {
     return (this.lockedUntil.get(user) ?? 0) > now;
   }
 
-  record(user: string, now: number = Date.now()): void {
+  /** Records a flagged question and returns how many more lock the user (0: this one did), so ask() can warn first. */
+  record(user: string, now: number = Date.now()): number {
     const recent = [...(this.flagged.get(user) ?? []).filter((t) => now - t < this.windowMs), now];
     this.flagged.set(user, recent);
     if (recent.length >= this.maxFlagged) {
       this.lockedUntil.set(user, now + this.lockMs);
       this.flagged.set(user, []);
+      return 0;
     }
+    return this.maxFlagged - recent.length;
   }
 }
 
@@ -83,17 +86,19 @@ export function dbSessionGuard(db: Db, max = 20, windowMs = 60_000, maxFlagged =
       const [found] = await db.select({ lockedUntil: sessionGuard.lockedUntil }).from(sessionGuard).where(eq(sessionGuard.userId, user));
       return (found?.lockedUntil?.getTime() ?? 0) > now;
     },
-    async record(user: string, now: number = Date.now()): Promise<void> {
-      await db.transaction(async (tx) => {
+    /** As FlagGuard.record: how many more flagged questions lock the user, or undefined while already locked. */
+    async record(user: string, now: number = Date.now()): Promise<number | undefined> {
+      return db.transaction(async (tx) => {
         await tx.insert(sessionGuard).values({ userId: user }).onConflictDoNothing();
         const [current] = await tx.select().from(sessionGuard).where(eq(sessionGuard.userId, user)).for('update');
-        if ((current?.lockedUntil?.getTime() ?? 0) > now) return;
+        if ((current?.lockedUntil?.getTime() ?? 0) > now) return undefined;
         const recent = [...parseTimes(current?.flagged ?? '[]').filter((t) => now - t < flagWindowMs), now];
         if (recent.length >= maxFlagged) {
           await tx.update(sessionGuard).set({ flagged: '[]', lockedUntil: new Date(now + lockMs) }).where(eq(sessionGuard.userId, user));
-        } else {
-          await tx.update(sessionGuard).set({ flagged: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+          return 0;
         }
+        await tx.update(sessionGuard).set({ flagged: JSON.stringify(recent) }).where(eq(sessionGuard.userId, user));
+        return maxFlagged - recent.length;
       });
     },
   };

@@ -86,7 +86,37 @@ export class InjectionRefused extends Error {
 /** The lock the caller enforces; see FlagGuard in src/server/limits.ts. */
 export interface Guard {
   isLocked(user: string, now?: number): boolean | Promise<boolean>;
-  record(user: string, now?: number): void | Promise<void>;
+  /**
+   * How many more flagged questions lock the user (0: this one did). `unknown`, so a guard that can't say (the fallback's
+   * stand-in in src/server/ask.ts, a test's) still fits; lockNotice() reads only 0 and 1.
+   */
+  record(user: string, now?: number): unknown;
+}
+
+/**
+ * The sentence added to the reply of a flagged question that brings the lock close, or that starts it (UX row 1, BH 1).
+ * Without it the first two attack lines read like ordinary refusals, and the third question was refused for 10 minutes
+ * with no warning, the client's question included. Fixed text: it names no flag, so it doesn't teach which words count.
+ */
+export function lockNotice(flagsLeft: unknown): string | undefined {
+  if (flagsLeft === 0) return `Asking is now paused for ${LOCK_MINUTES} minutes, because several questions were flagged as unsafe.`;
+  if (flagsLeft === 1) return `One more question like this pauses asking for ${LOCK_MINUTES} minutes.`;
+  return undefined;
+}
+
+/** The reply with the lock notice as its last sentence. The audit row is already written, so it never records the notice. */
+function withNotice(reply: Reply, notice: string | undefined): Reply {
+  if (!notice) return reply;
+  if (reply.kind === 'clarify') return { ...reply, question: `${reply.question} ${notice}` };
+  if (reply.kind === 'unsupported') return { ...reply, message: `${reply.message} ${notice}` };
+  if (reply.kind === 'explanation') return { ...reply, summary: `${reply.summary} ${notice}` };
+  return { ...reply, narrative: `${reply.narrative} ${notice}` };
+}
+
+/** A refusal the user is shown keeps its notice too: injection, scope or a question that can't be read. */
+function refusalWithNotice(e: unknown, notice: string | undefined): unknown {
+  if (notice && (e instanceof InjectionRefused || e instanceof ScopeViolation || e instanceof IntentError)) e.message = `${e.message} ${notice}`;
+  return e;
 }
 
 function outcomeOf(e: unknown): { outcome: string; reason: string } {
@@ -205,7 +235,7 @@ export function parsePrevious(raw: unknown): Intent | undefined {
  * The length cap comes after the flags, so a long paste is flagged for this asker, counts towards the lock and is
  * refused as injection when it carries an override (review, Oct 31).
  */
-async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields) {
+async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields, said: { notice?: string }) {
   // Flagged once per question, before the lock check so a locked question's audit row still has its flags. The link
   // pattern backtracks on long dotted text, so a question already over the limit is scanned only to OVER_LIMIT_SCAN:
   // an override that opens a long paste is still caught, and a crafted 3,000-character paste can't block the server
@@ -214,7 +244,7 @@ async function screen(phrase: string, userId: string, p: Principal, opts: AskOpt
   const flags = flagQuestion(scanned, p.ownerIds === null && p.regions.length === ALL_REGIONS.length);
   fields.flags = flags;
   if (await opts.guard?.isLocked(userId)) throw new SessionLocked();
-  if (flags.length) await opts.guard?.record(userId);
+  if (flags.length) said.notice = lockNotice(await opts.guard?.record(userId));
   // A link could carry instructions from someone else. An instruction to ignore the rules is refused even
   // when the rest of the question is in scope. Both are logged; neither is fetched or obeyed.
   if (flags.includes('link')) throw new InjectionRefused('link');
@@ -270,11 +300,13 @@ function constraintConflict(proposal: Intent, expected: Intent): string | null {
 /** Answers a typed question (or a follow-up) for a user, with audit. Every turn is validated and scoped afresh. */
 export function ask(database: Database, registry: Registry, userId: string, phrase: string, opts: AskOptions = {}): Promise<Reply> {
   const model = opts.model ?? deterministicModel;
-  return audited<Reply>(database, userId, 'question', phrase, opts, async (fields, principal, linked) => {
+  // Filled by screen() when this question brings the lock close; added to the reply once its audit row is written.
+  const said: { notice?: string } = {};
+  const reply = audited<Reply>(database, userId, 'question', phrase, opts, async (fields, principal, linked) => {
     // A label from a fixed list (src/audit/topics.ts), never the words, so unanswered questions can be counted by topic.
     Object.assign(fields, { model: model.name, turn: opts.turn ?? 1, topic: topicOf(phrase) });
     // The person is looked up first, so a locked or over-long question's audit row still records their role.
-    await screen(phrase, userId, await principal(), opts, fields);
+    await screen(phrase, userId, await principal(), opts, fields, said);
     // "Why is my coverage different?" gets a fixed explanation inside the asker's scope, before any model sees it.
     const previous = parsePrevious(opts.previous);
     if (isDiscrepancyQuestion(phrase, registry, previous)) {
@@ -298,4 +330,10 @@ export function ask(database: Database, registry: Registry, userId: string, phra
     if (!snapshot) throw new Error('No data snapshot loaded');
     return run(database, registry, await principal(), n.intent, fields, snapshot);
   });
+  return reply.then(
+    (r) => withNotice(r, said.notice),
+    (e: unknown) => {
+      throw refusalWithNotice(e, said.notice);
+    },
+  );
 }
