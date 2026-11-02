@@ -1,6 +1,6 @@
 // The ask panel's browser-free rules (app/ask-flow.ts), from the UX review of Nov 2.
 import { describe, expect, it, vi } from 'vitest';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, offScreen, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
 
 describe('the turn cap (REC)', () => {
   it('keeps the last MAX_TURNS_SHOWN turns and counts the ones that drop off', () => {
@@ -73,5 +73,15 @@ describe('a reply that never comes (REC)', () => {
     // CLAUDE_TIMEOUT_MS is capped at 60 s (src/semantic/model.ts); the slow notice comes well before the limit.
     expect(GIVE_UP_MS).toBeGreaterThan(60_000);
     expect(SLOW_MS).toBeLessThan(GIVE_UP_MS);
+  });
+});
+
+describe('scrolling to a new turn (row 6)', () => {
+  it('scrolls when the turn starts above the window or runs off the bottom from low down, and not when it fits', () => {
+    expect(offScreen({ top: -3700, bottom: -2900 }, 768)).toBe(true); // the old case: the answer started far above
+    expect(offScreen({ top: 542, bottom: 1543 }, 768)).toBe(true); // measured on the branch: most of it below the fold
+    expect(offScreen({ top: 900, bottom: 1400 }, 768)).toBe(true); // entirely below
+    expect(offScreen({ top: 562, bottom: 700 }, 768)).toBe(false); // short, fits where it is
+    expect(offScreen({ top: 59, bottom: 2000 }, 768)).toBe(false); // starts near the top: reading down is natural
   });
 });

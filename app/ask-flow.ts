@@ -51,6 +51,14 @@ export function tabStore(): KeepStore | null {
   }
 }
 
+/**
+ * Whether a new turn needs scrolling to (row 6): it starts above the window, or it runs past the bottom and starts lower
+ * than the top quarter. A turn that fits where it is, or starts near the top, stays put.
+ */
+export function offScreen(turn: { top: number; bottom: number }, viewport: number): boolean {
+  return turn.top < 0 || (turn.bottom > viewport && turn.top > viewport * 0.25);
+}
+
 /** After this long the waiting line says it's slow. The model's own limit is 8 s by default (src/semantic/model.ts). */
 export const SLOW_MS = 15_000;
 /** After this long the panel stops waiting. CLAUDE_TIMEOUT_MS is at most 60 s, so a working server has answered by then. */

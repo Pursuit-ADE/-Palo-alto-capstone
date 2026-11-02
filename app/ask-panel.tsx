@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, offScreen, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -69,12 +69,12 @@ export function AskPanel({
 
   // A new turn lands above the question box, and the browser keeps the box where it was, so a long answer started off
   // screen: by turn 5 at 1024 × 768 the reader had to scroll back 3,700 px to find it (UX review, Nov 2, row 6). Bring its
-  // start into view, unless it's already in the top three quarters of the window. Focus stays in the box.
+  // start to the top when it starts above the window, or runs past the bottom from lower than the top quarter (an answer
+  // starting at 542 px ran to 1,543). One that fits where it is stays put. Focus stays in the box.
   useEffect(() => {
     if (lastId === undefined) return;
     const turn = listRef.current?.querySelector<HTMLElement>(`[data-turn="${lastId}"]`);
-    const top = turn?.getBoundingClientRect().top;
-    if (turn && top !== undefined && (top < 0 || top > window.innerHeight * 0.75)) turn.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+    if (turn && offScreen(turn.getBoundingClientRect(), window.innerHeight)) turn.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
   }, [lastId]);
 
   // Arriving from an alert, the question is filled in but the box sat at the bottom edge of the window, so the link
