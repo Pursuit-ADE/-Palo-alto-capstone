@@ -37,6 +37,7 @@ For the alerts app, put `DEMO_INVITE_SECRET` (the same value), `ALLOW_EMBEDDED_D
 - **Start both servers from a terminal window that stays open,** not from an editor's or a tool's preview pane. A server stops with whatever started it, and the laptop demo's database is in memory, so a stop wipes every account. If that happens, run `npm start` again and sign up again with the same invite codes; they work again on the empty database.
 - **One person per browser profile.** Sessions are cookies, and cookies are per host name. Signing in as a second person in the same browser, on `localhost`, silently replaces the first person's session in every open tab. To show two people from one laptop, use a separate browser profile for each, or a separate host name (`jordan.localhost:3000`, `avery.localhost:3000`; every `*.localhost` name reaches this machine).
 - **Sign in to both apps shortly before the demo.** An alert's copilot link opens the copilot, which has its own sign-in.
+- **Answer "Did you mean …?" with the full name** ("Darcel Schlecht"), not "yes": a bare "yes" isn't read as the name.
 
 ## Run on Postgres
 
