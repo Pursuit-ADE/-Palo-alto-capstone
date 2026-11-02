@@ -143,9 +143,9 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                   </div>
                   <p>{a.explanation}</p>
                   {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one.
-                      The link pre-fills a fixed question about the reader's pipeline (src/server/prompts.ts), not one about this case or
-                      account, so the label says so: "Ask the copilot about this" promised more (UX review, Nov 2). */}
-                  <a href={a.link} target="_blank" rel="noopener noreferrer">See your pipeline in the copilot (opens in a new tab)</a>
+                      The link pre-fills a fixed question about this alert's account (src/server/prompts.ts), so the label can say "about this
+                      account" again. It only pre-fills: the reader still presses Ask (UX review, Nov 2). */}
+                  <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this account (opens in a new tab)</a>
                 </li>
               ))}
             </ul>

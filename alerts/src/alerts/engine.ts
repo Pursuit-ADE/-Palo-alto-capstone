@@ -159,9 +159,10 @@ export async function runAlerts(db: Db, rules: Map<string, AlertRule>, channels:
             severity: ev.severity,
             title: render(rule.title, ev.values),
             explanation: `${render(rule.explain, ev.values)} Rule: ${rule.id} v${rule.version}.`,
-            // The link names a fixed prompt (the rule id), which the copilot maps to a known question. Identity
-            // comes from the copilot's own sign-in; only in test mode is the test identity carried along.
-            link: `${copilotUrl}/?prompt=${encodeURIComponent(rule.id)}${opts.testIdentityInLinks ? `&user=${encodeURIComponent(sub.userId)}` : ''}`,
+            // The link names a fixed prompt (the rule id) and the account id, which the copilot maps to a known question
+            // about that account (src/server/prompts.ts), so the link is about this alert (UX review Nov 2, BH r2 3).
+            // Identity comes from the copilot's own sign-in; only in test mode is the test identity carried along.
+            link: `${copilotUrl}/?prompt=${encodeURIComponent(rule.id)}&account=${encodeURIComponent(ev.accountId)}${opts.testIdentityInLinks ? `&user=${encodeURIComponent(sub.userId)}` : ''}`,
             status: 'pending',
             channel: sub.channel,
             createdAt: now,
