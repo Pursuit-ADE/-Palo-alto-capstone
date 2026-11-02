@@ -1,6 +1,8 @@
 // The ask panel's browser-free rules (app/ask-flow.ts), from the UX review of Nov 2.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, offScreen, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, takeKeptQuestion, withTimeout } from '../app/ask-flow';
+import { CONVERSATION_KEY } from '../app/auth-form';
 
 describe('the turn cap (REC)', () => {
   it('keeps the last MAX_TURNS_SHOWN turns and counts the ones that drop off', () => {
@@ -83,5 +85,48 @@ describe('scrolling to a new turn (row 6)', () => {
     expect(offScreen({ top: 900, bottom: 1400 }, 768)).toBe(true); // entirely below
     expect(offScreen({ top: 562, bottom: 700 }, 768)).toBe(false); // short, fits where it is
     expect(offScreen({ top: 59, bottom: 2000 }, 768)).toBe(false); // starts near the top: reading down is natural
+  });
+});
+
+describe('the conversation kept in the tab (BH 7, REC)', () => {
+  const memory = () => {
+    const m = new Map<string, string>();
+    return { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v), removeItem: (k: string) => void m.delete(k), size: () => m.size };
+  };
+  const conversation = { turns: [{ id: 1, question: 'open pipeline', result: { kind: 'answer', rows: [{ value: 1004925 }] } }], dropped: 0, previous: { metric: 'open_pipeline' } };
+
+  it('comes back for the same user within a session, as it was', () => {
+    const store = memory();
+    saveConversation(store, 'u_ts_west', conversation, 0);
+    expect(loadConversation(store, 'u_ts_west', 8 * 3_600_000)).toEqual(conversation);
+  });
+
+  it("is removed, not shown, for another user, after a session's length, or when it's malformed", () => {
+    const store = memory();
+    saveConversation(store, 'u_ts_west', conversation, 0);
+    expect(loadConversation(store, 'u_ts_east', 1)).toBeNull();
+    expect(store.size()).toBe(0);
+    saveConversation(store, 'u_ts_west', conversation, 0);
+    expect(loadConversation(store, 'u_ts_west', 8 * 3_600_000 + 1)).toBeNull();
+    expect(store.size()).toBe(0);
+    store.setItem(CONVERSATION_KEY, JSON.stringify({ user: 'u_ts_west', at: 0, turns: 'nope', dropped: 0 }));
+    expect(loadConversation(store, 'u_ts_west', 1)).toBeNull();
+    expect(store.size()).toBe(0);
+  });
+
+  it('is dropped rather than left stale when the tab is full', () => {
+    const store = memory();
+    saveConversation(store, 'u_ts_west', conversation, 0);
+    const full = { ...store, setItem: () => { throw new Error('QuotaExceededError'); } };
+    saveConversation(full, 'u_ts_west', { ...conversation, dropped: 1 }, 1);
+    expect(store.size()).toBe(0);
+  });
+
+  it('is forgotten by both sign-in forms (signed out means the conversation ends)', () => {
+    for (const file of ['app/auth-form.tsx', 'alerts/app/auth-form.tsx']) {
+      const form = readFileSync(file, 'utf8');
+      expect(form).toContain('sessionStorage.removeItem(CONVERSATION_KEY)');
+      expect(form).toMatch(/<form [^>]*>\n\s*<ForgetConversation \/>/);
+    }
   });
 });

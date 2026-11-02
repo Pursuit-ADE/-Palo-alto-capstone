@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, MAX_TURNS_SHOWN, offScreen, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
+import { addTurn, AskTimeout, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -42,6 +42,29 @@ function nextPrevious(result: AskResult, current: unknown): unknown {
   return current;
 }
 
+type Shown = { turns: Turn[]; dropped: number };
+
+/**
+ * A reload, or /trends and back, used to lose the whole conversation (BH 7, REC). This puts back what the tab kept for
+ * this user, then keeps each change; the server still checks every follow-up's intent and scope. It returns the last
+ * turn put back (not scrolled to), or null until the tab has been read, so the first, empty render can't overwrite it.
+ */
+function useKeptConversation(user: string, shown: Shown, setShown: (s: Shown) => void, previous: unknown, setPrevious: (p: unknown) => void) {
+  const restored = useRef<{ lastId: number | undefined } | null>(null);
+  useEffect(() => {
+    const kept = loadConversation<Turn>(tabStore(), user);
+    if (kept) {
+      setShown({ turns: kept.turns, dropped: kept.dropped });
+      setPrevious(kept.previous);
+    }
+    restored.current = { lastId: kept?.turns.at(-1)?.id };
+  }, [user, setShown, setPrevious]);
+  useEffect(() => {
+    if (restored.current) saveConversation(tabStore(), user, { turns: shown.turns, dropped: shown.dropped, previous });
+  }, [shown, previous, user]);
+  return restored;
+}
+
 export function AskPanel({
   user,
   name,
@@ -57,7 +80,7 @@ export function AskPanel({
   view?: View;
   metricDims?: Record<string, string[]>;
 }) {
-  const [shown, setShown] = useState<{ turns: Turn[]; dropped: number }>({ turns: [], dropped: 0 });
+  const [shown, setShown] = useState<Shown>({ turns: [], dropped: 0 });
   const turns = shown.turns;
   const [previous, setPrevious] = useState<unknown>(null);
   const [pending, startTransition] = useTransition();
@@ -66,13 +89,15 @@ export function AskPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const lastId = turns.at(-1)?.id;
+  const restored = useKeptConversation(user, shown, setShown, previous, setPrevious);
 
   // A new turn lands above the question box, and the browser keeps the box where it was, so a long answer started off
   // screen: by turn 5 at 1024 × 768 the reader had to scroll back 3,700 px to find it (UX review, Nov 2, row 6). Bring its
   // start to the top when it starts above the window, or runs past the bottom from lower than the top quarter (an answer
   // starting at 542 px ran to 1,543). One that fits where it is stays put. Focus stays in the box.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: restored is a ref read when the last turn changes; only a new turn scrolls.
   useEffect(() => {
-    if (lastId === undefined) return;
+    if (lastId === undefined || lastId === restored.current?.lastId) return;
     const turn = listRef.current?.querySelector<HTMLElement>(`[data-turn="${lastId}"]`);
     if (turn && offScreen(turn.getBoundingClientRect(), window.innerHeight)) turn.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
   }, [lastId]);

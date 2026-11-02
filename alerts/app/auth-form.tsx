@@ -1,6 +1,6 @@
 'use client';
 
-import type { FormEventHandler, Ref } from 'react';
+import { useEffect, type FormEventHandler, type Ref } from 'react';
 
 /** The invite code box: required on the sign-up page, optional on the log-in page (filled in, it creates the account). */
 export type InviteField = 'required' | 'optional' | 'off';
@@ -41,6 +41,23 @@ export function headingFor(mode: 'login' | 'signup', creating: boolean, title: s
   return mode === 'login' && creating ? 'Create an account' : title;
 }
 
+/** Where the copilot keeps the tab's conversation while signed in (app/ask-flow.ts). */
+export const CONVERSATION_KEY = 'copilot.conversation';
+
+/**
+ * Reaching a sign-in form means being signed out (signed-in visitors are sent on), so the copilot's kept conversation
+ * goes: it lasts one session, and the next person to sign in on this tab never has it on the page. A no-op in the
+ * alerts app, whose storage is separate.
+ */
+function ForgetConversation() {
+  useEffect(() => {
+    try {
+      sessionStorage.removeItem(CONVERSATION_KEY);
+    } catch {}
+  }, []);
+  return null;
+}
+
 /**
  * An alert's question and account ids, posted with the form so signing in brings that question back (UX row 10). The
  * action only sees what the form posts, and checks both ids with prompts.ts again before redirecting with them.
@@ -75,6 +92,7 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
   const hints = fieldHints(invite);
   return (
     <form ref={ref} id={id} action={action} className="auth-form" onInput={onInput} onReset={onReset}>
+      <ForgetConversation />
       <AlertFields prompt={prompt} account={account} />
       <label htmlFor="username">Username</label>
       {/* Uncontrolled, so text typed before hydration or filled by a password manager is never overwritten. defaultValue

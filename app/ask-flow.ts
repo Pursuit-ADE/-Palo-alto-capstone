@@ -1,4 +1,5 @@
 // The ask panel's rules that need no browser to test (UX review, Nov 2).
+import { CONVERSATION_KEY } from './auth-form';
 
 /** The panel shows at most this many turns. Older ones drop off the page; follow-ups only use the last answer anyway. */
 export const MAX_TURNS_SHOWN = 20;
@@ -37,6 +38,47 @@ export function takeKeptQuestion(store: KeepStore | null, user: string, now = Da
     const { user: owner, question, at } = kept as Record<string, unknown>;
     if (owner !== user || typeof question !== 'string' || typeof at !== 'number' || now < at || now - at > KEEP_MS) return null;
     return question;
+  } catch {
+    return null;
+  }
+}
+
+/** A kept conversation older than a session (SESSION_HOURS, src/server/auth.ts) isn't put back. */
+const CONVERSATION_MS = 8 * 3_600_000;
+
+export interface KeptConversation<T> {
+  turns: T[];
+  dropped: number;
+  previous: unknown;
+}
+
+/**
+ * Keeps the conversation in this tab (sessionStorage), so a reload or a trip to /trends and back doesn't lose it (BH 7,
+ * REC). Answers are what the server already sent this user, and follow-ups still go through the server's scope checks.
+ * Too big to keep means not kept, rather than an old copy.
+ */
+export function saveConversation<T>(store: KeepStore | null, user: string, conversation: KeptConversation<T>, now = Date.now()): void {
+  try {
+    store?.setItem(CONVERSATION_KEY, JSON.stringify({ user, at: now, ...conversation }));
+  } catch {
+    try {
+      store?.removeItem(CONVERSATION_KEY);
+    } catch {}
+  }
+}
+
+/** This user's kept conversation, or null. Someone else's, a stale or a malformed one is removed. */
+export function loadConversation<T>(store: KeepStore | null, user: string, now = Date.now()): KeptConversation<T> | null {
+  try {
+    const raw = store?.getItem(CONVERSATION_KEY);
+    if (!raw) return null;
+    const kept = JSON.parse(raw) as Record<string, unknown> | null;
+    const fresh = kept?.user === user && typeof kept.at === 'number' && now >= kept.at && now - kept.at <= CONVERSATION_MS;
+    if (!kept || !fresh || !Array.isArray(kept.turns) || typeof kept.dropped !== 'number') {
+      store?.removeItem(CONVERSATION_KEY);
+      return null;
+    }
+    return { turns: kept.turns as T[], dropped: kept.dropped, previous: kept.previous ?? null };
   } catch {
     return null;
   }
