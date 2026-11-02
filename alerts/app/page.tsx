@@ -42,6 +42,8 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   // In the Graphs view, a mouse drag on the page around the graph turns it too.
   const surface = graphs ? { 'data-c3d-surface': '' } : {};
   const myRules = [...rules.values()].filter((r) => (r.audience as string[]).includes(me.role));
+  const noRules = myRules.length === 0;
+  const audiences = [...new Set([...rules.values()].flatMap((r) => r.audience))].map((a) => `${a.replace('_', ' ')}s`).join(' and ');
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
   return (
@@ -81,6 +83,15 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
           <ViewSwitch view={view} />
         </div>
 
+        {noRules ? (
+          // A role with no rules gets one honest line. Before, three tiles of 0 sat over an inbox that suggested
+          // subscribing and a settings card that said you can't (UX review Nov 2, OPT 4).
+          <section className="card" aria-labelledby="inbox-title">
+            <h2 id="inbox-title">No alerts for your role yet</h2>
+            <p className="empty">No alert rules cover your role yet, so there is nothing to subscribe to and no alerts to show. Today&apos;s rules are for {audiences}. The rule catalog below lists them.</p>
+          </section>
+        ) : (
+        <>
         {graphs ? (
           <section className="card" aria-label="Alert summary">
             <Chart3D
@@ -133,31 +144,31 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
             </ul>
           )}
         </section>
+        </>
+        )}
 
-        <div className="grid2">
+        <div className={noRules ? undefined : 'grid2'}>
+          {noRules ? null : (
           <section className="card" aria-labelledby="subs-title">
             <h2 id="subs-title">Your subscriptions</h2>
             <p className="sub">Choose the alerts you want, how often, where, and your quiet hours. Only alerts meant for your role are listed. Changes apply to new alerts; ones already waiting keep their channel.</p>
-            {myRules.length === 0 ? (
-              <p className="empty">No alerts are available for your role yet.</p>
-            ) : (
-              <div className="prefs">
-                {myRules.map((r) => {
-                  const s = subs.find((x) => x.ruleId === r.id) ?? null;
-                  return (
-                    <PreferencesForm
-                      key={`${user}-${r.id}`}
-                      user={user}
-                      ruleId={r.id}
-                      ruleName={r.name}
-                      critical={r.criticalSeverities.length > 0}
-                      sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
-                    />
-                  );
-                })}
-              </div>
-            )}
+            <div className="prefs">
+              {myRules.map((r) => {
+                const s = subs.find((x) => x.ruleId === r.id) ?? null;
+                return (
+                  <PreferencesForm
+                    key={`${user}-${r.id}`}
+                    user={user}
+                    ruleId={r.id}
+                    ruleName={r.name}
+                    critical={r.criticalSeverities.length > 0}
+                    sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
+                  />
+                );
+              })}
+            </div>
           </section>
+          )}
 
           <section className="card" aria-labelledby="rules-title">
             <h2 id="rules-title">Rule catalog</h2>
