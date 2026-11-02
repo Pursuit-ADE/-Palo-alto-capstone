@@ -16,7 +16,7 @@ function Choices({ view }: { view: View }) {
         <button type="submit" name="view" value="numbers" aria-pressed={shown === 'numbers'}>Numbers</button>
         <button type="submit" name="view" value="graphs" aria-pressed={shown === 'graphs'}>Graphs</button>
       </fieldset>
-      {shown === 'graphs' && <p className="view-switch-hint">Drag a graph, or the page around it, to turn the graphs into 3D. Double-click or press Esc to flatten.</p>}
+      {shown === 'graphs' && <p className="view-switch-hint">Press 3D view (or the 3 key) to show the graphs in 3D, then drag to turn them. Double-click or press Esc to flatten.</p>}
     </>
   );
 }
