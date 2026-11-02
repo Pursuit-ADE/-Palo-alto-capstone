@@ -38,7 +38,7 @@ describe('a breakdown by a kind of name', () => {
 
   it('on coverage, says quota is not split that way and offers no filter', () => {
     const q = asked('pipeline coverage by account this quarter');
-    expect(q).toContain("Quota isn't split by account");
+    expect(q).toContain("because quota isn't split that way");
     expect(q).not.toContain('for example');
   });
 

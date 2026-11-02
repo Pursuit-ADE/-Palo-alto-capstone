@@ -564,7 +564,7 @@ function nameBreakdown(text: string, metric: MetricDefinition): string | undefin
   if (!m) return undefined;
   const kind = NAME_KIND[m[1]!] ?? m[1]!;
   const cannot = `${metric.name} can't be broken down by ${kind}. It can be broken down by ${metric.dimensions.join(', ')}.`;
-  if (metric.kind === 'ratio') return `${cannot} Quota isn't split by ${kind}, so coverage can't be filtered by one either.`;
+  if (metric.kind === 'ratio') return `${metric.name} can't be broken down or filtered by ${kind}, because quota isn't split that way. ${otherBreakdowns(metric)}`;
   const cat = catalog();
   const example = kind === 'account' ? cat.accounts[0]?.name : kind === 'product' ? cat.products[0]?.id : cat.accounts[0]?.sector;
   const named = kind === 'sector' ? `the ${example} sector` : example;
@@ -750,10 +750,29 @@ function askedBreakdown(text: string, phrase: string, metric: MetricDefinition, 
   if (ranked && !metric.dimensions.includes(ranked)) return { kind: 'clarify', question: cannotRank(metric, ranked) };
   if (ranked) groupBy.push(ranked);
   const unsupportedDim = groupBy.find((d) => !metric.dimensions.includes(d));
-  if (unsupportedDim) {
-    return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?` };
-  }
+  if (unsupportedDim) return { kind: 'clarify', question: `${metric.name} can't be broken down by ${unsupportedDim}. ${otherBreakdowns(metric)}` };
   return groupBy;
+}
+
+/**
+ * The question for a period that can't be answered. "Last quarter" isn't one of the answerable quarters, so asking which
+ * of this quarter and next was meant didn't help (OPT round 2, finding 5, Nov 2: "How does that compare to last
+ * quarter?" got "Which of those do you mean?").
+ */
+function periodQuestion(text: string): string {
+  const quarters = QUOTA_PERIODS.map((p) => p.period).join(' and ');
+  if (/ (last|previous|prior) quarter /.test(text)) return `I can't answer for last quarter, only for ${quarters}.`;
+  return `I can only answer for ${quarters}. Which of those do you mean?`;
+}
+
+/**
+ * The breakdowns a metric does have. With only one, it says how to ask for it instead of "Which do you want?", which
+ * offered a choice of one (REC, Nov 2: coverage "by stage" got "It can be broken down by region. Which do you want?").
+ */
+function otherBreakdowns(metric: MetricDefinition): string {
+  const [only] = metric.dimensions;
+  if (metric.dimensions.length === 1 && only) return `It can only be broken down by ${only}: ask for "${metric.name.toLowerCase()} by ${only}".`;
+  return `It can be broken down by ${metric.dimensions.join(', ')}. Which do you want?`;
 }
 
 const DIMENSION_WORDS: Record<string, Dimension> = { region: 'region', stage: 'stage', owner: 'owner', rep: 'owner', seller: 'owner' };
@@ -903,7 +922,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   if (periods.unsupported) {
     // Resumable, like the other period questions, so replying "FY27-Q1" or "next quarter" finishes the request instead of
     // starting a new one (review, Nov 1: "in October" then "FY27-Q1" was unsupported).
-    return { kind: 'clarify', question: `I can only answer for ${QUOTA_PERIODS.map((p) => p.period).join(' and ')}. Which of those do you mean?`, resume: partial() };
+    return { kind: 'clarify', question: periodQuestion(text), resume: partial() };
   }
   if (periods.labels.size > 1) {
     return { kind: 'clarify', question: `You mentioned more than one quarter (${[...periods.labels].join(', ')}). Which one do you mean?`, resume: partial() };
