@@ -21,6 +21,18 @@ export function formAction<A>(mode: 'login' | 'signup', inviteCode: string, acti
   return mode === 'signup' || inviteCode.trim() !== '' ? actions.signUp : actions.logIn;
 }
 
+/**
+ * The hints under the password and invite fields, by how the invite box works on this page; null where sign-up is off.
+ * The 12-character rule sits with the field it governs and is read out with it. It used to be the last sentence of the
+ * invite hint, two fields further down, and the password field described nothing (UX review, Nov 2, RD).
+ */
+function fieldHints(invite: InviteField): { password: string; invite: string } | null {
+  if (invite === 'off') return null;
+  return invite === 'optional'
+    ? { password: 'New accounts need at least 12 characters.', invite: 'New here? Add the code you were given and this creates your account. It decides your demo person and role.' }
+    : { password: 'At least 12 characters.', invite: 'The invite code decides which demo person and role your account gets.' };
+}
+
 // The fields themselves. State lives in AuthStage, which also lets the name card submit this form.
 export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset, prompt }: {
   ref: Ref<HTMLFormElement>;
@@ -38,6 +50,7 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
   onReset: FormEventHandler<HTMLFormElement>;
   prompt?: string;
 }) {
+  const hints = fieldHints(invite);
   return (
     <form ref={ref} id={id} action={action} className="auth-form" onInput={onInput} onReset={onReset}>
       {/* The action only sees what the form posts. It checks the id against prompts.ts again before redirecting with it. */}
@@ -50,18 +63,15 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
       <input id="username" name="username" autoComplete="username" required minLength={3} maxLength={32} autoCapitalize="none" spellCheck={false} defaultValue={username} onChange={(e) => onUsername(e.target.value)} pattern={creating ? USERNAME_PATTERN : undefined} title={creating ? 'Letters, numbers, dots, dashes or underscores. No spaces.' : undefined} aria-describedby={creating ? 'username-hint' : undefined} />
       {creating && <p className="hint" id="username-hint">Letters, numbers, dots, dashes or underscores only. No spaces. For example: mira.k</p>}
       <label htmlFor="password">Password</label>
-      <input id="password" name="password" type="password" autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={128} />
-      {invite !== 'off' && (
+      <input id="password" name="password" type="password" autoComplete={creating ? 'new-password' : 'current-password'} required minLength={creating ? 12 : 1} maxLength={128} aria-describedby={hints ? 'password-hint' : undefined} />
+      {hints && <p className="hint" id="password-hint">{hints.password}</p>}
+      {hints && (
         <>
           <label htmlFor="invite">
             Invite code{invite === 'optional' && <span className="optional"> (first time only)</span>}
           </label>
           <input id="invite" name="invite" autoComplete="off" required={invite === 'required'} placeholder="XXXX-XXXX-XXXX" maxLength={20} aria-describedby="invite-hint" defaultValue={inviteCode} />
-          <p className="hint" id="invite-hint">
-            {invite === 'optional'
-              ? 'New here? Add the code you were given and this creates your account. It decides your demo person and role. Passwords need at least 12 characters.'
-              : 'The invite code decides which demo person and role your account gets. At least 12 characters for the password.'}
-          </p>
+          <p className="hint" id="invite-hint">{hints.invite}</p>
         </>
       )}
       {error && <p key={errorKey} className="auth-error" role="alert">{error}</p>}
