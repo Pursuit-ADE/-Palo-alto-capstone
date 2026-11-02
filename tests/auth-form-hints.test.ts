@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { AuthForm, type InviteField } from '../app/auth-form';
 
-const form = (invite: InviteField, creating: boolean, prompt?: string) =>
+const form = (invite: InviteField, creating: boolean, prompt?: string, account?: string) =>
   renderToStaticMarkup(
     createElement(AuthForm, {
       ref: null,
@@ -20,6 +20,7 @@ const form = (invite: InviteField, creating: boolean, prompt?: string) =>
       onInput: () => {},
       onReset: () => {},
       prompt,
+      account,
     }),
   );
 const passwordInput = (html: string) => html.match(/<input[^>]*id="password"[^>]*>/)?.[0] ?? '';
@@ -52,9 +53,11 @@ describe('the password rule', () => {
   });
 });
 
-describe('the alert question id (UX row 10)', () => {
-  it('is posted as a hidden field only when the page passes one', () => {
-    expect(form('optional', false, 'high_severity_case')).toContain('<input type="hidden" name="prompt" value="high_severity_case"/>');
-    expect(form('optional', false)).not.toContain('name="prompt"');
+describe('the alert question and account ids (UX row 10)', () => {
+  it('are posted as hidden fields only when the page passes them', () => {
+    const html = form('optional', false, 'cxo_engagement', 'acc_acme_corporation');
+    expect(html).toContain('<input type="hidden" name="prompt" value="cxo_engagement"/>');
+    expect(html).toContain('<input type="hidden" name="account" value="acc_acme_corporation"/>');
+    expect(form('optional', false)).not.toMatch(/name="(prompt|account)"/);
   });
 });

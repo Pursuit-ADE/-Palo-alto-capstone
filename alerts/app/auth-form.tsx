@@ -41,8 +41,21 @@ export function headingFor(mode: 'login' | 'signup', creating: boolean, title: s
   return mode === 'login' && creating ? 'Create an account' : title;
 }
 
+/**
+ * An alert's question and account ids, posted with the form so signing in brings that question back (UX row 10). The
+ * action only sees what the form posts, and checks both ids with prompts.ts again before redirecting with them.
+ */
+function AlertFields({ prompt, account }: { prompt?: string; account?: string }) {
+  return (
+    <>
+      {prompt ? <input type="hidden" name="prompt" value={prompt} /> : null}
+      {account ? <input type="hidden" name="account" value={account} /> : null}
+    </>
+  );
+}
+
 // The fields themselves. State lives in AuthStage, which also lets the name card submit this form.
-export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset, prompt }: {
+export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset, prompt, account }: {
   ref: Ref<HTMLFormElement>;
   id: string;
   invite: InviteField;
@@ -57,12 +70,12 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
   onInput: FormEventHandler<HTMLFormElement>;
   onReset: FormEventHandler<HTMLFormElement>;
   prompt?: string;
+  account?: string;
 }) {
   const hints = fieldHints(invite);
   return (
     <form ref={ref} id={id} action={action} className="auth-form" onInput={onInput} onReset={onReset}>
-      {/* The action only sees what the form posts. It checks the id against prompts.ts again before redirecting with it. */}
-      {prompt ? <input type="hidden" name="prompt" value={prompt} /> : null}
+      <AlertFields prompt={prompt} account={account} />
       <label htmlFor="username">Username</label>
       {/* Uncontrolled, so text typed before hydration or filled by a password manager is never overwritten. defaultValue
           follows what was typed, so the form reset React does after each attempt keeps the username (and invite code). */}
