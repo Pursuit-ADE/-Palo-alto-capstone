@@ -761,6 +761,30 @@ function cannotRank(metric: MetricDefinition, by: Dimension): string {
   return `${metric.name} can't be broken down by ${what}, so I can't rank ${what}s by it. I can show ${name} for one ${what} you name, or ${name} by ${metric.dimensions.join(' or ')}.`;
 }
 
+/** Ask-backs about a name or a breakdown, whose reply ("Darcel Schlecht", "what about next quarter?") should finish the question. */
+const RESUMED_ASK_BACKS = new Set([FULL_NAME, UNKNOWN_NAME]);
+const resumesAfter = (question: string) => RESUMED_ASK_BACKS.has(question) || / can't be broken down by (account|product|sector)\. /.test(question);
+
+/**
+ * The question an ask-back about a name or a breakdown is waiting on: its metric, regions, quarter and breakdown, without
+ * the name it couldn't read. The client sends it back as the previous intent, so "Darcel Schlecht" after "Use the person's
+ * full name", or "what about next quarter?" after "can't be broken down by product", continues it (UX round 1, BH 4,
+ * Nov 2: both got the generic refusal, because the ask-back carried nothing forward). Like every previous intent it is
+ * only a starting point: the reply is validated and scoped afresh.
+ */
+function resumable(question: string, text: string, metric: MetricDefinition, registry: Registry, asOfDate: string, prior: Intent | undefined, continued: boolean): { resume?: Intent } {
+  if (!resumesAfter(question)) return {};
+  const base = continued && prior ? prior : undefined;
+  const regions = (['central', 'east', 'west'] as const).filter((r) => text.includes(` ${r} `));
+  const periods = findPeriods(text, registry.glossary, asOfDate);
+  const period = periods.labels.size === 1 && !periods.unsupported ? [...periods.labels][0] : base?.filters.period;
+  const dims = Object.entries(registry.glossary.dimensionPhrases).filter(([p]) => text.includes(` ${p} `)).map(([, d]) => d).filter((d) => metric.dimensions.includes(d));
+  const filters: Intent['filters'] = { ...(base?.filters ?? {}) };
+  if (regions.length) filters.regions = [...regions];
+  if (period) filters.period = period;
+  return { resume: { metric: metric.id, filters, groupBy: dims.length ? [...new Set(dims)] : (base?.groupBy ?? []) } };
+}
+
 /**
  * Follow-ups (PRD A5): with a previous intent, a question that names no metric but changes a region, period,
  * stage or breakdown ("what about West?", "by stage", "and next quarter?") starts from the previous intent.
@@ -791,9 +815,9 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   // Conservative interpretation (PRD A2): anything we can't represent exactly gets a clarifying question,
   // never a quietly different answer.
   const unreadable = unreadableQuestion(text, metric, registry);
-  if (unreadable) return { kind: 'clarify', question: unreadable };
+  if (unreadable) return { kind: 'clarify', question: unreadable, ...resumable(unreadable, text, metric, registry, asOfDate, prior, continued) };
   const read = readSelectors(phrase);
-  if (read.clarify) return { kind: 'clarify', question: read.clarify };
+  if (read.clarify) return { kind: 'clarify', question: read.clarify, ...resumable(read.clarify, text, metric, registry, asOfDate, prior, continued) };
   const unknownRegion = UNKNOWN_REGIONS.find((r) => text.includes(` ${r} `));
   if (unknownRegion) {
     return { kind: 'clarify', question: `"${unknownRegion.toUpperCase()}" isn't a region here. The regions are Central, East and West.` };
@@ -835,7 +859,7 @@ export function normalize(phrase: string, registry: Registry, asOfDate: string, 
   };
 
   const selected = assignSelectors({ metric: metric.id, filters: {}, groupBy }, phrase, inherit);
-  if ('kind' in selected) return selected;
+  if ('kind' in selected) return { ...selected, ...resumable(selected.question, text, metric, registry, asOfDate, prior, continued) };
   if (metric.kind === 'ratio') {
     const blocked = quotaBlocked(selected.filters);
     if (blocked) return { kind: 'clarify', question: blocked };
