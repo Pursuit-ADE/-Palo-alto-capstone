@@ -11,6 +11,7 @@ import { questionFingerprint } from '@/semantic/answer';
 import { AuthError, logIn, logOut, signUp } from '@/server/auth';
 import { addressLimit, clientAddress } from '@/server/client-address';
 import { dbSessionGuard } from '@/server/limits';
+import { homePath } from '@/server/return-to';
 import { getDatabase, getEmployeeDirectory } from '@/server/runtime';
 import { clearSessionCookie, readSessionCookie, setSessionCookie } from '@/server/session';
 
@@ -93,7 +94,8 @@ export async function signUpAction(_prev: AuthState, formData: FormData): Promis
     }
     return { error: 'Something went wrong. Please try again.' };
   }
-  redirect('/');
+  // An alert's question survives sign-in (UX row 10). homePath keeps only a fixed prompt id, so a forged field can't redirect.
+  redirect(homePath({ prompt: formData.get('prompt') }));
 }
 
 export async function logInAction(_prev: AuthState, formData: FormData): Promise<AuthState> {
@@ -121,7 +123,8 @@ export async function logInAction(_prev: AuthState, formData: FormData): Promise
     }
     return { error: 'Something went wrong. Please try again.' };
   }
-  redirect('/');
+  // An alert's question survives sign-in (UX row 10). homePath keeps only a fixed prompt id, so a forged field can't redirect.
+  redirect(homePath({ prompt: formData.get('prompt') }));
 }
 
 export async function logOutAction() {

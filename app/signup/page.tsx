@@ -4,14 +4,15 @@ import { authStageInfo } from '../auth-info';
 import { AuthStage } from '../auth-stage';
 import { SyntheticBadge } from '../synthetic-badge';
 import { activeDatasetLabel } from '@/db/seed';
-import { homePath } from '@/server/return-to';
+import { homePath, loginPath } from '@/server/return-to';
 import { currentSession } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
 export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
   // Already signed in (UX review, Nov 2): go to the overview rather than show the form again.
-  if (await currentSession()) redirect(homePath(await searchParams));
+  const params = await searchParams;
+  if (await currentSession()) redirect(homePath(params));
   return (
     <AuthStage
       mode="signup"
@@ -21,7 +22,7 @@ export default async function SignUpPage({ searchParams }: { searchParams: Promi
       intro="For the demo only. Your invite code sets which demo person you are, so your role and data access come from it, not from anything you type."
       signupEnabled={Boolean(process.env.DEMO_INVITE_SECRET)}
       disabledNote="Sign-up is turned off here. Set DEMO_INVITE_SECRET to turn it on."
-      foot={<>Already have an account? <Link href="/login">Log in</Link>.</>}
+      foot={<>Already have an account? <Link href={loginPath(params)}>Log in</Link>.</>}
     />
   );
 }
