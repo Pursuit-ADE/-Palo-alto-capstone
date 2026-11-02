@@ -1,12 +1,17 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { authStageInfo } from '../auth-info';
 import { AuthStage } from '../auth-stage';
 import { SyntheticBadge } from '../synthetic-badge';
 import { activeDatasetLabel } from '@/db/seed';
+import { homePath } from '@/server/return-to';
+import { currentSession } from '@/server/session';
 
 export const dynamic = 'force-dynamic';
 
-export default function LoginPage() {
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ prompt?: string }> }) {
+  // Already signed in (UX review, Nov 2): go to the overview rather than show the form again.
+  if (await currentSession()) redirect(homePath(await searchParams));
   const signupEnabled = Boolean(process.env.DEMO_INVITE_SECRET);
   return (
     <AuthStage
