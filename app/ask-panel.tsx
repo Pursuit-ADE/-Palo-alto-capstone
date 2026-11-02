@@ -1,7 +1,8 @@
 'use client';
 
-import { useRef, useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
+import { addTurn, MAX_TURNS_SHOWN } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -19,9 +20,11 @@ interface Turn {
   result: AskResult;
 }
 
-// The browser keeps only what it displays plus the last answer's structured intent. The server re-validates
-// that intent and re-checks scope on every turn, so editing it can't widen access.
-const MAX_TURNS_SHOWN = 20;
+// The browser keeps only what it displays (the last MAX_TURNS_SHOWN turns) plus the last answer's structured intent.
+// The server re-validates that intent and re-checks scope on every turn, so editing it can't widen access.
+
+/** Smooth scrolling, unless the person asked for less motion. */
+const scrollBehavior = (): ScrollBehavior => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth');
 
 /** The conversation state the next question sends, after this reply. A refusal leaves it as it was. */
 function nextPrevious(result: AskResult, current: unknown): unknown {
@@ -49,11 +52,33 @@ export function AskPanel({
   view?: View;
   metricDims?: Record<string, string[]>;
 }) {
-  const [turns, setTurns] = useState<Turn[]>([]);
+  const [shown, setShown] = useState<{ turns: Turn[]; dropped: number }>({ turns: [], dropped: 0 });
+  const turns = shown.turns;
   const [previous, setPrevious] = useState<unknown>(null);
   const [pending, startTransition] = useTransition();
   const [failed, setFailed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const lastId = turns.at(-1)?.id;
+
+  // A new turn lands above the question box, and the browser keeps the box where it was, so a long answer started off
+  // screen: by turn 5 at 1024 × 768 the reader had to scroll back 3,700 px to find it (UX review, Nov 2, row 6). Bring its
+  // start into view, unless it's already in the top three quarters of the window. Focus stays in the box.
+  useEffect(() => {
+    if (lastId === undefined) return;
+    const turn = listRef.current?.querySelector<HTMLElement>(`[data-turn="${lastId}"]`);
+    const top = turn?.getBoundingClientRect().top;
+    if (turn && top !== undefined && (top < 0 || top > window.innerHeight * 0.75)) turn.scrollIntoView({ block: 'start', behavior: scrollBehavior() });
+  }, [lastId]);
+
+  // Arriving from an alert, the question is filled in but the box sat at the bottom edge of the window, so the link
+  // looked dead (row 6). Show the box and put the cursor in it, so Enter asks.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input || !initialQuestion) return;
+    input.focus({ preventScroll: true });
+    input.scrollIntoView({ block: 'center', behavior: 'auto' });
+  }, [initialQuestion]);
 
   function send(question: string, refocus = false) {
     const q = question.trim();
@@ -67,7 +92,7 @@ export function AskPanel({
     startTransition(async () => {
       try {
         const result = await askCopilot(null, fd);
-        setTurns((t) => [...t, { id: Date.now(), question: q, result }].slice(-MAX_TURNS_SHOWN));
+        setShown((s) => addTurn(s, { id: Date.now(), question: q, result }));
         setPrevious((current: unknown) => nextPrevious(result, current));
         if (inputRef.current) inputRef.current.value = '';
         // A break-down chip goes away with the answer it was under, so focus moves to the question box, not to <body>.
@@ -86,15 +111,17 @@ export function AskPanel({
           <p className="sub">Answers come only from the governed metrics below, scoped to {name}. Ask follow-ups like “and next quarter?”.</p>
         </div>
         {turns.length > 0 && (
-          <button type="button" className="link-button" onClick={() => { setTurns([]); setPrevious(null); }} disabled={pending}>
+          <button type="button" className="link-button" onClick={() => { setShown({ turns: [], dropped: 0 }); setPrevious(null); }} disabled={pending}>
             New conversation
           </button>
         )}
       </div>
 
-      <ol className="turns" aria-live="polite">
+      {/* Older turns drop off silently otherwise (REC, Nov 2). */}
+      {shown.dropped > 0 && <p className="sub">Only your last {MAX_TURNS_SHOWN} questions are shown. Earlier ones were cleared from this page.</p>}
+      <ol ref={listRef} className="turns" aria-live="polite">
         {turns.map((t, i) => (
-          <li key={t.id} className="turn">
+          <li key={t.id} className="turn" data-turn={t.id}>
             <p className="you"><span>You</span>{t.question}</p>
             <TurnResult
               result={t.result}
