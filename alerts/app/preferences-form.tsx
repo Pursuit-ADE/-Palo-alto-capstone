@@ -19,7 +19,8 @@ const FREQUENCY_LABELS: [string, string][] = [
   ['monthly', 'Monthly digest (the 1st)'],
 ];
 
-export function PreferencesForm({ user, ruleId, ruleName, critical, sub }: { user: string; ruleId: string; ruleName: string; critical: boolean; sub: Sub | null }) {
+// etHours[h] is UTC hour h in Eastern for today, worked out on the server so it follows daylight saving (UX review Nov 2, OPT 5).
+export function PreferencesForm({ user, ruleId, ruleName, critical, sub, etHours }: { user: string; ruleId: string; ruleName: string; critical: boolean; sub: Sub | null; etHours: string[] }) {
   const [state, action, pending] = useActionState<SaveResult, FormData>(saveSubscription, null);
   const freq = sub?.frequency === 'digest' ? 'daily' : (sub?.frequency ?? 'realtime');
   const id = (k: string) => `${ruleId}-${k}`;
@@ -47,13 +48,13 @@ export function PreferencesForm({ user, ruleId, ruleName, critical, sub }: { use
         <label htmlFor={id('quietStartHour')}>Quiet from (UTC)
           <select id={id('quietStartHour')} name="quietStartHour" defaultValue={sub?.quietStartHour ?? ''}>
             <option value="">No quiet hours</option>
-            {HOURS.map((h) => (<option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>))}
+            {HOURS.map((h) => (<option key={h} value={h}>{String(h).padStart(2, '0')}:00 ({etHours[h]} ET)</option>))}
           </select>
         </label>
         <label htmlFor={id('quietEndHour')}>Quiet until (UTC)
           <select id={id('quietEndHour')} name="quietEndHour" defaultValue={sub?.quietEndHour ?? ''}>
             <option value="">No quiet hours</option>
-            {HOURS.map((h) => (<option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>))}
+            {HOURS.map((h) => (<option key={h} value={h}>{String(h).padStart(2, '0')}:00 ({etHours[h]} ET)</option>))}
           </select>
         </label>
       </div>

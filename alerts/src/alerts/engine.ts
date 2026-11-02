@@ -9,6 +9,7 @@ import type { Channels } from './channels';
 import { employeeStatusOf, type EmployeeDirectory } from './employee-status';
 import { lowUsageEvents } from './low-usage';
 import { render, type AlertRule } from './rules';
+import { utcWithEastern } from './time';
 import { digestDue, lastSlot, normalizeFrequency } from './schedule';
 
 export interface AlertEvent {
@@ -46,9 +47,7 @@ export const STALE_CLAIM_MS = 10 * 60 * 1000;
  */
 export const MAX_ATTEMPTS = 5;
 
-function when(d: Date): string {
-  return `${d.toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-}
+const when = utcWithEastern;
 
 /** Events in [since, until] that match a rule's conditions. */
 export async function matchingEvents(db: Db, rule: AlertRule, since: Date, until: Date): Promise<AlertEvent[]> {
