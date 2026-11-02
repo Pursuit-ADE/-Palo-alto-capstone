@@ -7,6 +7,9 @@ it('carries a known prompt id through log-in, sign-up and back to the overview',
   expect(signupPath({ prompt: 'cxo_engagement' })).toBe('/signup?prompt=cxo_engagement');
   expect(homePath({ prompt: 'low_usage' })).toBe('/?prompt=low_usage');
   expect(loginPath()).toBe('/login');
+  expect(homePath({ prompt: 'cxo_engagement', account: 'acc_acme_corporation' })).toBe('/?prompt=cxo_engagement&account=acc_acme_corporation');
+  expect(homePath({ prompt: 'cxo_engagement', account: 'https://evil.example' })).toBe('/?prompt=cxo_engagement');
+  expect(homePath({ account: 'acc_acme_corporation' })).toBe('/');
 });
 
 it('drops anything that is not a prompt id', () => {
