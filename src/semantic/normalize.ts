@@ -255,7 +255,9 @@ export function readSelectors(phrase: string): { filters: SelectorFilters; clari
       // Months and regions we don't have get their own question below, not "I don't know that name".
       return KNOWN_WORDS.has(token) || NOT_A_NAME_HERE.has(token) || /^(fy\d{2,4})?q[1-4]$|^fy\d{2,4}$/.test(token);
     });
-    const named = covered.some((c) => sameName(c, raw));
+    // NAMED stops at a spaced "&", so "Gekko & Co" is seen as "Gekko": it counts when the data's name continues with "&"
+    // (optimization review, Nov 2). The pattern itself is unchanged, so "for East & West" is still two regions.
+    const named = covered.some((c) => sameName(c, raw) || (c.includes(' & ') && words(c).startsWith(`${words(raw)} `)));
     // A fixed sentence: a clarifying question never repeats typed text back (evaluator B-03).
     if (!known && !named) return { filters: {}, clarify: nameQuestion(parts) };
   }
