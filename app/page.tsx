@@ -8,6 +8,7 @@ import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
 import { SyntheticBadge } from './synthetic-badge';
 import { alertQuestion } from '@/server/prompts';
+import { loginPath } from '@/server/return-to';
 import { alertsLink } from '@/server/alerts-link';
 import { getDatabase, getRegistry } from '@/server/runtime';
 import { AskPanel } from './ask-panel';
@@ -72,7 +73,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
   // shown only when there is no session and ALLOW_TEST_IDENTITIES=true.
   const params = await searchParams;
   const actor = await requireUser(params.user, 'u_ts_east');
-  if (!actor) redirect('/login');
+  // Signed out from an alert's link: sign-in keeps its question and account (checked ids only, see return-to.ts).
+  if (!actor) redirect(loginPath(params));
   const user = actor.userId;
   const signedIn = actor.username ? user : undefined;
   const registry = getRegistry();
