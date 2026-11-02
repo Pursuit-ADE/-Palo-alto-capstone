@@ -76,13 +76,15 @@ describe('rule catalog (L1)', () => {
 });
 
 describe('private routing (L4)', () => {
-  it('only alerts a rep about accounts where they own deals', async () => {
+  it('only alerts a rep about accounts where they have deals', async () => {
     await database.db.insert(alertSubscriptions).values(sub('u_darcel_schlecht', 'cxo_engagement'));
     await runAlerts(database.db, rules, recorder(), SINCE, DAY);
     const mine = new Set(data.accountTeam.filter((t) => t.userId === 'u_darcel_schlecht').map((t) => t.accountId));
     const rows = await deliveries('u_darcel_schlecht');
     expect(rows.length).toBeGreaterThan(0);
     for (const r of rows) expect(mine.has(r.accountId)).toBe(true);
+    // The account team counts closed deals too, so the text says so: the copilot shows open deals only (UX row 11).
+    for (const r of rows) expect(r.explanation).toContain('an account where you have deals, open or closed,');
   });
 
   it('sends nothing to a rep with no accounts, even though they subscribed', async () => {
