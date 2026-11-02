@@ -193,6 +193,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           initialQuestion={initialQuestion}
           view={view}
           metricDims={Object.fromEntries([...registry.metrics.values()].map((m) => [m.id, m.dimensions]))}
+          scope={pipeline.scope}
         />
 
         <section className="card" aria-labelledby="metrics-title">
