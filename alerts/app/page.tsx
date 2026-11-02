@@ -18,6 +18,10 @@ export const dynamic = 'force-dynamic';
 
 const USERS = demoUsers();
 
+// The tag on a non-case alert names what kind of signal it is. "Info" read as low priority, but a CXO engagement is
+// the rep's actionable signal (UX review Nov 2, OPT 7). Case alerts keep their P1/P2 severity.
+const TAG_BY_EVENT: Record<string, string> = { engagement: 'CXO', low_usage: 'Usage' };
+
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when nobody is signed in and ALLOW_TEST_IDENTITIES=true.
@@ -116,7 +120,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
               {mine.map((a) => (
                 <li key={a.id} className={`alert sev-${a.severity.toLowerCase()}`}>
                   <div className="alert-head">
-                    <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? 'Info' : a.severity}</span>
+                    <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? (TAG_BY_EVENT[rules.get(a.ruleId)?.event ?? ''] ?? 'Info') : a.severity}</span>
                     <b>{a.title}</b>
                   </div>
                   <p>{a.explanation}</p>
