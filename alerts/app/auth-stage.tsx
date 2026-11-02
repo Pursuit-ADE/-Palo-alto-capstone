@@ -72,7 +72,7 @@ function Hub({ info }: { info: StageInfo }) {
   );
 }
 
-export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled = true, disabledNote }: {
+export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled = true, disabledNote, prompt }: {
   mode: 'login' | 'signup';
   info: StageInfo;
   badge: ReactNode;
@@ -81,6 +81,8 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
   foot: ReactNode;
   signupEnabled?: boolean;
   disabledNote?: string;
+  /** An alert's question id (src/server/prompts.ts), already checked by the page, so signing in brings it back (UX row 10). */
+  prompt?: string;
 }) {
   const [loginState, loginAction, loginPending] = useActionState<AuthState, FormData>(logInAction, null);
   const [signupState, signupAction, signupPending] = useActionState<AuthState, FormData>(signUpAction, null);
@@ -389,6 +391,7 @@ export function AuthStage({ mode, info, badge, title, intro, foot, signupEnabled
               onUsername={onUsername}
               onInput={onInput}
               onReset={onReset}
+              prompt={prompt}
             />
           ) : (
             <p className="auth-error">{disabledNote}</p>

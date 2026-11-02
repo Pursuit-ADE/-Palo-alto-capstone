@@ -22,7 +22,7 @@ export function formAction<A>(mode: 'login' | 'signup', inviteCode: string, acti
 }
 
 // The fields themselves. State lives in AuthStage, which also lets the name card submit this form.
-export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset }: {
+export function AuthForm({ ref, id, invite, creating, action, pending, error, errorKey, username, inviteCode, onUsername, onInput, onReset, prompt }: {
   ref: Ref<HTMLFormElement>;
   id: string;
   invite: InviteField;
@@ -36,9 +36,12 @@ export function AuthForm({ ref, id, invite, creating, action, pending, error, er
   onUsername: (value: string) => void;
   onInput: FormEventHandler<HTMLFormElement>;
   onReset: FormEventHandler<HTMLFormElement>;
+  prompt?: string;
 }) {
   return (
     <form ref={ref} id={id} action={action} className="auth-form" onInput={onInput} onReset={onReset}>
+      {/* The action only sees what the form posts. It checks the id against prompts.ts again before redirecting with it. */}
+      {prompt ? <input type="hidden" name="prompt" value={prompt} /> : null}
       <label htmlFor="username">Username</label>
       {/* Uncontrolled, so text typed before hydration or filled by a password manager is never overwritten. defaultValue
           follows what was typed, so the form reset React does after each attempt keeps the username (and invite code). */}
