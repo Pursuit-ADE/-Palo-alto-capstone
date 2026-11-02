@@ -3,6 +3,7 @@ import { demoUsers } from '@/db/seed';
 import { alertSubscriptions, dataSnapshots } from '@/db/schema';
 import { inbox, statusCounts } from '@/alerts/engine';
 import { easternHour, snapshotDay } from '@/alerts/time';
+import { destinationsFor } from '@/alerts/channels';
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/server/require-user';
 import { logOutAction } from './auth-actions';
@@ -48,6 +49,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
   // run's clock, 15:00 UTC, beside the copilot's 6:00 AM load time for the same data (UX review Nov 2, BH r2 5).
   const [snapshot] = await database.db.select().from(dataSnapshots).orderBy(desc(dataSnapshots.loadedAt)).limit(1);
   const now = new Date();
+  const has = destinationsFor(user);
   const etHours = Array.from({ length: 24 }, (_, h) => easternHour(h, now));
   const subs = await database.db.select().from(alertSubscriptions).where(eq(alertSubscriptions.userId, user));
 
@@ -168,6 +170,7 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                     ruleName={r.name}
                     critical={r.criticalSeverities.length > 0}
                     etHours={etHours}
+                    has={has}
                     sub={s ? { frequency: s.frequency, quietStartHour: s.quietStartHour, quietEndHour: s.quietEndHour, criticalBypass: s.criticalBypass, channel: s.channel } : null}
                   />
                 );
