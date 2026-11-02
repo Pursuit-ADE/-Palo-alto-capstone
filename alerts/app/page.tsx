@@ -23,6 +23,22 @@ const USERS = demoUsers();
 // the rep's actionable signal (UX review Nov 2, OPT 7). Case alerts keep their P1/P2 severity.
 const TAG_BY_EVENT: Record<string, string> = { engagement: 'CXO', low_usage: 'Usage' };
 
+/**
+ * Alerts with the same headline (the same rule, severity and account) as one card, with each one's reason listed in it.
+ * Darcel had three "CXO engagement at Donquadtech" cards that differed only in the asset and the date (UX review Nov 2,
+ * BH r2 7). The inbox is already sorted by severity, then title, so equal titles sit together. One copilot link per card:
+ * every alert in it names the same account.
+ */
+function groupByTitle<T extends { title: string }>(rows: T[]): [T, ...T[]][] {
+  const groups: [T, ...T[]][] = [];
+  for (const r of rows) {
+    const last = groups.at(-1);
+    if (last && last[0].title === r.title) last.push(r);
+    else groups.push([r]);
+  }
+  return groups;
+}
+
 export default async function AlertsPage({ searchParams }: { searchParams: Promise<{ user?: string }> }) {
   // The signed-in person comes only from the session. The "Viewing as" switch is a local-testing fallback,
   // shown only when nobody is signed in and ALLOW_TEST_IDENTITIES=true.
@@ -136,16 +152,23 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
             <p className="empty">No alerts for you right now. You get alerts only for rules you subscribe to, on accounts you work on.</p>
           ) : (
             <ul className="alerts">
-              {mine.map((a) => (
+              {groupByTitle(mine).map(([a, ...more]) => (
                 <li key={a.id} className={`alert sev-${a.severity.toLowerCase()}`}>
                   <div className="alert-head">
                     <span className={`pill sev sev-${a.severity.toLowerCase()}`}>{a.severity === 'info' ? (TAG_BY_EVENT[rules.get(a.ruleId)?.event ?? ''] ?? 'Info') : a.severity}</span>
                     <b>{a.title}</b>
+                    {more.length ? <span className="muted">{more.length + 1} alerts</span> : null}
                   </div>
-                  <p>{a.explanation}</p>
                   {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one.
                       The link pre-fills a fixed question about this alert's account (src/server/prompts.ts), so the label can say "about this
                       account" again. It only pre-fills: the reader still presses Ask (UX review, Nov 2). */}
+                  {more.length ? (
+                    <ul className="alerts">
+                      {[a, ...more].map((x) => <li key={x.id}><p>{x.explanation}</p></li>)}
+                    </ul>
+                  ) : (
+                    <p>{a.explanation}</p>
+                  )}
                   <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this account (opens in a new tab)</a>
                 </li>
               ))}
