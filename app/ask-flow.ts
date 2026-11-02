@@ -1,4 +1,5 @@
 // The ask panel's rules that need no browser to test (UX review, Nov 2).
+import type { AskResult } from './actions';
 import { CONVERSATION_KEY } from './auth-form';
 
 /** The panel shows at most this many turns. Older ones drop off the page; follow-ups only use the last answer anyway. */
@@ -103,6 +104,18 @@ export function loadConversation<T>(store: KeepStore | null, owner: string, now 
   } catch {
     return null;
   }
+}
+
+/**
+ * What a screen reader hears when a reply arrives: its one sentence, not the whole turn. The turn list used to be the
+ * live region, so every answer was read out with its receipt, about 1,300 characters for one turn (UX hour, R4).
+ */
+export function spokenReply(result: AskResult | undefined): string {
+  if (!result) return '';
+  if (result.kind === 'answer') return result.narrative;
+  if (result.kind === 'explanation') return result.summary;
+  if (result.kind === 'clarify') return `Question: ${result.question}`;
+  return `Not answered: ${result.message}`;
 }
 
 /** sessionStorage, or null where the browser blocks it (some private modes throw on access). */

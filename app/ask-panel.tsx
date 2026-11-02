@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useTransition } from 'react';
 import { askCopilot, type AskResult } from './actions';
-import { addTurn, AskTimeout, conversationOwner, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
+import { addTurn, AskTimeout, conversationOwner, GIVE_UP_MS, keepQuestion, loadConversation, MAX_TURNS_SHOWN, offScreen, saveConversation, SLOW_MS, spokenReply, tabStore, takeKeptQuestion, withTimeout } from './ask-flow';
 import { FactChips, scopeText } from './fact-chips';
 import { cell, dateRange } from './format';
 import { coverageSpec, coverageStanding } from '@/semantic/coverage-target';
@@ -22,6 +22,9 @@ interface Turn {
 
 // The browser keeps only what it displays (the last MAX_TURNS_SHOWN turns) plus the last answer's structured intent.
 // The server re-validates that intent and re-checks scope on every turn, so editing it can't widen access.
+
+const WORKING = 'Working out the governed query…';
+const SLOW = 'Still working: this is taking longer than usual…';
 
 const FAILED = {
   unreachable: 'The copilot could not be reached. Check your connection and try again.',
@@ -169,7 +172,13 @@ export function AskPanel({
 
       {/* Older turns drop off silently otherwise (REC, Nov 2). */}
       {shown.dropped > 0 && <p className="sub">Only your last {MAX_TURNS_SHOWN} questions are shown. Earlier ones were cleared from this page.</p>}
-      <ol ref={listRef} className="turns" aria-live="polite">
+      {/* The one live region: the latest reply's sentence, or that it's working. Turns put back from the tab aren't announced.
+          The text sits in a node keyed by the turn, so a reply that repeats the one before (an ask-back asked again) is
+          still a change, and is still read out. */}
+      <p className="visually-hidden" role="status">
+        <span key={pending ? 'pending' : lastId}>{pending ? (slow ? SLOW : WORKING) : lastId === restored.current?.lastId ? '' : spokenReply(turns.at(-1)?.result)}</span>
+      </p>
+      <ol ref={listRef} className="turns">
         {turns.map((t, i) => (
           <li key={t.id} className="turn" data-turn={t.id}>
             <p className="you"><span>You</span>{t.question}</p>
@@ -179,7 +188,7 @@ export function AskPanel({
             />
           </li>
         ))}
-        {pending && <li className="turn thinking" role="status">{slow ? 'Still working: this is taking longer than usual…' : 'Working out the governed query…'}</li>}
+        {pending && <li className="turn thinking">{slow ? SLOW : WORKING}</li>}
       </ol>
       {failed && <div className="answer notice failed" role="alert"><span className="notice-tag">Error</span>{FAILED[failed]}</div>}
 
@@ -214,7 +223,7 @@ function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView 
   // The session ended mid-conversation (row 7): say how to get back, and that the question is kept.
   if (result.kind === 'refused' && result.signedOut) {
     return (
-      <div className="answer notice refused" role="status">
+      <div className="answer notice refused">
         <span className="notice-tag">Not answered</span>
         {result.message} <a href="/login">Log in again</a>, and it will be back in the box.
       </div>
@@ -223,8 +232,8 @@ function TurnResult({ result, graphs }: { result: AskResult; graphs: GraphsView 
   if (result.kind === 'answer') return <AnswerView a={result} graphs={graphs} />;
   if (result.kind === 'explanation') return <ExplanationView e={result} />;
   // A clarifying question is the copilot asking back, not a refusal, so it gets its own look.
-  if (result.kind === 'clarify') return <div className="answer notice clarify" role="status"><span className="notice-tag">Question</span>{result.question}</div>;
-  return <div className="answer notice refused" role="status"><span className="notice-tag">Not answered</span>{result.message}</div>;
+  if (result.kind === 'clarify') return <div className="answer notice clarify"><span className="notice-tag">Question</span>{result.question}</div>;
+  return <div className="answer notice refused"><span className="notice-tag">Not answered</span>{result.message}</div>;
 }
 
 export function AnswerView({ a, graphs }: { a: Answer; graphs: GraphsView | null }) {
