@@ -24,7 +24,8 @@
     "db:setup": "tsx scripts/db-setup.ts",
     "purge": "tsx scripts/purge.ts",
     "trends": "tsx scripts/question-trends.ts",
-    "trends:agent": "tsx --env-file-if-exists=.env.local scripts/trends-agent.ts"
+    "trends:agent": "tsx --env-file-if-exists=.env.local scripts/trends-agent.ts",
+    "agent:ask": "tsx --env-file-if-exists=.env.local scripts/agent-ask.ts"
   },
   "engines": {
     "node": ">=22.12.0"

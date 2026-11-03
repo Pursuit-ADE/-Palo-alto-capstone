@@ -53,6 +53,8 @@ The prompt sentences above are quoted from `systemPrompt()` in `src/semantic/mod
 
 If Claude fails or is slow (8 seconds by default, `CLAUDE_TIMEOUT_MS`), the deterministic model answers the same request under the same rules (`src/server/ask.ts`). After 3 provider failures within a minute, questions skip Claude for 5 minutes. Proven by `tests/week5-review.test.ts` "a real provider failure still falls back to the governed answer" and `tests/audit-fixes.test.ts` "opens after 3 failures in a minute and closes after the cool-down".
 
+**Preview, off by default: the governed tool agent** (`docs/AGENT-DESIGN.md`, `npm run agent:ask`). Claude may plan up to 4 steps, but each step is one of four fixed tools: `get_metric`, `break_down`, `compare` and `ask_user`. Each tool runs through `answerIntent()`, so all 10 rules still hold. On top of them, the model never sees a figure. A tool result tells it only what was answered or refused, so rows stay out of the prompt, as stated under "What Claude never receives". It isn't wired into the app. Proven by `tests/governed-agent.test.ts`.
+
 ## Data and lineage
 
 | Source | What | Where |

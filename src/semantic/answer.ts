@@ -199,9 +199,43 @@ async function audited<T extends Reply>(
   return result;
 }
 
-/** Runs a structured intent (dashboard tiles, or the future AI model) for a user, with audit. */
-export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent', actor?: AskOptions['actor']): Promise<Answer> {
-  return audited(database, userId, source, null, { actor }, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
+/**
+ * Runs a structured intent (dashboard tiles, or a step of the governed tool agent) for a user, with audit. A request id
+ * links the row to the question that caused it (src/agent/governed-agent.ts).
+ */
+export function answerIntent(database: Database, registry: Registry, userId: string, rawIntent: unknown, source = 'intent', actor?: AskOptions['actor'], requestId?: string): Promise<Answer> {
+  return audited(database, userId, source, null, { actor, requestId }, async (fields, principal) => run(database, registry, await principal(), rawIntent, fields));
+}
+
+/**
+ * The audit row for a question the governed tool agent handled (preview, off by default). The same row as a typed
+ * question gets, with source `agent_question`, so the trends views (which read `source = 'question'`) don't count it
+ * twice and the steps link to it by request id. A refusal before the loop (lock, injection, length) gets its outcome
+ * from outcomeOf(), like ask(). Never the question's text: its fingerprint and a topic label only.
+ */
+export async function auditedAgentQuestion<T extends { kind: string; outcome: string }>(
+  database: Database,
+  userId: string,
+  question: string,
+  request: { actor?: AskOptions['actor']; requestId: string; model: string },
+  body: (fields: AuditFields, principal: () => Promise<Principal>) => Promise<T>,
+): Promise<T> {
+  const fields: AuditFields = { questionSha256: questionFingerprint(question), username: request.actor?.username ?? null, sessionId: request.actor?.sessionId ?? null, model: request.model, turn: 1 };
+  const principal = async () => {
+    const p = await resolvePrincipal(database.db, userId);
+    fields.role = p.role;
+    return p;
+  };
+  const row = { id: randomUUID(), userId, source: 'agent_question', requestId: request.requestId };
+  let result: T;
+  try {
+    result = await body(fields, principal);
+  } catch (e) {
+    await audit(database, { ...fields, ...row, ...outcomeOf(e), topic: topicOf(question) });
+    throw e;
+  }
+  await audit(database, { ...fields, ...row, outcome: result.outcome, topic: result.outcome === 'answered' ? null : topicOf(question) });
+  return result;
 }
 
 export interface AskOptions {
@@ -235,7 +269,7 @@ export function parsePrevious(raw: unknown): Intent | undefined {
  * The length cap comes after the flags, so a long paste is flagged for this asker, counts towards the lock and is
  * refused as injection when it carries an override (review, Oct 31).
  */
-async function screen(phrase: string, userId: string, p: Principal, opts: AskOptions, fields: AuditFields, said: { notice?: string }) {
+export async function screen(phrase: string, userId: string, p: Principal, opts: Pick<AskOptions, 'guard'>, fields: AuditFields, said: { notice?: string }) {
   // Flagged once per question, before the lock check so a locked question's audit row still has its flags. The link
   // pattern backtracks on long dotted text, so a question already over the limit is scanned only to OVER_LIMIT_SCAN:
   // an override that opens a long paste is still caught, and a crafted 3,000-character paste can't block the server
