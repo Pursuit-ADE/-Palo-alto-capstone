@@ -2,6 +2,8 @@
 // app: the copilot's ask box still uses the one-step reader. Makes real Claude calls (ANTHROPIC_API_KEY, read from
 // .env.local if there is one). Uses the embedded demo database unless DATABASE_URL and the other logins are set.
 //   npm run agent:ask -- --user u_analyst "compare pipeline coverage in East and West this quarter"
+// --user picks a demo person for this laptop preview only. In the app the user id comes from the session cookie, never
+// from a flag, form or URL (app/actions.ts); don't copy this into a page (#116 review).
 import Anthropic from '@anthropic-ai/sdk';
 import { openDatabase } from '../src/db/client';
 import { loadRegistry } from '../src/registry/load';

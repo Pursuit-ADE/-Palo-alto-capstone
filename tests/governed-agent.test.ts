@@ -23,7 +23,8 @@ type Use = { name: string; input: unknown };
 const MODEL_TEXT = 'MODEL TEXT that must never be shown';
 
 /** A stand-in for Claude: each turn returns the next scripted tool calls, then a plain text reply. Records every request. */
-function scripted(turns: Use[][], opts: { fail?: boolean; refuse?: boolean } = {}) {
+function scripted(turns: Use[][], opts: { fail?: boolean; refuse?: boolean; model?: string } = {}) {
+  const model = opts.model ?? 'claude-opus-5-5';
   const requests: Anthropic.Beta.MessageCreateParams[] = [];
   let i = 0;
   const client = {
@@ -32,10 +33,11 @@ function scripted(turns: Use[][], opts: { fail?: boolean; refuse?: boolean } = {
         create: async (params: Anthropic.Beta.MessageCreateParams) => {
           requests.push(structuredClone(params));
           if (opts.fail) throw new Error('down');
-          if (opts.refuse) return { stop_reason: 'refusal', content: [] };
+          if (opts.refuse) return { model, stop_reason: 'refusal', content: [] };
           const uses = turns[i++];
-          if (!uses) return { stop_reason: 'end_turn', content: [{ type: 'text', text: MODEL_TEXT }] };
+          if (!uses) return { model, stop_reason: 'end_turn', content: [{ type: 'text', text: MODEL_TEXT }] };
           return {
+            model,
             stop_reason: 'tool_use',
             content: [{ type: 'text', text: MODEL_TEXT }, ...uses.map((u, k) => ({ type: 'tool_use', id: `t${i}_${k}`, name: u.name, input: u.input }))],
           };
@@ -73,6 +75,12 @@ describe('governed tool agent: every step is a governed query', () => {
     expect(toolResult).toContain('refused: pipeline_coverage, West');
   });
 
+  it('can\'t reach another region through a breakdown: Jordan by region is East only (#116 review)', async () => {
+    const { client } = scripted([[{ name: 'break_down', input: { metric: 'pipeline_coverage', by: 'region' } }]]);
+    const reply = await runGovernedAgent(database, registry, 'u_ts_east', 'coverage by region', { client });
+    expect(reply.steps[0]!.answer!.rows.map((r) => r.region)).toEqual(['east']);
+  });
+
   it('never sends a figure, a scope or a name to the model: tool results say only what was answered', async () => {
     const { client, requests } = scripted([[{ name: 'get_metric', input: { metric: 'open_pipeline' } }, { name: 'break_down', input: { metric: 'open_pipeline', by: 'owner' } }]]);
     const reply = await runGovernedAgent(database, registry, 'u_ts_east', 'open pipeline, then by rep', { client });
@@ -97,6 +105,24 @@ describe('governed tool agent: limits', () => {
     const reply = await runGovernedAgent(database, registry, 'u_analyst', 'open pipeline please', { client });
     expect(reply.steps).toHaveLength(AGENT_MAX_STEPS);
     expect(reply.stopped).toBe('step_limit');
+  });
+
+  it('counts governed queries, not tool calls: a compare is two, so four compares stop after the second (#116 review)', async () => {
+    const compare = { name: 'compare', input: { metric: 'open_pipeline', sides: [['east'], ['west']] } };
+    const { client } = scripted([[compare, compare, compare, compare]]);
+    const reply = await runGovernedAgent(database, registry, 'u_analyst', 'compare again and again', { client });
+    expect(reply.steps).toHaveLength(AGENT_MAX_STEPS);
+    expect(reply.stopped).toBe('step_limit');
+    const rows = await database.db.select().from(queryAudit).where(eq(queryAudit.source, 'agent_tool'));
+    expect(rows).toHaveLength(AGENT_MAX_STEPS);
+  });
+
+  it('marks a step that can\'t be built as "Not answered" and carries on with the next one (#116 review)', async () => {
+    const { client } = scripted([[{ name: 'get_metric', input: { metric: 'Not A Metric!' } }, { name: 'get_metric', input: { metric: 'open_pipeline' } }]]);
+    const reply = await runGovernedAgent(database, registry, 'u_analyst', 'two things', { client });
+    expect(reply.steps[0]).toMatchObject({ refused: 'That step could not be answered.' });
+    expect(reply.steps[1]!.answer).toBeDefined();
+    expect(reply.stopped).toBe('done');
   });
 
   it('does not run an unknown tool or one with extra fields, and says so to the model', async () => {
@@ -129,6 +155,13 @@ describe('governed tool agent: screening and audit', () => {
     expect(rows).toMatchObject([{ outcome: 'refused_injection', flags: expect.arrayContaining(['instruction_override']) }]);
   });
 
+  it('records the model that actually answered when a fallback ran (#116 review)', async () => {
+    const { client } = scripted([[{ name: 'get_metric', input: { metric: 'open_pipeline' } }]], { model: 'claude-opus-5' });
+    await runGovernedAgent(database, registry, 'u_analyst', 'open pipeline', { client });
+    const [top] = await database.db.select().from(queryAudit).where(eq(queryAudit.source, 'agent_question'));
+    expect(top!.model).toBe('claude-opus-5');
+  });
+
   it('writes one question row and one row per step, linked by request id, with no question text', async () => {
     const question = 'Compare open pipeline in East and Central';
     const { client } = scripted([[{ name: 'compare', input: { metric: 'open_pipeline', sides: [['east'], ['central']] } }]]);
@@ -136,7 +169,7 @@ describe('governed tool agent: screening and audit', () => {
     const rows = await database.db.select().from(queryAudit);
     const top = rows.filter((r) => r.source === 'agent_question');
     const steps = rows.filter((r) => r.source === 'agent_tool');
-    expect(top).toMatchObject([{ outcome: 'answered', reason: 'agent:done:2', role: 'analyst' }]);
+    expect(top).toMatchObject([{ outcome: 'answered', reason: 'agent:done:2', role: 'analyst', model: 'claude-opus-5-5' }]);
     expect(steps).toHaveLength(2);
     expect(steps.every((s) => s.requestId === top[0]!.requestId && s.outcome === 'answered')).toBe(true);
     expect(steps.map((s) => s.regions)).toEqual([['east'], ['central']]);

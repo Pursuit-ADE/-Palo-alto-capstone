@@ -30,16 +30,19 @@ Each figure is an `answerIntent()` call. That's the same path the dashboard tile
 | Boundary | How it's enforced | Test |
 |---|---|---|
 | It never writes SQL, numbers or the answer | It can only call the four tools. Every sentence shown is built by code from rows, or comes from `ASK_TEXT` | "keeps the model's own text out of the reply" |
-| **It never sees a figure** | A tool result tells it only `answered: <metric>, <regions> (N rows)` or `refused: …`. Business numbers, names and scopes never go to Anthropic, which keeps the system card's promise | "never sends a figure, a scope or a name to the model" |
+| **It never sees a figure** | Business numbers, CRM names and scope sentences never go to Anthropic. A tool result is only answered or refused, plus the metric, the regions and the row count, for example `answered: open_pipeline, East (1 row)`. The question itself is still sent as typed, as it is for the copilot, so a name someone types does reach Anthropic | "never sends a figure, a scope or a name to the model" |
 | It can't widen access | Each step re-resolves the asker's scope. A region outside it fails with `ScopeViolation`, the step is shown as "Not answered", and the model is told not to retry | "refuses a step outside the asker's scope" |
 | It can't probe who exists | Tool inputs take no person, account or product names, only metric ids, regions and a relative quarter | Schema (`Tools`, strict) |
 | It can't run anything else | Unknown tools or extra fields aren't run. Inputs are checked by zod, and the API's strict mode is on | "does not run an unknown tool" |
-| It can't run on | 4 tool calls and 6 model turns per question, then it stops and says so | "stops after 4 tool calls" |
+| It can't run on | 4 **governed queries** per question (a compare counts as two) and 6 model turns, then it stops and says so | "stops after 4 tool calls", "counts governed queries, not tool calls" |
+| It can't reach another region through a breakdown | The compiled query is scoped to the asker's regions, so Jordan's breakdown by region has East only | "can't reach another region through a breakdown" |
+| One bad step doesn't end the question | A request that can't be built, is refused or can't be compiled is that step's "Not answered"; the plan carries on | "marks a step that can't be built" |
+| The log names the right model | With the server-side fallback on, another model can answer, so the question row records the models that actually replied | "records the model that actually answered" |
 | Attacks are stopped before any model call | The same `screen()` as a typed question: the lock, the flags, the length cap | "refuses an override before any model call" |
 | Everything is logged | One `agent_question` row, plus one `agent_tool` row per step, linked by request id, with a fingerprint and never the text. The trends views read only `source = 'question'`, so nothing is counted twice | "writes one question row and one row per step" |
 | Claude down or refusing | It stops with `unavailable` and nothing is shown. The caller can fall back to the one-step reader | "stops cleanly when the model is down or refuses" |
 
-The model call uses `claude-opus-5-5` at low effort, with the default server-side fallback, a cached system prompt, and strict tools. The strict schemas can't carry array bounds (the API refuses `maxItems`), so zod enforces the sizes.
+The model call uses `claude-opus-5-5` at low effort, with the default server-side fallback (the audit row records which model actually answered), a cached system prompt, and strict tools. The strict schemas can't carry array bounds (the API refuses `maxItems`), so zod enforces the sizes.
 
 ## Live check (Nov 2, 2026)
 
@@ -48,6 +51,17 @@ These ran with Claude on the embedded demo data:
 - **Avery (analyst):** "Compare pipeline coverage in East and West this quarter, then break it down by region". Claude made 3 governed queries. East was 0.43x and West 0.75x. The code wrote "West is 0.32x higher than East", then the by-region breakdown followed (Central 0.76x highest, East 0.43x lowest).
 - **Jordan (technical seller, East):** "Compare my pipeline coverage this quarter in East and West". East was 0.52x (Jordan's team). West came back as **"Not answered: You don't have access to the West region"**.
 - **Jordan, vaguer:** "How does my coverage compare with West?". Claude chose `ask_user`, which shows the fixed question "Which regions should I compare?".
+
+## Known exposure
+
+Row counts go to the model: a breakdown by owner tells it how many reps are in the asker's scope. The user isn't shown this, and no names or figures go with it, but it is information about the org chart. A rollout could send `answered` without the count.
+
+## Before wiring it into the app
+
+- **The user id must come from the session cookie**, as in `app/actions.ts`, never from a flag, a form or a URL. `npm run agent:ask -- --user …` is a laptop preview, like the other scripts.
+- **The per-user rate limit (20 questions a minute) runs in the server action**, not in `answer.ts`, so the agent call has to sit behind it. One agent question can run up to 4 governed queries, so decide how that counts against the limit.
+- **Show the lock warning.** `screen()`'s "one more question like this pauses asking" notice is dropped by the CLI; the page has to show it.
+- **Add red-team cases for the planner**, beyond the breakdown test here.
 
 ## Not built yet (next steps)
 
