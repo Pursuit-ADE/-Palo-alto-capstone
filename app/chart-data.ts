@@ -32,7 +32,9 @@ function orderCategories(dim: string, keys: string[], rankOf: (k: string) => num
 const sentence = (title: string, data: ChartDatum[], labelOf: (d: ChartDatum) => string) => `${title}: ${data.map((d) => `${labelOf(d)} ${d.display}`).join(', ')}.`;
 
 /** Actual coverage as a bar inside its target, one category at a time. Opens as a bullet chart. */
-function againstTarget(metric: Answer['metric'], categories: { key: string; label: string }[], values: { value: number | null; display: string }[], id: string, title: string): ChartData | null {
+// categoryName heads the first column of the "Show numbers" table. It was "Coverage" too, so the header read
+// "Coverage Coverage 3.00x target" (demo run-through, Nov 2).
+function againstTarget(metric: Answer['metric'], categories: { key: string; label: string }[], values: { value: number | null; display: string }[], id: string, title: string, categoryName = 'Scope'): ChartData | null {
   const goal = coverageSpec(metric);
   if (!goal) return null;
   const data: ChartDatum[] = categories.flatMap((c, i) => {
@@ -50,9 +52,19 @@ function againstTarget(metric: Answer['metric'], categories: { key: string; labe
   }).join('; ');
   return {
     id, tab: 'Against target', title, unit: 'ratio', form: 'columns', prefer: 'bullet',
-    categoryName: 'Coverage', categories, series: ['Coverage', `${goal.target.toFixed(2)}x target`],
+    categoryName, categories, series: ['Coverage', `${goal.target.toFixed(2)}x target`],
     data, compare: true, summary: `${summary}.`,
   };
+}
+
+/**
+ * The label for a single figure: what it was filtered to (an account, a rep, a team, a product or a sector), else "Your
+ * scope". A figure filtered to dambase was labelled "Your scope" (demo run-through, Nov 2).
+ */
+function scopeLabel(a: Answer): string {
+  const f = a.filters;
+  const named = f.accounts ?? f.people ?? f.teams ?? f.products ?? f.sectors;
+  return named?.length ? named.join(', ') : 'Your scope';
 }
 
 /** True when the parts add up to the total exactly (to the cent for money). */
@@ -141,7 +153,7 @@ export function coverageRegionCharts(byRegion: Answer, period: string, idPrefix:
     ];
   });
   const cats = regions.map((k) => ({ key: k, label: label(k) }));
-  const bullet = againstTarget(byRegion.metric, cats, regions.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), 'ratio') })), `${idPrefix}-target`, `Coverage against target · ${period}`);
+  const bullet = againstTarget(byRegion.metric, cats, regions.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), 'ratio') })), `${idPrefix}-target`, `Coverage against target · ${period}`, 'Region');
   return [
     ...(bullet ? [bullet] : []),
     {
@@ -195,11 +207,11 @@ function singleValueCharts(a: Answer, id: string, unit: Unit, period?: string): 
     ];
     const title = `${a.metric.name}${period ? ` · ${period}` : ''}: pipeline vs quota`;
     const divided = { id, title, unit: 'currency' as const, form: 'columns' as const, categoryName: 'Measure', categories: cats, series: ['Amount'], data, summary: `${sentence(title, data, (d) => cats.find((c) => c.key === d.category)!.label)} Coverage is ${format(v, 'ratio')}.` };
-    const bullet = againstTarget(a.metric, [{ key: 'coverage', label: 'Coverage' }], [{ value: v, display: format(v, 'ratio') }], `${id}-target`, `${a.metric.name}${period ? ` · ${period}` : ''} against target`);
+    const bullet = againstTarget(a.metric, [{ key: 'coverage', label: scopeLabel(a) }], [{ value: v, display: format(v, 'ratio') }], `${id}-target`, `${a.metric.name}${period ? ` · ${period}` : ''} against target`);
     return bullet ? [divided, bullet] : [divided];
   }
   const data: ChartDatum[] = [{ category: 'total', series: 0, value: v, display: format(v, unit) }];
-  return [{ id, title: a.metric.name, unit, form: 'columns', categoryName: 'Scope', categories: [{ key: 'total', label: 'Your scope' }], series: [a.metric.name], data, summary: a.narrative }];
+  return [{ id, title: a.metric.name, unit, form: 'columns', categoryName: 'Scope', categories: [{ key: 'total', label: scopeLabel(a) }], series: [a.metric.name], data, summary: a.narrative }];
 }
 
 function oneBreakdownCharts(a: Answer, id: string, unit: Unit, period: string | undefined, dim: string): ChartData[] | null {
@@ -233,7 +245,7 @@ function oneBreakdownCharts(a: Answer, id: string, unit: Unit, period: string | 
   const ratioChart: ChartData = { ...base, tab: 'Coverage', target: goal ? { value: goal.target, label: `${goal.target.toFixed(2)}x target` } : { value: 1, label: '1.00x = quota' }, axisFloor: goal ? Math.max(goal.target + COVERAGE_AXIS_PAD, 1.25) : 1.25 };
   if (!a.rows.some((r) => 'numerator' in r)) return [ratioChart];
   const values = ordered.map((k) => ({ value: num(row(k).value), display: format(num(row(k).value), unit) }));
-  const bullet = againstTarget(a.metric, cats, values, `${id}-target`, `${a.metric.name} against target`);
+  const bullet = againstTarget(a.metric, cats, values, `${id}-target`, `${a.metric.name} against target`, dim[0]!.toUpperCase() + dim.slice(1));
   return [...(bullet ? [bullet] : []), ratioChart, pipelineQuotaChart(a, id, period, dim, ordered, row, base)];
 }
 

@@ -28,10 +28,12 @@ DEMO_INVITE_SECRET=<a long random value>
 AUDIT_HASH_KEY=<a different long random value, 32+ characters>
 ALLOW_EMBEDDED_DB=true
 EMPLOYEE_STATUS=off
+EMBEDDED_DB_DIR=.pglite
 ```
 
 `ALLOW_EMBEDDED_DB=true` allows the in-memory database for a laptop demo. `EMPLOYEE_STATUS=off` turns the
 employee-status check off on purpose; a JSON list of active employees turns it on (see `.env.example`).
+`EMBEDDED_DB_DIR=.pglite` keeps accounts across a restart; leave it out for a database in memory.
 
 Then:
 
