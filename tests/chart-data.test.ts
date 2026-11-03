@@ -230,3 +230,23 @@ describe('shared files', () => {
     expect(readFileSync('alerts/app/synthetic-badge.tsx', 'utf8')).toBe(readFileSync('app/synthetic-badge.tsx', 'utf8'));
   });
 });
+
+// Demo run-through, Nov 2: two labels in the "Show numbers" table read wrong.
+describe('graph table labels', () => {
+  it('heads the against-target table with Scope or Region, so it never reads "Coverage Coverage"', async () => {
+    const single = answerCharts(await answer('u_ts_east', 'pipeline coverage this quarter'), 'c')!.find((c) => c.tab === 'Against target')!;
+    expect(single.categoryName).toBe('Scope');
+    expect(single.categories).toEqual([{ key: 'coverage', label: 'Your scope' }]);
+    expect(single.series[0]).toBe('Coverage');
+    const byRegion = coverageRegionCharts(await intent('u_analyst', 'pipeline_coverage', ['region'], 'FY27-Q1'), 'FY27-Q1', 'r').find((c) => c.tab === 'Against target')!;
+    expect(byRegion.categoryName).toBe('Region');
+  });
+
+  it('labels a figure filtered to one account with the account, not "Your scope"', async () => {
+    const a = await answerIntent(database, reg, 'u_analyst', { metric: 'open_pipeline', filters: { accounts: ['dambase'] }, groupBy: [] }, 'test');
+    const [c] = answerCharts(a, 'a')!;
+    expect(c!.categories).toEqual([{ key: 'total', label: 'dambase' }]);
+    const plain = answerCharts(await answer('u_analyst', 'What is our open pipeline?'), 'p')!;
+    expect(plain[0]!.categories).toEqual([{ key: 'total', label: 'Your scope' }]);
+  });
+});

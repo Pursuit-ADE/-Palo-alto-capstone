@@ -18,7 +18,10 @@ DEMO_INVITE_SECRET=<a long random value>
 AUDIT_HASH_KEY=<a different long random value, 32+ characters>
 ALLOW_EMBEDDED_DB=true
 EMPLOYEE_STATUS=off
+EMBEDDED_DB_DIR=.pglite
 ```
+
+`EMBEDDED_DB_DIR` keeps the laptop database in that folder (git-ignored), so accounts survive a restart. Leave it out and the database lives in memory.
 
 `npm start` is a production start, which refuses to run until `EMPLOYEE_STATUS` is decided: `off` for this demo, or a JSON list of active employees (see the containers section).
 
@@ -31,10 +34,10 @@ npm start         # http://localhost:3000
 
 Open the app, choose **Create one with an invite code**, and use the code for the person you want to be (Jordan Lee is the East technical seller). The code decides the person and role.
 
-For the alerts app, put `DEMO_INVITE_SECRET` (the same value), `ALLOW_EMBEDDED_DB=true` and `EMPLOYEE_STATUS=off` in `alerts/.env.local` (it doesn't need `AUDIT_HASH_KEY`), then in `alerts/`: `npm ci`, `npm run build`, `npm start -- -p 3001`. The same invite codes work there; accounts are separate per app. Set `COPILOT_URL=http://localhost:3000` so "Ask the copilot" links open the copilot.
+For the alerts app, put `DEMO_INVITE_SECRET` (the same value), `ALLOW_EMBEDDED_DB=true`, `EMPLOYEE_STATUS=off` and `EMBEDDED_DB_DIR=.pglite` (its own folder, `alerts/.pglite`) in `alerts/.env.local` (it doesn't need `AUDIT_HASH_KEY`), then in `alerts/`: `npm ci`, `npm run build`, `npm start -- -p 3001`. The same invite codes work there; accounts are separate per app. Set `COPILOT_URL=http://localhost:3000` so "Ask the copilot" links open the copilot.
 
 **On the day (UX review, Nov 2):**
-- **Start both servers from a terminal window that stays open,** not from an editor's or a tool's preview pane. A server stops with whatever started it, and the laptop demo's database is in memory, so a stop wipes every account. If that happens, run `npm start` again and sign up again with the same invite codes; they work again on the empty database.
+- **Start both servers from a terminal window that stays open,** not from an editor's or a tool's preview pane. A server stops with whatever started it. With `EMBEDDED_DB_DIR` set, a restart keeps every account and alert: run `npm start` again and log in. Without it, the database is in memory, so a stop wipes every account; sign up again with the same invite codes, which work again on the empty database. Docker keeps everything in its Postgres volume either way.
 - **One person per browser profile.** Sessions are cookies, and cookies are per host name. Signing in as a second person in the same browser, on `localhost`, silently replaces the first person's session in every open tab. To show two people from one laptop, use a separate browser profile for each, or a separate host name (`jordan.localhost:3000`, `avery.localhost:3000`; every `*.localhost` name reaches this machine).
 - **Sign in to both apps shortly before the demo.** An alert's copilot link opens the copilot, which has its own sign-in.
 - **Answer "Did you mean …?" with the full name** ("Darcel Schlecht"), not "yes": a bare "yes" isn't read as the name.
@@ -65,7 +68,7 @@ docker compose run --rm copilot-setup npx tsx scripts/invites.ts   # invite code
 
 For email alerts, also put `EMAIL_USER_ADDRESSES` and an HTTPS `EMAIL_WEBHOOK_URL` in `.env`, with its host in `EMAIL_WEBHOOK_HOSTS` (for example `EMAIL_WEBHOOK_HOSTS=mail.example.com`; any other host is refused): this stack runs in production mode, which refuses a localhost mail catcher.
 
-To show the employee-status check (alerts go only to active employees, and a person marked inactive can't sign in to either app or keep a session), put `EMPLOYEE_STATUS` in `.env`; both apps read it, for example `EMPLOYEE_STATUS={"u_ts_east":"active","u_ts_west":"inactive","u_darcel_schlecht":"active","u_mgr_melvin_marxen":"active","u_analyst":"active"}`. The values are synthetic. Left empty, the check is off. Anyone not listed counts as inactive, so list every demo person you want to keep.
+To show the employee-status check (alerts go only to active employees, and a person marked inactive can't sign in to either app or keep a session), put `EMPLOYEE_STATUS` in `.env`; both apps read it, for example `EMPLOYEE_STATUS={"u_ts_east":"active","u_ts_west":"inactive","u_darcel_schlecht":"active","u_mgr_melvin_marxen":"active","u_analyst":"active"}`. The values are synthetic. Set it to `off` to run without the check; an empty value stops a production start (the startup check), though `docker-compose.yml` defaults it to `off`. Anyone not listed counts as inactive, so list every demo person you want to keep.
 
 This starts Postgres, runs `copilot-setup` and `alerts-setup` once as the owner login, and then starts the copilot on http://localhost:3000 and alerts on http://localhost:3001. The two servers only get their least-privilege logins. Both listen on 127.0.0.1 only and use plain http, so cookies are not `Secure` here. Behind a real HTTPS proxy, set `COOKIE_SECURE=true`, `ENABLE_HSTS=true` and `TRUSTED_PROXY_HOPS=1` in `.env`. The `docker` workflow in CI runs this same stack on every pull request. `docker compose --profile app down` stops it.
 
@@ -82,6 +85,7 @@ Data lives in the `pgdata` volume: `docker compose down` keeps it, `docker compo
 | `DEMO_INVITE_SECRET` | both | Turns on sign-up with invite codes. Same value in both apps. Each code creates one account per app. |
 | `DEMO_INVITE_EXPIRES` | both | Optional date after which invite codes stop working. |
 | `ALLOW_EMBEDDED_DB` | both | Lets a production server (`npm start`) use the in-memory database. Laptop demos only. |
+| `EMBEDDED_DB_DIR` | both | Keeps the laptop database in a folder (for example `.pglite`, git-ignored), so accounts survive a restart. Unset: in memory. Tests always use memory. |
 | `ALLOW_TEST_IDENTITIES` | both | Local testing with `npm run dev` only: shows the "Viewing as" switch when nobody is signed in. `npm start` refuses to start with it on. |
 | `AUDIT_HASH_KEY` | copilot | Key for the audit log's question fingerprints and the per-address sign-in limit. Required (32+ characters) for `npm start` (`openssl rand -hex 32`). |
 | `INTENT_MODEL`, `ANTHROPIC_API_KEY` | copilot | `INTENT_MODEL=claude` uses Claude to read questions; otherwise the deterministic model. |

@@ -52,11 +52,19 @@ export async function openDatabase(seed: string = DEFAULT_SEED): Promise<Databas
   if (process.env.NODE_ENV === 'production' && process.env.ALLOW_EMBEDDED_DB !== 'true') {
     throw new Error('Production needs Postgres mode (ALERTS_DATABASE_URL). Set ALLOW_EMBEDDED_DB=true only for a local demo.');
   }
-  const client = new PGlite();
+  const client = new PGlite(embeddedDir());
   const db = drizzlePglite(client, { schema }) as unknown as Db;
   await migratePglite(db as never, { migrationsFolder: MIGRATIONS });
   if ((await db.select().from(schema.dataSnapshots)).length === 0) await loadSeed(db, seed);
   return { db, mode: 'pglite', close: () => client.close() };
+}
+
+/**
+ * Where the laptop database keeps its files: EMBEDDED_DB_DIR, so accounts and alerts survive a restart (demo run-through,
+ * Nov 2). Unset, it lives in memory as before. Tests always use memory, so a developer's setting can't leak into a run.
+ */
+export function embeddedDir(env: Record<string, string | undefined> = process.env): string | undefined {
+  return env.VITEST ? undefined : env.EMBEDDED_DB_DIR || undefined;
 }
 
 // Fail fast instead of hanging when the database is unreachable, and keep the number of connections bounded.
