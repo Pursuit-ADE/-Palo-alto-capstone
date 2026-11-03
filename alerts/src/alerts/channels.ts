@@ -16,6 +16,12 @@ export const CHANNEL_TIMEOUT_MS = 10_000;
 
 export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
+  /**
+   * Team alerts (local, Nov 3): a short note in a team's own Slack channel saying which teammate was alerted. Optional,
+   * best effort, and never changes the person's own delivery. The channel must hold only that team, who can already see
+   * the team's accounts in the copilot. Undefined when the team has no channel.
+   */
+  team?(teamId: string, memberName: string, items: Delivery[]): Promise<boolean | undefined>;
 }
 
 /**
@@ -47,6 +53,11 @@ const SLACK_LOOKALIKE: Record<string, string> = { '*': '∗', _: '＿', '~': '�
 export function slackText(items: Delivery[], isDigest: boolean): string {
   const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}\n<${i.link}|Ask the copilot>`);
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
+}
+
+export function teamSlackText(memberName: string, items: Delivery[]): string {
+  const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}`);
+  return `Team alert: sent to ${slackEscape(memberName)}\n\n${lines.join('\n\n')}`;
 }
 
 export function emailEscape(text: string): string {
@@ -88,6 +99,7 @@ export const EMAIL_WEBHOOK_WARNING =
 
 export function createChannels(opts: {
   slackWebhooks?: Record<string, unknown>;
+  teamWebhooks?: Record<string, unknown>;
   emails?: string | Record<string, unknown>;
   emailWebhook?: string;
   fetch?: Fetch;
@@ -105,6 +117,9 @@ export function createChannels(opts: {
   }
   // A typo in a Slack link would otherwise silently mean "no Slack" for that person (#104 review).
   if (Object.keys(webhooks).length < rawEntryCount(opts.slackWebhooks ?? env.SLACK_USER_WEBHOOKS)) (opts.warn ?? console.warn)(SLACK_WEBHOOK_WARNING);
+  // Team channels, keyed by the team's manager id. Same rule as a person's link: hooks.slack.com only.
+  const teamWebhooks = parseWebhooks(opts.teamWebhooks ?? env.SLACK_TEAM_WEBHOOKS);
+  if (Object.keys(teamWebhooks).length < rawEntryCount(opts.teamWebhooks ?? env.SLACK_TEAM_WEBHOOKS)) (opts.warn ?? console.warn)(SLACK_TEAM_WEBHOOK_WARNING);
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
     if (!isEmailWebhook(emailWebhook, env)) return false;
@@ -141,6 +156,16 @@ export function createChannels(opts: {
     }
   };
   return {
+    async team(teamId, memberName, items) {
+      const url = teamWebhooks[teamId];
+      if (!url) return undefined; // this team has no channel: nothing to do
+      try {
+        const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: teamSlackText(memberName, items), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    },
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
       if (channel === 'slack') return toSlack(userId, items, isDigest);
@@ -172,6 +197,9 @@ export function isSlackWebhook(value: unknown): value is string {
 
 export const SLACK_WEBHOOK_WARNING =
   'SLACK_USER_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those people get no Slack messages until they are fixed.';
+
+export const SLACK_TEAM_WEBHOOK_WARNING =
+  'SLACK_TEAM_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those teams get no team alerts until they are fixed.';
 
 /** How many entries a raw per-user map has, before any are dropped as invalid. */
 function rawEntryCount(raw: string | Record<string, unknown> | undefined): number {

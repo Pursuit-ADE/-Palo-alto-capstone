@@ -86,6 +86,8 @@ services:
       ENABLE_HSTS: ${ENABLE_HSTS:-false}
       TRUSTED_PROXY_HOPS: ${TRUSTED_PROXY_HOPS:-0}
       SLACK_USER_WEBHOOKS: ${SLACK_USER_WEBHOOKS:-}
+      # Team alerts (local, Nov 3): JSON map of a team's manager id to that team's own Slack channel webhook.
+      SLACK_TEAM_WEBHOOKS: ${SLACK_TEAM_WEBHOOKS:-}
       # Email channel (#41). This stack runs in production mode, so the webhook must be HTTPS; a localhost catcher is refused.
       EMAIL_USER_ADDRESSES: ${EMAIL_USER_ADDRESSES:-}
       EMAIL_WEBHOOK_URL: ${EMAIL_WEBHOOK_URL:-}

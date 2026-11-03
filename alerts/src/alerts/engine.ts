@@ -321,6 +321,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
     if (ok) {
       await db.update(alertDeliveries).set({ status: 'delivered', deliveredAt: now, digestId: digestId ?? null }).where(mine(items.map((i) => i.id)));
+      await noteTeam(db, channels, userId, items);
       continue;
     }
     const spent = items.filter((i) => i.attempts >= MAX_ATTEMPTS).map((i) => i.id);
@@ -334,6 +335,18 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
       if (marked.length) (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: marked.map((m) => m.id) });
     }
   }
+}
+
+/**
+ * After a person's alert is delivered, a short note to their team's Slack channel, if the team has one (team alerts,
+ * local Nov 3). Best effort: the person's own delivery already counts, so a failed note is logged (ids only) and not retried.
+ */
+async function noteTeam(db: Db, channels: Channels, userId: string, items: (typeof alertDeliveries.$inferSelect)[]) {
+  if (!channels.team) return;
+  const [user] = await db.select({ name: appUsers.displayName, managerId: appUsers.managerId }).from(appUsers).where(eq(appUsers.id, userId));
+  if (!user?.managerId) return;
+  const ok = await channels.team(user.managerId, user.name, items).catch(() => false);
+  if (ok === false) console.warn(`Team alert not posted for team ${user.managerId}: ${items.map((i) => i.id).join(', ')}`);
 }
 
 /**
