@@ -15,13 +15,36 @@ New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it
 Requires Node 22.12 or newer (CI uses Node 24). No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
 
 ```bash
-npm install
+npm ci
 npm test          # registry, golden phrases, seed, governed-query, audit and limit tests
 npm run build
+```
+
+`npm start` is a production start, and it refuses to run until these are set (`src/server/config.ts`). Create
+`.env.local` in the repository root (`openssl rand -hex 32` makes a good random value):
+
+```
+DEMO_INVITE_SECRET=<a long random value>
+AUDIT_HASH_KEY=<a different long random value, 32+ characters>
+ALLOW_EMBEDDED_DB=true
+EMPLOYEE_STATUS=off
+```
+
+`ALLOW_EMBEDDED_DB=true` allows the in-memory database for a laptop demo. `EMPLOYEE_STATUS=off` turns the
+employee-status check off on purpose; a JSON list of active employees turns it on (see `.env.example`).
+
+Then:
+
+```bash
+npm run invites   # one invite code per demo person
 npm start         # http://localhost:3000
 ```
 
-**Demo sign-in (Week 5).** People create an account with an invite code, and the code decides which demo person, and so which role and data, the account gets. The user id then comes only from the session cookie, never from a form, URL or alert link. To turn it on, put a long random `DEMO_INVITE_SECRET` in `.env.local`, run `npm run invites` to print one code per demo person, and share each code only with the person who should use it. On a laptop with the embedded database, also set `ALLOW_EMBEDDED_DB=true` (production refuses it otherwise). The client asked for Active Directory and SSO in a real rollout; this sign-up is for the demo.
+The alerts app is a separate package with its own `alerts/.env.local` and runs on http://localhost:3001; the
+[runbook](docs/RUNBOOK.md#run-the-demo-on-a-laptop) has its settings, how to link the two apps (`ALERTS_URL`,
+`COPILOT_URL`) and the notes for the day of a demo.
+
+**Demo sign-in (Week 5).** People create an account with an invite code, and the code decides which demo person, and so which role and data, the account gets. The user id then comes only from the session cookie, never from a form, URL or alert link. `DEMO_INVITE_SECRET` turns it on; `npm run invites` prints one code per demo person, and each code should go only to the person who should use it. The client asked for Active Directory and SSO in a real rollout; this sign-up is for the demo.
 
 For quick local testing without accounts, `ALLOW_TEST_IDENTITIES=true` with `npm run dev` still shows the "Viewing as" switch when nobody is signed in. A production server (`npm start`) refuses to start with it on.
 
