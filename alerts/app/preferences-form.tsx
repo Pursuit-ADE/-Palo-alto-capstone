@@ -27,7 +27,10 @@ export function PreferencesForm({ user, ruleId, ruleName, critical, sub, etHours
   const freq = sub?.frequency === 'digest' ? 'daily' : (sub?.frequency ?? 'realtime');
   const id = (k: string) => `${ruleId}-${k}`;
   return (
-    <form action={action} className="pref">
+    // Keyed by the saved settings: React resets a form after its action, which put the selects back to the values the
+    // page first rendered with, so a saved "Slack" looked like "In-app inbox" (demo prep, Nov 3). A new key remounts the
+    // form with the freshly saved values instead.
+    <form key={JSON.stringify(sub)} action={action} className="pref">
       <input type="hidden" name="user" value={user} />
       <input type="hidden" name="ruleId" value={ruleId} />
       <label className="pref-sub" htmlFor={id('subscribed')}>
