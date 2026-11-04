@@ -17,11 +17,12 @@ export const CHANNEL_TIMEOUT_MS = 10_000;
 export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
   /**
-   * Team alerts (local, Nov 3): a short note in a team's own Slack channel saying which teammate was alerted. Optional,
-   * best effort, and never changes the person's own delivery. The channel must hold only that team, who can already see
-   * the team's accounts in the copilot. Undefined when the team has no channel.
+   * Team alerts (local, Nov 3-4): a short heads-up in a team's own Slack channel about an event the whole team should know
+   * of. It names the account and the event only: never the person alerted, and never their own alert text, which stays
+   * private to them (Mira, Nov 4). Optional, best effort, and never changes anyone's own delivery. The channel must hold
+   * only that team, who can already see the team's accounts in the copilot. Undefined when the team has no channel.
    */
-  team?(teamId: string, memberName: string, items: Delivery[]): Promise<boolean | undefined>;
+  team?(teamId: string, items: Delivery[]): Promise<boolean | undefined>;
 }
 
 /**
@@ -55,9 +56,9 @@ export function slackText(items: Delivery[], isDigest: boolean): string {
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
 }
 
-export function teamSlackText(memberName: string, items: Delivery[]): string {
-  const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}`);
-  return `Team alert: sent to ${slackEscape(memberName)}\n\n${lines.join('\n\n')}`;
+export function teamSlackText(items: Delivery[]): string {
+  const lines = items.map((i) => `• *${slackEscape(i.title)}*`);
+  return `Team heads-up: the people on this account have been alerted.\n\n${lines.join('\n')}`;
 }
 
 export function emailEscape(text: string): string {
@@ -154,7 +155,7 @@ export function createChannels(opts: {
     }
   };
   return {
-    team: (teamId, memberName, items) => postTeamNote(doFetch, teamWebhooks[teamId], memberName, items),
+    team: (teamId, items) => postTeamNote(doFetch, teamWebhooks[teamId], items),
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
       if (channel === 'slack') return toSlack(userId, items, isDigest);
@@ -195,10 +196,10 @@ function parseTeamWebhooks(raw: string | Record<string, unknown> | undefined, wa
 }
 
 /** One team note. Undefined when the team has no channel, so there is nothing to report as failed. */
-async function postTeamNote(doFetch: Fetch, url: string | undefined, memberName: string, items: Delivery[]): Promise<boolean | undefined> {
+async function postTeamNote(doFetch: Fetch, url: string | undefined, items: Delivery[]): Promise<boolean | undefined> {
   if (!url) return undefined;
   try {
-    const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: teamSlackText(memberName, items), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
+    const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: teamSlackText(items), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
     return res.ok;
   } catch {
     return false;

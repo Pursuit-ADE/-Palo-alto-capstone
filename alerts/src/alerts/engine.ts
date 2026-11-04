@@ -321,7 +321,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
     if (ok) {
       await db.update(alertDeliveries).set({ status: 'delivered', deliveredAt: now, digestId: digestId ?? null }).where(mine(items.map((i) => i.id)));
-      await noteTeam(db, channels, userId, items);
+      await noteTeam(db, rules, channels, userId, items);
       continue;
     }
     const spent = items.filter((i) => i.attempts >= MAX_ATTEMPTS).map((i) => i.id);
@@ -337,16 +337,32 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
   }
 }
 
+/** Events the whole team should hear about (Mira, Nov 4). A CxO engagement is a seller's own lead, so it stays personal. */
+const TEAM_EVENTS = new Set(['support_case', 'low_usage']);
+
 /**
- * After a person's alert is delivered, a short note to their team's Slack channel, if the team has one (team alerts,
- * local Nov 3). Best effort: the person's own delivery already counts, so a failed note is logged (ids only) and not retried.
+ * After a person's alert is delivered, a heads-up to their team's Slack channel, if the team has one (team alerts, local
+ * Nov 3-4). Only team-wide events, and once per event per team: the teammate with the lowest id who got the same event
+ * posts it, so two teammates on one account don't post twice. Best effort: the person's own delivery already counts, so a
+ * failed note is logged (ids only) and not retried.
  */
-async function noteTeam(db: Db, channels: Channels, userId: string, items: (typeof alertDeliveries.$inferSelect)[]) {
+async function noteTeam(db: Db, rules: Map<string, AlertRule>, channels: Channels, userId: string, items: (typeof alertDeliveries.$inferSelect)[]) {
   if (!channels.team) return;
-  const [user] = await db.select({ name: appUsers.displayName, managerId: appUsers.managerId }).from(appUsers).where(eq(appUsers.id, userId));
+  const [user] = await db.select({ managerId: appUsers.managerId }).from(appUsers).where(eq(appUsers.id, userId));
   if (!user?.managerId) return;
-  const ok = await channels.team(user.managerId, user.name, items).catch(() => false);
-  if (ok === false) console.warn(`Team alert not posted for team ${user.managerId}: ${items.map((i) => i.id).join(', ')}`);
+  const teamItems: typeof items = [];
+  for (const item of items) {
+    if (!TEAM_EVENTS.has(rules.get(item.ruleId)?.event ?? '')) continue;
+    const teammates = await db
+      .select({ userId: alertDeliveries.userId })
+      .from(alertDeliveries)
+      .innerJoin(appUsers, eq(appUsers.id, alertDeliveries.userId))
+      .where(and(eq(alertDeliveries.eventId, item.eventId), eq(alertDeliveries.ruleId, item.ruleId), eq(appUsers.managerId, user.managerId)));
+    if (teammates.every((t) => t.userId >= userId)) teamItems.push(item);
+  }
+  if (teamItems.length === 0) return;
+  const ok = await channels.team(user.managerId, teamItems).catch(() => false);
+  if (ok === false) console.warn(`Team alert not posted for team ${user.managerId}: ${teamItems.map((i) => i.id).join(', ')}`);
 }
 
 /**
