@@ -1,16 +1,18 @@
-/* Graphs that turn 3D (chart3d.tsx). PANW palette: charcoal, signature orange, cool greys. Shared by both apps. */
+/* Graphs that turn 3D (chart3d.tsx). PANW palette: charcoal, signature orange, cool greys. Shared by both apps.
+   Theme colours come from --c3d-* tokens where an app sets them (the copilot's light and dark themes, globals.css).
+   The fallback after each is the light colour, so an app that sets none (the alerts app) looks as before. */
 .c3d { margin: 0; display: grid; gap: 8px; min-width: 0; container-type: inline-size; }
-.c3d-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
+.c3d-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c3d-muted, #5d6470); }
 .c3d-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
-.c3d-tabs { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #f3f4f6; margin: 0; min-inline-size: 0; }
-.c3d-tabs button { font: 600 12px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 5px 12px; min-height: 28px; cursor: pointer; }
-.c3d-tabs button[aria-pressed="true"] { color: #fff; background: #1b1d21; }
+.c3d-tabs { display: inline-flex; border: 1px solid var(--c3d-line, #e2e5ea); border-radius: 999px; padding: 2px; background: var(--c3d-soft, #f3f4f6); margin: 0; min-inline-size: 0; }
+.c3d-tabs button { font: 600 12px var(--font); color: var(--c3d-muted, #5d6470); background: none; border: 0; border-radius: 999px; padding: 5px 12px; min-height: 28px; cursor: pointer; }
+.c3d-tabs button[aria-pressed="true"] { color: var(--c3d-on-ink, #fff); background: var(--c3d-ink, #1b1d21); }
 .c3d-tabs button:focus-visible, .c3d-btn:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
-.c3d-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: #5d6470; }
+.c3d-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--c3d-muted, #5d6470); }
 .c3d-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .c3d-legend i { width: 10px; height: 10px; border-radius: 2px; background: #fa582d; }
-.c3d-legend i.s1 { background: #26292f; }
-.c3d-legend i.s2 { background: #868e99; }
+.c3d-legend i.s1 { background: var(--c3d-s1, #26292f); }
+.c3d-legend i.s2 { background: var(--c3d-s2, #868e99); }
 
 /* The stage: the flat SVG, and the canvas that replaces it while the page is turned. */
 .c3d-stage {
@@ -32,27 +34,28 @@
 }
 
 .c3d-svg text { font: 12px var(--font); }
-.c3d-svg .c3d-tick { font-size: 11px; fill: #5d6470; }
-.c3d-svg .c3d-value { fill: #5d6470; }
-.c3d-svg .c3d-cat { fill: #1b1d21; }
-.c3d-svg .c3d-target-label { fill: #1b1d21; }
-.c3d-grid { stroke: #e2e5ea; stroke-width: 1; }
-.c3d-zero { stroke: #868e99; stroke-width: 1; }
+.c3d-svg .c3d-tick { font-size: 11px; fill: var(--c3d-muted, #5d6470); }
+.c3d-svg .c3d-value { fill: var(--c3d-muted, #5d6470); }
+.c3d-svg .c3d-cat { fill: var(--c3d-ink, #1b1d21); }
+.c3d-svg .c3d-target-label { fill: var(--c3d-ink, #1b1d21); }
+.c3d-grid { stroke: var(--c3d-line, #e2e5ea); stroke-width: 1; }
+.c3d-zero { stroke: var(--c3d-field, #868e99); stroke-width: 1; }
 .c3d-bar { fill: #fa582d; transition: fill .15s; }
-.c3d-bar.s1 { fill: #26292f; }
-.c3d-bar.s2 { fill: #868e99; }
+.c3d-bar.s1 { fill: var(--c3d-s1, #26292f); }
+.c3d-bar.s2 { fill: var(--c3d-s2, #868e99); }
 g:hover > .c3d-bar { fill: #c23b16; }
-g:hover > .c3d-bar.s1 { fill: #1b1d21; }
-g:hover > .c3d-bar.s2 { fill: #5d6470; }
+g:hover > .c3d-bar.s1 { fill: var(--c3d-s1-hover, #1b1d21); }
+g:hover > .c3d-bar.s2 { fill: var(--c3d-s2-hover, #5d6470); }
 .c3d-zerobar { stroke: #fa582d; stroke-width: 1.5; fill: none; }
-.c3d-zerobar.s1 { stroke: #26292f; }
-.c3d-zerobar.s2 { stroke: #868e99; }
-.c3d-ghost { stroke: #868e99; stroke-width: 1.5; stroke-dasharray: 4 3; }
-.c3d-target { stroke: #1b1d21; stroke-width: 2; }
+.c3d-zerobar.s1 { stroke: var(--c3d-s1, #26292f); }
+.c3d-zerobar.s2 { stroke: var(--c3d-s2, #868e99); }
+.c3d-ghost { stroke: var(--c3d-field, #868e99); stroke-width: 1.5; stroke-dasharray: 4 3; }
+.c3d-target { stroke: var(--c3d-ink, #1b1d21); stroke-width: 2; }
 
 .c3d-tip {
   position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; display: grid; gap: 2px; max-width: 240px;
-  font: 13px/1.4 var(--font); color: #f5f6f7; background: #1b1d21; border-top: 2px solid #fa582d; border-radius: 6px;
+  font: 13px/1.4 var(--font); color: #f5f6f7; background: var(--c3d-tip, #1b1d21); border: 1px solid var(--c3d-tip-line, #1b1d21);
+  border-top: 2px solid #fa582d; border-radius: 6px;
   padding: 7px 10px; box-shadow: 0 6px 18px rgba(0, 0, 0, .35);
 }
 .c3d-tip[hidden] { display: none; }
@@ -60,16 +63,17 @@ g:hover > .c3d-bar.s2 { fill: #5d6470; }
 
 .c3d-tools { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .c3d-btn {
-  font: 600 12px var(--font); color: #1b1d21; background: #fff; border: 1px solid #e2e5ea; border-radius: 6px;
+  font: 600 12px var(--font); color: var(--c3d-ink, #1b1d21); background: var(--c3d-surface, #fff); border: 1px solid var(--c3d-line, #e2e5ea);
+  border-radius: 6px;
   min-height: 28px; min-width: 28px; padding: 4px 10px; cursor: pointer;
 }
-.c3d-btn:hover { border-color: #fa582d; color: #c23b16; }
-.c3d-btn[aria-pressed="true"] { color: #fff; background: #1b1d21; border-color: #1b1d21; }
+.c3d-btn:hover { border-color: #fa582d; color: var(--c3d-link, #c23b16); }
+.c3d-btn[aria-pressed="true"] { color: var(--c3d-on-ink, #fff); background: var(--c3d-ink, #1b1d21); border-color: var(--c3d-ink, #1b1d21); }
 .c3d-numbers { margin-left: auto; }
-.c3d-note { margin: 0; font-size: 12px; color: #5d6470; }
+.c3d-note { margin: 0; font-size: 12px; color: var(--c3d-muted, #5d6470); }
 .c3d-table { overflow-x: auto; }
-.c3d-table caption { text-align: left; font-size: 12px; font-weight: 700; color: #5d6470; padding: 4px 0; }
-.c3d-table th[scope="row"] { font-size: 14px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #1b1d21; border-bottom: 1px solid #e2e5ea; }
+.c3d-table caption { text-align: left; font-size: 12px; font-weight: 700; color: var(--c3d-muted, #5d6470); padding: 4px 0; }
+.c3d-table th[scope="row"] { font: 600 14px var(--font); letter-spacing: 0; text-transform: none; color: var(--c3d-ink, #1b1d21); border-bottom: 1px solid var(--c3d-line, #e2e5ea); }
 
 .visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
 
@@ -96,63 +100,63 @@ html[data-c3d-dragging], html[data-c3d-dragging] * { cursor: grabbing !important
 
 /* The Numbers / Graphs switch (view-switch.tsx). */
 .view-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 12px; }
-.view-switch > span { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #5d6470; }
-.view-switch-buttons { display: inline-flex; border: 1px solid #e2e5ea; border-radius: 999px; padding: 2px; background: #fff; margin: 0; min-inline-size: 0; }
-.view-switch-buttons button { font: 700 13px var(--font); color: #5d6470; background: none; border: 0; border-radius: 999px; padding: 6px 16px; min-height: 32px; cursor: pointer; }
-.view-switch-buttons button:hover { color: #c23b16; }
-.view-switch-buttons button[aria-pressed="true"] { color: #fff; background: #c23b16; }
+.view-switch > span { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--c3d-muted, #5d6470); }
+.view-switch-buttons { display: inline-flex; border: 1px solid var(--c3d-line, #e2e5ea); border-radius: 999px; padding: 2px; background: var(--c3d-surface, #fff); margin: 0; min-inline-size: 0; }
+.view-switch-buttons button { font: 700 13px var(--font); color: var(--c3d-muted, #5d6470); background: none; border: 0; border-radius: 999px; padding: 6px 16px; min-height: 32px; cursor: pointer; }
+.view-switch-buttons button:hover { color: var(--c3d-link, #c23b16); }
+.view-switch-buttons button[aria-pressed="true"] { color: var(--c3d-on-cta, #fff); background: var(--c3d-cta, #c23b16); }
 .view-switch-buttons button:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
-.view-switch-hint { flex-basis: 100%; margin: 0; font-size: 13px; color: #5d6470; }
+.view-switch-hint { flex-basis: 100%; margin: 0; font-size: 13px; color: var(--c3d-muted, #5d6470); }
 
 /* The chart type picker. */
-.c3d-kinds { display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid #e2e5ea; border-radius: 8px; padding: 2px; background: #f3f4f6; margin: 0; min-inline-size: 0; }
+.c3d-kinds { display: inline-flex; flex-wrap: wrap; gap: 2px; border: 1px solid var(--c3d-line, #e2e5ea); border-radius: 8px; padding: 2px; background: var(--c3d-soft, #f3f4f6); margin: 0; min-inline-size: 0; }
 .c3d-kind {
-  display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--font); color: #5d6470; background: none; border: 0;
+  display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--font); color: var(--c3d-muted, #5d6470); background: none; border: 0;
   border-radius: 6px; padding: 4px 8px; min-height: 28px; min-width: 28px; cursor: pointer;
 }
-.c3d-kind:hover { color: #c23b16; }
-.c3d-kind[aria-pressed="true"] { color: #fff; background: #1b1d21; }
+.c3d-kind:hover { color: var(--c3d-link, #c23b16); }
+.c3d-kind[aria-pressed="true"] { color: var(--c3d-on-ink, #fff); background: var(--c3d-ink, #1b1d21); }
 .c3d-kind:focus-visible { outline: 2px solid #fa582d; outline-offset: 2px; }
 .c3d-kind-icon { flex: none; }
 @container (max-width: 519.98px) {
   .c3d-kind { padding: 4px 6px; }
   .c3d-kind span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
-.c3d-legend i.case { background: rgba(226, 229, 234, .55); border: 1.5px solid #868e99; box-sizing: border-box; }
+.c3d-legend i.case { background: var(--c3d-case, rgba(226, 229, 234, .55)); border: 1.5px solid var(--c3d-field, #868e99); box-sizing: border-box; }
 
 /* Marks of the other chart types. Text stays in text colours; the colour is on the mark beside it. */
 .c3d-svg .c3d-ink-dark { fill: #1b1d21; }
 .c3d-svg .c3d-ink-light { fill: #fff; }
-.c3d-svg .c3d-total { font-size: 16px; font-weight: 700; fill: #1b1d21; }
-.c3d-case { fill: rgba(226, 229, 234, .55); stroke: #868e99; stroke-width: 1.5; transition: fill .15s; }
-g.c3d-hold:hover > .c3d-case { fill: rgba(194, 199, 207, .55); }
-.c3d-dot { fill: #fa582d; stroke: #fff; stroke-width: 2; transition: fill .15s; }
-.c3d-dot.s1 { fill: #26292f; }
-.c3d-dot.s2 { fill: #868e99; }
+.c3d-svg .c3d-total { font-size: 16px; font-weight: 700; fill: var(--c3d-ink, #1b1d21); }
+.c3d-case { fill: var(--c3d-case, rgba(226, 229, 234, .55)); stroke: var(--c3d-field, #868e99); stroke-width: 1.5; transition: fill .15s; }
+g.c3d-hold:hover > .c3d-case { fill: var(--c3d-case-hover, rgba(194, 199, 207, .55)); }
+.c3d-dot { fill: #fa582d; stroke: var(--c3d-surface, #fff); stroke-width: 2; transition: fill .15s; }
+.c3d-dot.s1 { fill: var(--c3d-s1, #26292f); }
+.c3d-dot.s2 { fill: var(--c3d-s2, #868e99); }
 g:hover > .c3d-dot { fill: #c23b16; }
-g:hover > .c3d-dot.s1 { fill: #1b1d21; }
-g:hover > .c3d-dot.s2 { fill: #5d6470; }
+g:hover > .c3d-dot.s1 { fill: var(--c3d-s1-hover, #1b1d21); }
+g:hover > .c3d-dot.s2 { fill: var(--c3d-s2-hover, #5d6470); }
 .c3d-line { fill: none; stroke: #fa582d; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.c3d-line.s1 { stroke: #26292f; }
-.c3d-line.s2 { stroke: #868e99; }
+.c3d-line.s1 { stroke: var(--c3d-s1, #26292f); }
+.c3d-line.s2 { stroke: var(--c3d-s2, #868e99); }
 .c3d-area { fill: #fa582d; fill-opacity: .22; }
-.c3d-area.s1 { fill: #26292f; }
-.c3d-area.s2 { fill: #868e99; }
+.c3d-area.s1 { fill: var(--c3d-s1, #26292f); }
+.c3d-area.s2 { fill: var(--c3d-s2, #868e99); }
 .c3d-hit { fill: transparent; }
 .c3d-wedge, .c3d-sw { fill: #fa582d; transition: fill .15s; }
-.c3d-wedge.t1, .c3d-sw.t1 { fill: #26292f; }
+.c3d-wedge.t1, .c3d-sw.t1 { fill: var(--c3d-s1, #26292f); }
 .c3d-wedge.t2, .c3d-sw.t2 { fill: #fdb4a1; }
 .c3d-wedge.t3, .c3d-sw.t3 { fill: #868e99; }
 .c3d-wedge.t4, .c3d-sw.t4 { fill: #c23b16; }
 .c3d-wedge.t5, .c3d-sw.t5 { fill: #b4bac2; }
 g:hover > .c3d-wedge.t0 { fill: #c23b16; }
-g:hover > .c3d-wedge.t1 { fill: #1b1d21; }
+g:hover > .c3d-wedge.t1 { fill: var(--c3d-s1-hover, #1b1d21); }
 g:hover > .c3d-wedge.t2 { fill: #fc9277; }
 g:hover > .c3d-wedge.t3 { fill: #5d6470; }
 g:hover > .c3d-wedge.t4 { fill: #9b2f12; }
 g:hover > .c3d-wedge.t5 { fill: #868e99; }
 .c3d-cell { stroke: transparent; stroke-width: 1.5; transition: stroke .15s; }
-g:hover > .c3d-cell { stroke: #1b1d21; }
+g:hover > .c3d-cell { stroke: var(--c3d-ink, #1b1d21); }
 
 /* A newly picked type: its marks grow in from the baseline, a line draws itself, a donut turns into place. */
 @keyframes c3d-rise { from { transform: scaleY(0); } }

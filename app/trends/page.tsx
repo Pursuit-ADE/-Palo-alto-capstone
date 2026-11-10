@@ -7,9 +7,15 @@ import { unansweredTrends, type TrendCount } from '@/audit/question-trends';
 import { topicName } from '@/audit/topics';
 import { trendFacts, type TopicCount } from '@/audit/trends-agent';
 import { appUsers, questionTopicsView, questionTrendsView } from '@/db/schema';
+import { activeDatasetLabel, AS_OF_DATE } from '@/db/seed';
 import { loadRegistry } from '@/registry/load';
+import { alertsLink } from '@/server/alerts-link';
 import { requireUser } from '@/server/require-user';
 import { getDatabase } from '@/server/runtime';
+import { AppShell } from '../app-shell';
+import { logOutAction } from '../auth-actions';
+import { dateRange } from '../format';
+import { readTheme } from '../theme';
 import { metricWords, outcomeWords, readableFact, splitUnanswered, weekWords } from './words';
 
 export const dynamic = 'force-dynamic';
@@ -46,17 +52,35 @@ export default async function TrendsPage() {
   const actor = await requireUser();
   if (!actor) redirect('/login');
   const database = await getDatabase();
-  const [person] = await database.db.select({ role: appUsers.role }).from(appUsers).where(eq(appUsers.id, actor.userId));
+  const [person] = await database.db.select({ role: appUsers.role, name: appUsers.displayName }).from(appUsers).where(eq(appUsers.id, actor.userId));
   if (person?.role !== 'analyst') notFound();
   return (
-    <main>
-      <div className="page-head">
-        <h1>Question trends</h1>
-        <p>Counts of questions by week, metric and outcome. Question text is not stored and is not shown.</p>
-        <p><Link href="/">Back to the overview</Link></p>
-      </div>
-      <Trends database={database} />
-    </main>
+    <AppShell
+      current="trends"
+      analyst
+      alertsHref={alertsLink(process.env.ALERTS_URL)}
+      theme={await readTheme()}
+      dataset={activeDatasetLabel()}
+      asOf={dateRange(AS_OF_DATE)}
+      metricCount={loadRegistry().metrics.size}
+      who={
+        <form className="who" action={logOutAction}>
+          <span>Signed in as {person.name}</span>
+          <button type="submit">Log out</button>
+        </form>
+      }
+    >
+      <main>
+        <div className="page-head">
+          <h1>Question trends</h1>
+          <p>Counts of questions by week, metric and outcome. Question text is not stored and is not shown.</p>
+          <p><Link href="/">Back to the overview</Link></p>
+        </div>
+        <section className="card trends" aria-label="Question trends">
+          <Trends database={database} />
+        </section>
+      </main>
+    </AppShell>
   );
 }
 

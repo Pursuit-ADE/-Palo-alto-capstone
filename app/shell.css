@@ -1,0 +1,81 @@
+/* The frame every signed-in page shares (app/app-shell.tsx): the rail on the left, the top bar over the page. */
+/* The rail's column is painted on the shell, so it runs the full height of a long page behind the sticky rail. */
+.shell {
+  --rail-w: 228px;
+  display: grid; grid-template-columns: var(--rail-w) minmax(0, 1fr); min-height: 100vh; min-height: 100dvh;
+  background: linear-gradient(90deg, var(--rail) 0 calc(var(--rail-w) - 1px), var(--line) calc(var(--rail-w) - 1px) var(--rail-w), transparent var(--rail-w));
+}
+
+.rail {
+  position: sticky; top: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; gap: 28px;
+  padding: 18px 12px 16px; overflow-y: auto;
+}
+.rail-brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px; color: var(--fg); font-size: 15px; font-weight: 800; letter-spacing: .03em; text-decoration: none; }
+.rail nav ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.rail nav a {
+  display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 8px 12px; border-radius: 10px;
+  color: var(--muted); font-size: 14px; font-weight: 600; text-decoration: none;
+}
+.rail nav a:hover { color: var(--fg); background: var(--surface-2); }
+.rail nav a[aria-current="page"] { color: var(--fg); background: var(--accent-soft); }
+.rail nav a[aria-current="page"] .icon { color: var(--accent); }
+/* "You are here": a small lit dot at the end of the current item. */
+.rail nav a[aria-current="page"]::after { content: ""; margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px 1px var(--glow); }
+.rail nav .icon-sm { margin-left: auto; opacity: .75; }
+
+/* How the numbers are kept: five plain facts, no status lights (nothing here is measured live). */
+.rail-status { margin-top: auto; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+.rail-status h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.rail-status h2::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 2px; background: var(--accent); transform: rotate(45deg); }
+.rail-status dl { margin: 0; display: grid; gap: 10px; }
+.rail-status dl > div { display: grid; gap: 1px; }
+.rail-status dt { font-size: 12px; color: var(--muted); }
+.rail-status dd { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.35; }
+
+.workspace { min-width: 0; display: flex; flex-direction: column; }
+/* Anchors land below the sticky top bar instead of under it. */
+.workspace [id] { scroll-margin-top: 84px; }
+.topbar {
+  position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  padding: 12px 32px; background: var(--bg); border-bottom: 1px solid var(--line);
+}
+.topbar-title { display: grid; min-width: 0; margin-right: auto; }
+.topbar-title strong { font-size: 15px; font-weight: 800; letter-spacing: -.01em; }
+.topbar-title span { font-size: 12px; color: var(--muted); }
+
+.theme-toggle { display: flex; margin: 0; }
+.theme-toggle button {
+  width: 36px; height: 36px; display: grid; place-items: center; padding: 0; color: var(--fg); background: var(--card);
+  border: 1px solid var(--line-strong); border-radius: 10px; cursor: pointer;
+}
+.theme-toggle button:hover { color: var(--link); border-color: var(--accent-line); background: var(--accent-soft); }
+
+.who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; min-width: 0; max-width: 100%; margin: 0; }
+.who span { font-size: 13px; color: var(--muted); }
+.who label { font-size: 12px; color: var(--muted); }
+.who select { min-width: 0; max-width: 100%; flex: 1 1 200px; font: 600 14px var(--font); color: var(--fg); background: var(--field-bg); border: 1px solid var(--field); border-radius: 8px; padding: 7px 10px; }
+.who button { min-height: 36px; font: 600 13px var(--font); color: var(--fg); background: var(--card); border: 1px solid var(--line-strong); border-radius: 10px; padding: 7px 14px; cursor: pointer; }
+.who button:hover { color: var(--link); border-color: var(--accent-line); background: var(--accent-soft); }
+
+/* Tablets and phones: the rail becomes a strip across the top, and the facts panel gives way to the page. */
+@media (max-width: 900px) {
+  .shell { grid-template-columns: minmax(0, 1fr); background: none; }
+  .rail {
+    position: static; height: auto; flex-direction: row; align-items: center; gap: 6px 14px; padding: 8px 16px;
+    background: var(--rail); border-bottom: 1px solid var(--line); overflow: visible;
+  }
+  .rail-brand { padding: 4px 0; }
+  .rail-brand span:last-child { white-space: nowrap; }
+  .rail nav { min-width: 0; flex: 1; overflow-x: auto; scrollbar-width: none; }
+  .rail nav ul { display: flex; gap: 2px; }
+  .rail nav a { min-height: 40px; padding: 8px 10px; white-space: nowrap; }
+  .rail nav a[aria-current="page"]::after { display: none; }
+  .rail-status { display: none; }
+  .topbar { position: static; padding: 10px 16px; }
+  .workspace [id] { scroll-margin-top: 12px; }
+}
+@media (max-width: 560px) {
+  /* Hidden from sight only: the link still needs its name. */
+  .rail-brand span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .topbar-title { flex-basis: 100%; }
+}
