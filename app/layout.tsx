@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import localFont from 'next/font/local';
+import { readTheme } from './theme';
 import './globals.css';
 
 export const metadata = {
@@ -25,9 +26,12 @@ const plexMono = localFont({
   display: 'swap',
 });
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default async function RootLayout({ children }: { children: ReactNode }) {
+  // A saved light or dark choice goes on <html>, so the first paint is already in it (no flash, and no inline script,
+  // which the content security policy forbids). With none saved, the stylesheet follows the system setting.
+  const theme = await readTheme();
   return (
-    <html lang="en" className={`${manrope.variable} ${plexMono.variable}`}>
+    <html lang="en" className={`${manrope.variable} ${plexMono.variable}`} data-theme={theme ?? undefined}>
       <body>{children}</body>
     </html>
   );
