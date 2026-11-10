@@ -9,34 +9,23 @@ import { otherTheme, type Theme } from './theme-shared';
 
 /** `saved` is the theme the server rendered with, or null when the page follows the system setting. */
 export function ThemeToggle({ saved }: { saved: Theme | null }) {
-  const [shown, setShown] = useState<Theme | null>(saved);
-
-  // With no saved choice the server can't know the system setting, so the browser reads it, and follows it if it changes.
+  // The server can't know the system setting, so the browser reads it, and follows it if it changes.
+  const [system, setSystem] = useState<Theme>('light');
   useEffect(() => {
-    if (saved) return;
     const media = window.matchMedia('(prefers-color-scheme: dark)');
-    const follow = () => setShown(media.matches ? 'dark' : 'light');
+    const follow = () => setSystem(media.matches ? 'dark' : 'light');
     follow();
     media.addEventListener('change', follow);
     return () => media.removeEventListener('change', follow);
-  }, [saved]);
+  }, []);
 
-  const next = otherTheme(shown ?? 'light');
+  const next = otherTheme(saved ?? system);
   const label = `Switch to the ${next} theme`;
   return (
     <form className="theme-toggle" action={setTheme}>
-      <button
-        type="submit"
-        name="theme"
-        value={next}
-        aria-label={label}
-        title={label}
-        onClick={() => {
-          // Change now; the form post saves it.
-          document.documentElement.dataset.theme = next;
-          setShown(next);
-        }}
-      >
+      {/* The click changes the page at once but leaves the button as it is: the form must still send this value. The
+          server's next render, with the saved choice, turns the button around. */}
+      <button type="submit" name="theme" value={next} aria-label={label} title={label} onClick={() => { document.documentElement.dataset.theme = next; }}>
         {next === 'dark' ? <MoonIcon /> : <SunIcon />}
       </button>
     </form>
