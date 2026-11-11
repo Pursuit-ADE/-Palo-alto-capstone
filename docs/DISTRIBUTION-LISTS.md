@@ -37,17 +37,31 @@ subscribing several people at once. It is never a destination.
    names the person, and that the row isn't opted out. Someone removed from a list stops getting queued digests and
    retries. The employee check stays where it is, in `sendVerdict`, so a person who leaves is still recorded as
    `suppressed_inactive`, not only dropped as "not on the list".
-8. **Delivery goes to each person's own channel.** That means their own Slack webhook or email address. Never a
-   shared mailbox or group channel, because a shared address would reach people the engine never checked.
+8. **Delivery goes to each person's own channel.** That means their own Slack webhook or email address. A person's
+   alert never goes to a shared mailbox or group channel, because a shared address would reach people the engine never
+   checked. The team heads-up below is the one shared post, and it carries no one's alert.
 9. **The audit trail shows why someone got an alert.** Each `alert_deliveries` row records the list id (or none) that
    put the person in the audience.
 
 ## What it doesn't do
 
-- **No posting to a shared Slack channel or a group email address.** If Alex needs that, it is a different feature: a
-  channel whose members are all checked against the account, which we would design with him.
+- **No person's alert in a shared Slack channel or a group email address.** If Alex needs that, it is a different
+  feature: a channel whose members are all checked against the account, which we would design with him.
 - **No list inside a list.**
 - **No list created from the copilot's answers.**
+
+## Team heads-up (the one shared post, #125)
+
+With `SLACK_TEAM_WEBHOOKS` set, a team's own Slack channel gets one short note per team-wide event (a support case or
+low usage): the account and the event, never who was alerted and never their alert text. The engine's per-person checks
+(`stillEligible`, the employee check) can't cover a channel, so the rule is different and is the operator's:
+
+- **Who owns it:** whoever runs the alerts service sets the map (manager id to that team's webhook) in its environment.
+  It is never stored in the repository.
+- **Membership:** that person keeps each channel to the members of that manager's team, who can already see the team's
+  accounts in the copilot, and removes people when they leave the team. A channel that can't be kept that way must not be
+  in the map.
+- **Unset** (the default), nothing is posted to any shared channel.
 
 ## If we build it
 

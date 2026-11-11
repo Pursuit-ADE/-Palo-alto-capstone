@@ -1,12 +1,12 @@
-// Team alerts (local, Nov 3-4): after a person's own alert is delivered, a heads-up goes to their team's Slack channel,
+// Team alerts (Nov 3-4): after a person's own alert is delivered, a heads-up goes to their team's Slack channel,
 // for team-wide events only, once per event per team, and without the person's name or their private alert text.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { openDatabase, type Database } from '@/db/client';
-import { alertDeliveries, alertSubscriptions, engagements, supportCases } from '@/db/schema';
+import { alertDeliveries, alertSubscriptions, appUsers, engagements, supportCases } from '@/db/schema';
 import { buildSeed } from '@/db/seed';
 import { createChannels, SLACK_TEAM_WEBHOOK_WARNING, teamSlackText, type Channels } from '@/alerts/channels';
-import { runAlerts } from '@/alerts/engine';
+import { flushDigests, runAlerts } from '@/alerts/engine';
 import { loadRules } from '@/alerts/rules';
 
 const rules = loadRules();
@@ -91,10 +91,11 @@ describe('team alerts', () => {
     expect(text).not.toContain('Jordan');
   });
 
-  it('refuses non-Slack team links, with a warning', async () => {
+  it('refuses non-Slack team links, with a warning, and then offers no team channel at all', async () => {
     const warnings: string[] = [];
     const ch = createChannels({ teamWebhooks: { [jordanTeam]: 'https://attacker.example/hook' }, fetch: async () => ({ ok: true }), warn: (m) => warnings.push(m) });
-    expect(await ch.team!(jordanTeam, [])).toBeUndefined();
+    expect(ch.team).toBeUndefined();
+    expect(createChannels({ slackWebhooks: {} }).team).toBeUndefined();
     expect(warnings).toContain(SLACK_TEAM_WEBHOOK_WARNING);
   });
 
@@ -103,5 +104,62 @@ describe('team alerts', () => {
     expect(text).not.toContain('<!channel>');
     expect(text).not.toContain('<http');
     expect(text).not.toContain('*bold*');
+  });
+});
+
+// Review of #125: the main claim, and the cases where one teammate used to decide whether the team heard.
+describe('team alerts: once per event, best effort', () => {
+  describe('two teammates on the same event', () => {
+    const mate = data.accountTeam.find((t) => t.accountId === jordanAccount && t.userId !== 'u_ts_east' && data.users.find((u) => u.id === t.userId)?.managerId === jordanTeam)!.userId;
+    const [first, second] = ['u_ts_east', mate].sort() as [string, string];
+    const reset = async (...subs: ReturnType<typeof sub>[]) => {
+      // The rule's audience is technical sellers, and the seed has one per team: make the teammate a second one.
+      await database.db.update(appUsers).set({ role: 'technical_seller' }).where(eq(appUsers.id, mate));
+      await database.db.delete(alertSubscriptions);
+      await database.db.insert(alertSubscriptions).values(subs);
+    };
+
+    it('posts one team note, not two', async () => {
+      await reset(sub(first), sub(second));
+      const ch = channels(true, true);
+      await runAlerts(database.db, rules, ch, SINCE, DAY);
+      const rows = await database.db.select().from(alertDeliveries);
+      expect(rows.filter((r) => r.status === 'delivered')).toHaveLength(2);
+      expect(ch.teamCalls).toHaveLength(1);
+      expect(ch.teamCalls[0]!.ids).toHaveLength(1);
+    });
+
+    it('tells the team right away when the lowest-id teammate is on a digest, and not again when the digest goes out', async () => {
+      await reset({ ...sub(first), frequency: 'daily' }, sub(second));
+      const ch = channels(true, true);
+      await runAlerts(database.db, rules, ch, SINCE, DAY);
+      const [realtime] = await database.db.select().from(alertDeliveries).where(eq(alertDeliveries.userId, second));
+      expect(ch.teamCalls).toEqual([{ teamId: jordanTeam, ids: [realtime!.id] }]);
+      await flushDigests(database.db, rules, ch, new Date('2026-10-10T15:00:00Z'));
+      const [digest] = await database.db.select().from(alertDeliveries).where(eq(alertDeliveries.userId, first));
+      expect(digest?.status).toBe('delivered');
+      expect(ch.teamCalls).toHaveLength(1);
+    });
+
+    it("still tells the team when the lowest-id teammate's alert is not delivered", async () => {
+      await reset(sub(first), sub(second));
+      const ch = channels(true, true);
+      const failFirst: Channels = { ...ch, deliver: async (_c, userId) => userId !== first };
+      await runAlerts(database.db, rules, failFirst, SINCE, DAY);
+      expect(ch.teamCalls).toHaveLength(1);
+    });
+  });
+
+  it('a team channel that throws or hangs never fails the run or the personal delivery', async () => {
+    const ch: Channels = { deliver: async () => true, team: async () => { throw new Error('slack down'); } };
+    await expect(runAlerts(database.db, rules, ch, SINCE, DAY)).resolves.not.toThrow();
+    const [row] = await database.db.select().from(alertDeliveries).where(eq(alertDeliveries.userId, 'u_ts_east'));
+    expect(row?.status).toBe('delivered');
+  });
+
+  it('says only that an alert fired, not that everyone was alerted', () => {
+    const text = teamSlackText([{ title: 'P1 support case at X' } as never]);
+    expect(text).toContain('an alert fired');
+    expect(text).not.toContain('have been alerted');
   });
 });

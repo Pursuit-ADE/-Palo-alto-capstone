@@ -1,8 +1,11 @@
 // Delivery channels (L5). "inbox" is the in-app dev inbox: the delivery row itself is the message.
 // "slack" posts to a webhook that belongs to that one user (a DM or private channel). "email" posts
 // to a webhook with that user's own address as the only recipient. "slack_email" sends to both. There is no shared fallback:
-// a user without their own Slack webhook or email address gets nothing on that channel, so an
+// a user without their own Slack webhook or email address gets nothing on that channel, so a person's
 // alert can never land where someone else can read it.
+// The one shared destination is the optional team heads-up (SLACK_TEAM_WEBHOOKS, #125): the account and event only,
+// never a person's alert. Whoever sets that map keeps each channel's membership to that team
+// (docs/DISTRIBUTION-LISTS.md, "Team heads-up").
 import type { alertDeliveries } from '../db/schema';
 
 type Delivery = typeof alertDeliveries.$inferSelect;
@@ -17,10 +20,11 @@ export const CHANNEL_TIMEOUT_MS = 10_000;
 export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
   /**
-   * Team alerts (local, Nov 3-4): a short heads-up in a team's own Slack channel about an event the whole team should know
+   * Team alerts (Nov 3-4): a short heads-up in a team's own Slack channel about an event the whole team should know
    * of. It names the account and the event only: never the person alerted, and never their own alert text, which stays
    * private to them (Mira, Nov 4). Optional, best effort, and never changes anyone's own delivery. The channel must hold
-   * only that team, who can already see the team's accounts in the copilot. Undefined when the team has no channel.
+   * only that team, who can already see the team's accounts in the copilot. Undefined when the team has no channel;
+   * the method itself is absent when no team channel is configured, so the engine does no work for it.
    */
   team?(teamId: string, items: Delivery[]): Promise<boolean | undefined>;
 }
@@ -58,7 +62,7 @@ export function slackText(items: Delivery[], isDigest: boolean): string {
 
 export function teamSlackText(items: Delivery[]): string {
   const lines = items.map((i) => `• *${slackEscape(i.title)}*`);
-  return `Team heads-up: the people on this account have been alerted.\n\n${lines.join('\n')}`;
+  return `Team heads-up: an alert fired on an account your team covers.\n\n${lines.join('\n')}`;
 }
 
 export function emailEscape(text: string): string {
@@ -155,7 +159,7 @@ export function createChannels(opts: {
     }
   };
   return {
-    team: (teamId, items) => postTeamNote(doFetch, teamWebhooks[teamId], items),
+    ...(Object.keys(teamWebhooks).length > 0 ? { team: (teamId: string, items: Delivery[]) => postTeamNote(doFetch, teamWebhooks[teamId], items) } : {}),
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
       if (channel === 'slack') return toSlack(userId, items, isDigest);

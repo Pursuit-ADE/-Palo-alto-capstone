@@ -2,7 +2,7 @@
 // account they can see, access is checked again right before anything is sent, and the database's
 // unique key (rule, user, event) guarantees each alert is created once.
 import { randomUUID } from 'node:crypto';
-import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appAccounts, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
@@ -306,6 +306,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const k = `${r.userId}|${r.channel}`;
     byUserChannel.set(k, [...(byUserChannel.get(k) ?? []), r]);
   }
+  const delivered: typeof claimed = [];
   for (const [k, group] of byUserChannel) {
     const [userId, channel] = k.split('|') as [string, string];
     const items: typeof claimed = [];
@@ -321,7 +322,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
     if (ok) {
       await db.update(alertDeliveries).set({ status: 'delivered', deliveredAt: now, digestId: digestId ?? null }).where(mine(items.map((i) => i.id)));
-      await noteTeam(db, rules, channels, userId, items);
+      delivered.push(...items);
       continue;
     }
     const spent = items.filter((i) => i.attempts >= MAX_ATTEMPTS).map((i) => i.id);
@@ -335,34 +336,47 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
       if (marked.length) (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: marked.map((m) => m.id) });
     }
   }
+  // After everyone's own alerts, so a slow team channel or an error here never holds up or ends a person's delivery
+  // (review of #125).
+  await noteTeams(db, rules, channels, delivered).catch(() => console.warn('Team alerts: the heads-up step failed; personal deliveries are unaffected.'));
 }
 
 /** Events the whole team should hear about (Mira, Nov 4). A CxO engagement is a seller's own lead, so it stays personal. */
 const TEAM_EVENTS = new Set(['support_case', 'low_usage']);
 
 /**
- * After a person's alert is delivered, a heads-up to their team's Slack channel, if the team has one (team alerts, local
- * Nov 3-4). Only team-wide events, and once per event per team: the teammate with the lowest id who got the same event
- * posts it, so two teammates on one account don't post twice. Best effort: the person's own delivery already counts, so a
- * failed note is logged (ids only) and not retried.
+ * After people's alerts are delivered, a heads-up to their team's Slack channel, if the team has one (team alerts, Nov 3-4).
+ * Only team-wide events, and once per event per team: the first successful delivery to anyone on the team posts it. A
+ * teammate whose row for the same event was already delivered (in an earlier run) means the team has been told, so a
+ * later digest or retry doesn't post again; a teammate who is on a digest, suppressed or undelivered doesn't hold it back
+ * (review of #125). Best effort: a failed note is logged (ids only) and not retried.
  */
-async function noteTeam(db: Db, rules: Map<string, AlertRule>, channels: Channels, userId: string, items: (typeof alertDeliveries.$inferSelect)[]) {
+async function noteTeams(db: Db, rules: Map<string, AlertRule>, channels: Channels, delivered: (typeof alertDeliveries.$inferSelect)[]) {
+  // No team channels configured: no database work at all.
   if (!channels.team) return;
-  const [user] = await db.select({ managerId: appUsers.managerId }).from(appUsers).where(eq(appUsers.id, userId));
-  if (!user?.managerId) return;
-  const teamItems: typeof items = [];
+  const items = delivered.filter((d) => TEAM_EVENTS.has(rules.get(d.ruleId)?.event ?? ''));
+  if (items.length === 0) return;
+  const people = await db.select({ id: appUsers.id, managerId: appUsers.managerId }).from(appUsers).where(inArray(appUsers.id, [...new Set(items.map((i) => i.userId))]));
+  const teamOf = new Map(people.map((p) => [p.id, p.managerId]));
+  // Teammates' rows for these events that were delivered before this batch: their team already heard.
+  const earlier = await db
+    .select({ eventId: alertDeliveries.eventId, ruleId: alertDeliveries.ruleId, managerId: appUsers.managerId })
+    .from(alertDeliveries)
+    .innerJoin(appUsers, eq(appUsers.id, alertDeliveries.userId))
+    .where(and(inArray(alertDeliveries.eventId, [...new Set(items.map((i) => i.eventId))]), eq(alertDeliveries.status, 'delivered'), notInArray(alertDeliveries.id, items.map((i) => i.id))));
+  const told = new Set(earlier.map((e) => `${e.managerId}|${e.eventId}|${e.ruleId}`));
+  const byTeam = new Map<string, typeof items>();
   for (const item of items) {
-    if (!TEAM_EVENTS.has(rules.get(item.ruleId)?.event ?? '')) continue;
-    const teammates = await db
-      .select({ userId: alertDeliveries.userId })
-      .from(alertDeliveries)
-      .innerJoin(appUsers, eq(appUsers.id, alertDeliveries.userId))
-      .where(and(eq(alertDeliveries.eventId, item.eventId), eq(alertDeliveries.ruleId, item.ruleId), eq(appUsers.managerId, user.managerId)));
-    if (teammates.every((t) => t.userId >= userId)) teamItems.push(item);
+    const team = teamOf.get(item.userId);
+    const key = `${team}|${item.eventId}|${item.ruleId}`;
+    if (!team || told.has(key)) continue;
+    told.add(key);
+    byTeam.set(team, [...(byTeam.get(team) ?? []), item]);
   }
-  if (teamItems.length === 0) return;
-  const ok = await channels.team(user.managerId, teamItems).catch(() => false);
-  if (ok === false) console.warn(`Team alert not posted for team ${user.managerId}: ${teamItems.map((i) => i.id).join(', ')}`);
+  for (const [team, teamItems] of byTeam) {
+    const ok = await channels.team(team, teamItems).catch(() => false);
+    if (ok === false) console.warn(`Team alert not posted for team ${team}: ${teamItems.map((i) => i.id).join(', ')}`);
+  }
 }
 
 /**
