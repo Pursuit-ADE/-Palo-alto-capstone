@@ -20,7 +20,7 @@ describe('metric registry and context layer', () => {
     expect(caution).toBe(2);
     if (target == null || caution == null) return;
     expect(caution).toBeLessThan(target);
-    expect(coverage.notes).toContain('Alex confirmed the 3.00x target for this demo');
+    expect(coverage.notes).not.toContain('Alex');
     expect(coverage.notes).toContain('display-only and do not change the computed value');
     expect(coverage.description).not.toContain('The target is');
   });
