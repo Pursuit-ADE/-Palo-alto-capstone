@@ -2,7 +2,7 @@
 // account they can see, access is checked again right before anything is sent, and the database's
 // unique key (rule, user, event) guarantees each alert is created once.
 import { randomUUID } from 'node:crypto';
-import { and, eq, gte, inArray, isNotNull, lt, lte, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, lt, lte, notInArray, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client';
 import { accountTeam, accounts, alertDeliveries, alertSubscriptions, appAccounts, appUsers, contacts, engagements, supportCases } from '../db/schema';
 import type { Channels } from './channels';
@@ -306,6 +306,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const k = `${r.userId}|${r.channel}`;
     byUserChannel.set(k, [...(byUserChannel.get(k) ?? []), r]);
   }
+  const delivered: typeof claimed = [];
   for (const [k, group] of byUserChannel) {
     const [userId, channel] = k.split('|') as [string, string];
     const items: typeof claimed = [];
@@ -321,6 +322,7 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
     const ok = await channels.deliver(channel, userId, items, digestId !== undefined);
     if (ok) {
       await db.update(alertDeliveries).set({ status: 'delivered', deliveredAt: now, digestId: digestId ?? null }).where(mine(items.map((i) => i.id)));
+      delivered.push(...items);
       continue;
     }
     const spent = items.filter((i) => i.attempts >= MAX_ATTEMPTS).map((i) => i.id);
@@ -333,6 +335,47 @@ export async function send(db: Db, rules: Map<string, AlertRule>, channels: Chan
       // The operator's signal (evaluator F-05). Ids only: no account names or alert text in the log.
       if (marked.length) (opts.reportUndelivered ?? reportUndelivered)({ userId, channel, ids: marked.map((m) => m.id) });
     }
+  }
+  // After everyone's own alerts, so a slow team channel or an error here never holds up or ends a person's delivery
+  // (review of #125).
+  await noteTeams(db, rules, channels, delivered).catch(() => console.warn('Team alerts: the heads-up step failed; personal deliveries are unaffected.'));
+}
+
+/** Events the whole team should hear about (Mira, Nov 4). A CxO engagement is a seller's own lead, so it stays personal. */
+const TEAM_EVENTS = new Set(['support_case', 'low_usage']);
+
+/**
+ * After people's alerts are delivered, a heads-up to their team's Slack channel, if the team has one (team alerts, Nov 3-4).
+ * Only team-wide events, and once per event per team: the first successful delivery to anyone on the team posts it. A
+ * teammate whose row for the same event was already delivered (in an earlier run) means the team has been told, so a
+ * later digest or retry doesn't post again; a teammate who is on a digest, suppressed or undelivered doesn't hold it back
+ * (review of #125). Best effort: a failed note is logged (ids only) and not retried.
+ */
+async function noteTeams(db: Db, rules: Map<string, AlertRule>, channels: Channels, delivered: (typeof alertDeliveries.$inferSelect)[]) {
+  // No team channels configured: no database work at all.
+  if (!channels.team) return;
+  const items = delivered.filter((d) => TEAM_EVENTS.has(rules.get(d.ruleId)?.event ?? ''));
+  if (items.length === 0) return;
+  const people = await db.select({ id: appUsers.id, managerId: appUsers.managerId }).from(appUsers).where(inArray(appUsers.id, [...new Set(items.map((i) => i.userId))]));
+  const teamOf = new Map(people.map((p) => [p.id, p.managerId]));
+  // Teammates' rows for these events that were delivered before this batch: their team already heard.
+  const earlier = await db
+    .select({ eventId: alertDeliveries.eventId, ruleId: alertDeliveries.ruleId, managerId: appUsers.managerId })
+    .from(alertDeliveries)
+    .innerJoin(appUsers, eq(appUsers.id, alertDeliveries.userId))
+    .where(and(inArray(alertDeliveries.eventId, [...new Set(items.map((i) => i.eventId))]), eq(alertDeliveries.status, 'delivered'), notInArray(alertDeliveries.id, items.map((i) => i.id))));
+  const told = new Set(earlier.map((e) => `${e.managerId}|${e.eventId}|${e.ruleId}`));
+  const byTeam = new Map<string, typeof items>();
+  for (const item of items) {
+    const team = teamOf.get(item.userId);
+    const key = `${team}|${item.eventId}|${item.ruleId}`;
+    if (!team || told.has(key)) continue;
+    told.add(key);
+    byTeam.set(team, [...(byTeam.get(team) ?? []), item]);
+  }
+  for (const [team, teamItems] of byTeam) {
+    const ok = await channels.team(team, teamItems).catch(() => false);
+    if (ok === false) console.warn(`Team alert not posted for team ${team}: ${teamItems.map((i) => i.id).join(', ')}`);
   }
 }
 

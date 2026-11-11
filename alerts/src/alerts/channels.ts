@@ -1,8 +1,11 @@
 // Delivery channels (L5). "inbox" is the in-app dev inbox: the delivery row itself is the message.
 // "slack" posts to a webhook that belongs to that one user (a DM or private channel). "email" posts
 // to a webhook with that user's own address as the only recipient. "slack_email" sends to both. There is no shared fallback:
-// a user without their own Slack webhook or email address gets nothing on that channel, so an
+// a user without their own Slack webhook or email address gets nothing on that channel, so a person's
 // alert can never land where someone else can read it.
+// The one shared destination is the optional team heads-up (SLACK_TEAM_WEBHOOKS, #125): the account and event only,
+// never a person's alert. Whoever sets that map keeps each channel's membership to that team
+// (docs/DISTRIBUTION-LISTS.md, "Team heads-up").
 import type { alertDeliveries } from '../db/schema';
 
 type Delivery = typeof alertDeliveries.$inferSelect;
@@ -16,6 +19,14 @@ export const CHANNEL_TIMEOUT_MS = 10_000;
 
 export interface Channels {
   deliver(channel: string, userId: string, items: Delivery[], isDigest: boolean): Promise<boolean>;
+  /**
+   * Team alerts (Nov 3-4): a short heads-up in a team's own Slack channel about an event the whole team should know
+   * of. It names the account and the event only: never the person alerted, and never their own alert text, which stays
+   * private to them (Mira, Nov 4). Optional, best effort, and never changes anyone's own delivery. The channel must hold
+   * only that team, who can already see the team's accounts in the copilot. Undefined when the team has no channel;
+   * the method itself is absent when no team channel is configured, so the engine does no work for it.
+   */
+  team?(teamId: string, items: Delivery[]): Promise<boolean | undefined>;
 }
 
 /**
@@ -47,6 +58,11 @@ const SLACK_LOOKALIKE: Record<string, string> = { '*': '∗', _: '＿', '~': '�
 export function slackText(items: Delivery[], isDigest: boolean): string {
   const lines = items.map((i) => `• *${slackEscape(i.title)}*\n${slackEscape(i.explanation)}\n<${i.link}|Ask the copilot>`);
   return (isDigest ? `Your alert digest (${items.length})\n\n` : '') + lines.join('\n\n');
+}
+
+export function teamSlackText(items: Delivery[]): string {
+  const lines = items.map((i) => `• *${slackEscape(i.title)}*`);
+  return `Team heads-up: an alert fired on an account your team covers.\n\n${lines.join('\n')}`;
 }
 
 export function emailEscape(text: string): string {
@@ -88,6 +104,7 @@ export const EMAIL_WEBHOOK_WARNING =
 
 export function createChannels(opts: {
   slackWebhooks?: Record<string, unknown>;
+  teamWebhooks?: Record<string, unknown>;
   emails?: string | Record<string, unknown>;
   emailWebhook?: string;
   fetch?: Fetch;
@@ -105,6 +122,7 @@ export function createChannels(opts: {
   }
   // A typo in a Slack link would otherwise silently mean "no Slack" for that person (#104 review).
   if (Object.keys(webhooks).length < rawEntryCount(opts.slackWebhooks ?? env.SLACK_USER_WEBHOOKS)) (opts.warn ?? console.warn)(SLACK_WEBHOOK_WARNING);
+  const teamWebhooks = parseTeamWebhooks(opts.teamWebhooks ?? env.SLACK_TEAM_WEBHOOKS, opts.warn ?? console.warn);
   const doFetch: Fetch = opts.fetch ?? ((url, init) => fetch(url, init));
   const sendMail: SendMail = opts.sendMail ?? (async (msg, init) => {
     if (!isEmailWebhook(emailWebhook, env)) return false;
@@ -141,6 +159,7 @@ export function createChannels(opts: {
     }
   };
   return {
+    ...(Object.keys(teamWebhooks).length > 0 ? { team: (teamId: string, items: Delivery[]) => postTeamNote(doFetch, teamWebhooks[teamId], items) } : {}),
     async deliver(channel, userId, items, isDigest) {
       if (channel === 'inbox') return true;
       if (channel === 'slack') return toSlack(userId, items, isDigest);
@@ -172,6 +191,27 @@ export function isSlackWebhook(value: unknown): value is string {
 
 export const SLACK_WEBHOOK_WARNING =
   'SLACK_USER_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those people get no Slack messages until they are fixed.';
+
+/** Team channels, keyed by the team's manager id. Same rule as a person's link: hooks.slack.com only, a typo warns. */
+function parseTeamWebhooks(raw: string | Record<string, unknown> | undefined, warn: (message: string) => void): Record<string, string> {
+  const valid = parseWebhooks(raw);
+  if (Object.keys(valid).length < rawEntryCount(raw)) warn(SLACK_TEAM_WEBHOOK_WARNING);
+  return valid;
+}
+
+/** One team note. Undefined when the team has no channel, so there is nothing to report as failed. */
+async function postTeamNote(doFetch: Fetch, url: string | undefined, items: Delivery[]): Promise<boolean | undefined> {
+  if (!url) return undefined;
+  try {
+    const res = await doFetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text: teamSlackText(items), unfurl_links: false, unfurl_media: false }), signal: AbortSignal.timeout(CHANNEL_TIMEOUT_MS), redirect: 'error' });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+export const SLACK_TEAM_WEBHOOK_WARNING =
+  'SLACK_TEAM_WEBHOOKS has entries that are not https://hooks.slack.com/services/... links; those teams get no team alerts until they are fixed.';
 
 /** How many entries a raw per-user map has, before any are dropped as invalid. */
 function rawEntryCount(raw: string | Record<string, unknown> | undefined): number {
