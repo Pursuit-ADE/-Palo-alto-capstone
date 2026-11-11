@@ -6,7 +6,39 @@ What each version of the Governed Analytics Copilot added. The format follows
 
 ## [Unreleased]
 
-Work merged into `main` after v0.5.0 goes here.
+Work merged into `main` after v1.0.3 goes here.
+
+## [1.0.3] - 2026-11-11
+
+The handoff build: the Demo Day release plus what was merged after Demo Day (#120 to #129).
+
+### Added
+
+- Light and dark themes for the copilot, with a switch in the top bar that each browser remembers; a side rail with
+  how the numbers are kept; coverage by region shown as a map, lit where the person's access reaches (#126).
+- Team alerts: an optional heads-up in a team's own Slack channel (`SLACK_TEAM_WEBHOOKS`) on the first successful
+  delivery of a team-wide event. It names the account and the event, never the person or their alert text (#125).
+
+### Fixed
+
+- The alerts preferences form keeps showing the saved channel after Save (#123).
+- `tests/client-imports.test.ts` passes on Windows, and its server-only guard now works there too (#128).
+
+### Documentation
+
+- PRD and roadmap v1.3 after Demo Day, with what a next phase would build (#129).
+- The coverage metric's notes no longer say the client confirmed the 3.00x target (#124).
+- The demo film is gone from the README and from `docs/media/` (#127).
+
+### Dependencies
+
+- Minor and patch updates for both apps, including Next.js 16.4.5, PGlite 0.5.15, Vitest 5.1.0, Biome 2.6.5 and the
+  Anthropic SDK 1.6.0, and CodeQL actions 4.39.3 (#120 to #122).
+
+## [1.0.0] - 2026-11-01
+
+The Demo Day build, followed by the Demo Day builds v1.0.1 and v1.0.2 on Nov 2. Their full notes are on the
+[releases page](https://github.com/Pursuit-ADE/-Palo-alto-capstone/releases); this file only recorded the items below.
 
 ### Documentation
 
@@ -82,7 +114,9 @@ Week 1 (#1).
   compiler and the golden question set.
 - PRD and roadmap.
 
-[Unreleased]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.5.0...main
+[Unreleased]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v1.0.3...main
+[1.0.3]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v1.0.2...v1.0.3
+[1.0.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.5.0...v1.0.0
 [0.5.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.3.0...v0.5.0
 [0.3.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/Pursuit-ADE/-Palo-alto-capstone/compare/v0.1.0...v0.2.0
