@@ -1,6 +1,6 @@
 # Governed AI Analytics Copilot: Product Requirements
 
-**v1.2** · v1 approved by Alex Sanginov on Oct 7, 2026 · updated Nov 1 after his Oct 15 answers, the Oct 24 call and the team's reviews
+**v1.3** · v1 approved by Alex Sanginov on Oct 7, 2026 · updated Nov 1 after his Oct 15 answers, the Oct 24 call and the team's reviews; statuses updated Nov 11 after Demo Day
 (see [change log](#9-change-log)) · Palo Alto Networks Customer Analytics × Team ALTO PALS (Pursuit L3) · Demo Day Nov 9, 2026
 
 This is the living copy of the PRD. It replaces the v1 PDF in this folder, which stays for history. When is in the
@@ -82,7 +82,7 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | A5 | Follow-up questions with no fixed limit; every turn re-validated and re-scoped (Oct 7). | Must | Done |
 | A9 | Context layer: dictionary, glossary, synonyms, business rules and metric logic in the versioned registry files (Oct 7). | Must | Done |
 | A10 | **Executive-first answers** (Oct 24): one sentence first (the number and what it means), then the number and detail. Charts default to flat 2D; 3D is opt-in, off by default and remembered per user. | Must | Done (#56) |
-| A11 | **Coverage target** (Oct 24): pipeline coverage shown against Alex's 3x target, with on/off-target words (not color alone) and a target ("battery") bar. Red below 2x and amber from 2x to 3x are our split, still to confirm. | Should | PR (#60) |
+| A11 | **Coverage target** (Oct 24): pipeline coverage shown against Alex's 3x target, with on/off-target words (not color alone) and a target ("battery") bar. Red below 2x and amber from 2x to 3x are our split, still to confirm. | Should | Done (#60) |
 | A6 | Charts: a sensible chart for the answer shape. | Should | Done |
 | A7 | Repeatable on a new dataset: a second dataset added from the runbook. | Should | Done (`docs/ONBOARDING.md`) |
 | A8 | Label anything outside the registry as exploratory and unverified. | Could | Open |
@@ -112,8 +112,8 @@ Status: **Done** is on `main`; **PR** is built and in review; **Open** is not bu
 | S6 | Red-team test suite in CI. | Must | Done (deterministic); the run against Claude is still to do |
 | S7 | Read-only analytics database role; scoped aggregates only, never raw rows to the model. | Must | Done |
 | S8 | **Independent evaluator** (Oct 24): agents outside the product repo, with no write access to product code, rate findings Low, Medium or High. Findings go to the code's author as issues, fixed by normal reviewed PRs. | Must | Done (separate evaluator repo) |
-| S9 | **Agent context and system rules** (Oct 24): the rules the model works under are written down as its context, and each is also enforced in code. No fine-tuning, no RAG. | Must | In progress (Trevor, system-rules PR) |
-| S10 | **Question trends** (Oct 24): counts of questions by week, metric and outcome; unanswered questions labeled with a topic from a fixed list (never their words); a read-only trends agent writes a weekly summary whose numbers all come from code. | Should | PR (#61, #71) |
+| S9 | **Agent context and system rules** (Oct 24): the rules the model works under are written down as its context, and each is also enforced in code. No fine-tuning, no RAG. | Must | Done (#73) |
+| S10 | **Question trends** (Oct 24): counts of questions by week, metric and outcome; unanswered questions labeled with a topic from a fixed list (never their words); a read-only trends agent writes a weekly summary whose numbers all come from code. | Should | Done (#61, #71) |
 
 ### Deployment
 
@@ -193,3 +193,4 @@ bottom of the Should and Could items first. Timing and the cut order are in the 
 | Oct 26 | v1.2 from Alex's Oct 15 answers and the Oct 24 call: A10 executive-first answers, A11 3x coverage target, L2 low usage confirmed as option (a), L5 channels by urgency, L7 active employees only, L8 distribution lists (question), S8 independent evaluator, S9 agent rules, S10 question trends, D2 GCP and BigQuery design, analyst and executive users, status column, new open questions. Moved from Word to this file so it is updated with the code |
 | Oct 28 | Team review (Adedoyin, Mofazzal): CSM row names the large-deal stretch; L7 says what holds on `main` today and points at #89 and #90; L7 joins the never-cut list; S5 notes the CI billing block; the dry run moves to by Sun Nov 1 for Pursuit's Nov 2 freeze |
 | Nov 1 | Team decision without Alex's answer: L5 urgency standard (only P1 is urgent, by the usual severity scale; urgent alerts use the person's chosen channel). Question 5 closed. L2 low usage done (#68). |
+| Nov 11 | v1.3 after Demo Day: A11, S9 and S10 marked done (merged Oct 31 in #60, #73, #61 and #71). Still not built: A8, L8 (design only) and automatic Slack for urgent alerts (L5). What is left is listed in the [roadmap](ROADMAP.md#6-after-demo-day) |

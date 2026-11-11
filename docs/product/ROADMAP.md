@@ -1,6 +1,6 @@
 # Governed AI Analytics Copilot: Roadmap
 
-**v1.2** · v1 approved by Alex Sanginov on Oct 7 · updated Oct 26 after the Oct 24 call (see [change log](#6-change-log))
+**v1.3** · v1 approved by Alex Sanginov on Oct 7 · updated Oct 26 after the Oct 24 call, and Nov 11 after Demo Day (see [change log](#7-change-log))
 · Team ALTO PALS × Palo Alto Networks Customer Analytics · Demo Day Mon Nov 9, 2026
 
 This roadmap says when things happen. What we build and why is in the [PRD](PRD.md). It is a living document: it changes
@@ -17,12 +17,12 @@ in the [Oct 24 feedback plan](2026-10-24-alex-feedback-plan.md).
 | M3 · Governed query end to end | Oct 18 | Same formula, different legitimate scopes; tampering and SQL-injection tests | Done, `v0.2.0` (Oct 14) |
 | M4 · Copilot experience | Oct 25 | Golden set, follow-ups, charts, provenance, red team | Done, `v0.3.0` (Oct 17) |
 | M5 · Private alerts and red team | Nov 1 | Alerts deliver privately; red-team suite complete | Done early, `v0.5.0` (Oct 24); midpoint call with Alex Oct 24 |
-| M6 · Alex's Oct 24 asks | Sun Nov 1 | Everything in the feedback plan merged; Claude re-scored | In progress, `v0.6.0` Oct 29 |
+| M6 · Alex's Oct 24 asks | Sun Nov 1 | Everything in the feedback plan merged; Claude re-scored | Done, merged by Oct 31 (#50–#52, #60, #61, #71, #73, #91); `v1.0.0-rc.1` Oct 31 |
 | M7 · Dry run with Alex | By Sun Nov 1 | 30-minute walkthrough on a release candidate, so his feedback lands before the freeze | To book, `v1.0.0-rc.1` |
-| **Code and presentation freeze (Pursuit)** | **Mon Nov 2** | Last code merged to `main`; the Demo Day deck is final | `v1.0.0` tagged on the frozen commit |
+| **Code and presentation freeze (Pursuit)** | **Mon Nov 2** | Last code merged to `main`; the Demo Day deck is final | Done: `v1.0.0` tagged Nov 1; Demo Day builds `v1.0.1` and `v1.0.2` Nov 2 |
 | Dress rehearsal with staff (Pursuit, mandatory) | Wed Nov 4, 6:30–9:30 PM | Full run of the deck and live demo | Planned |
 | Final dress rehearsals (Pursuit, mandatory) | Sat Nov 7 – Sun Nov 8 | Two runs from a reset demo | Planned |
-| Demo Day | Mon Nov 9 | Scandinavia House, set up at 4 PM. Live demo and repo handover | Planned |
+| Demo Day | Mon Nov 9 | Scandinavia House, set up at 4 PM. Live demo and repo handover | Done |
 
 Buffer rule: each week is feature-complete on Friday; the weekend is buffer, and the milestone is checked on Sunday.
 
@@ -73,7 +73,19 @@ Never cut: server-side role scope and send-time alert re-authorization, no model
 provenance, cross-scope and prompt-injection tests, private per-user alert routing, the high-severity support-case alert,
 active-employee checks, and a repeatable demo.
 
-## 6. Change log
+## 6. After Demo Day
+
+Nothing below was promised for Demo Day. It is what a next phase would build, in PRD order.
+
+| Item | PRD | State |
+|---|---|---|
+| Label answers from outside the registry as exploratory and unverified | A8 | Not built (Could) |
+| Distribution lists for alerts | L8 | Design only (`docs/DISTRIBUTION-LISTS.md`), waiting on Alex |
+| Send urgent (P1) alerts to Slack automatically | L5 | Not built: today each person picks their channel, and P1 can skip quiet hours |
+| Company sign-in with Active Directory and SSO instead of invite codes | Alex, Oct 15 | Not built |
+| Run on GCP with BigQuery | D2 | Design only (`docs/DEPLOYMENT-GCP.md`) |
+
+## 7. Change log
 
 | Date | Change |
 |---|---|
@@ -82,3 +94,4 @@ active-employee checks, and a repeatable demo.
 | Oct 8 | v1.1 after team review: synthetic quota and account-team tables, scans in Week 1, red team from Week 3, cut order |
 | Oct 26 | v1.2: milestones marked with the releases that met them; Week 6 for Alex's Oct 24 asks; dry run week of Nov 2 on `v1.0.0-rc.1`; release tags; new risks (CI billing, #50–#52); cut order updated. Moved from Word to this file |
 | Oct 28 | Pursuit's dates added: code and presentation freeze Mon Nov 2, staff dress rehearsal Wed Nov 4, final rehearsals Nov 7–8, Demo Day at Scandinavia House (set up 4 PM). The dry run with Alex and `v1.0.0` move before or onto the freeze |
+| Nov 11 | v1.3 after Demo Day: M6, the freeze and Demo Day marked done with the releases that met them; section 6 lists what a next phase would build. The dry run with Alex (M7) and the rehearsals are left as they were for the team to confirm |
