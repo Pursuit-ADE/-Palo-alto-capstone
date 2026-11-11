@@ -1,6 +1,6 @@
 // Client components never reach the database code, so its schema stays out of the browser bundle (review of #102).
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const ROOT = resolve(__dirname, '..');
@@ -37,17 +37,20 @@ function reachable(entry: string): Set<string> {
   return seen;
 }
 
+/** A repo path with forward slashes, so the names and the server-only patterns match on Windows too (Nov 11). */
+const rel = (f: string) => relative(ROOT, f).split(sep).join('/');
+
 const clientComponents = readdirSync(join(ROOT, 'app'), { recursive: true })
   .map((f) => join(ROOT, 'app', String(f)))
   .filter((f) => /\.tsx?$/.test(f) && /^\s*['"]use client['"]/.test(readFileSync(f, 'utf8')));
 
 describe('client components stay off the database code', () => {
   it('finds the client components', () => {
-    expect(clientComponents.map((f) => relative(ROOT, f))).toContain('app/ask-panel.tsx');
+    expect(clientComponents.map(rel)).toContain('app/ask-panel.tsx');
   });
 
-  it.each(clientComponents.map((f) => [relative(ROOT, f), f]))('%s', (_name, file) => {
-    const server = [...reachable(file)].map((m) => (m.startsWith(ROOT) ? relative(ROOT, m) : m)).filter((m) => SERVER_ONLY.some((p) => p.test(m)));
+  it.each(clientComponents.map((f) => [rel(f), f]))('%s', (_name, file) => {
+    const server = [...reachable(file)].map((m) => (m.startsWith(ROOT) ? rel(m) : m)).filter((m) => SERVER_ONLY.some((p) => p.test(m)));
     expect(server).toEqual([]);
   });
 });
