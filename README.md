@@ -10,12 +10,6 @@ A governed AI analytics copilot that sits next to certified dashboards. The AI o
 
 New to the project? Start with the [walkthrough](docs/WALKTHROUGH.md). To run it or fix something, see the [runbook](docs/RUNBOOK.md); every metric, rule and field is in the [data dictionary](docs/DATA-DICTIONARY.md). Reviewing it for security or AI risk? Start with the [system card](docs/SYSTEM-CARD.md), then the [red-team results](docs/RED-TEAM.md) and [detections](docs/DETECTIONS.md).
 
-## Demo film
-
-[![Jordan, Avery, Melvin and Sam on a rooftop under 0.52x, 0.65x, 0/170 and $495,950](docs/media/demo-film-poster.jpg)](docs/media/demo-film.mp4)
-
-[Watch the demo film](docs/media/demo-film.mp4) (one minute, with sound). It tells the copilot and alerts story in four parts, one per presenter. Jordan gets one number (0.52x). Avery sees the whole company and each region (0.65x, then 0.76x, 0.75x and 0.43x). Melvin's wrong premise is corrected (0.70x against 0.78x) and every attack is blocked (0/170). Sam's P1 alert leads to the open pipeline ($495,950).
-
 ## Run it
 
 Requires Node 22.12 or newer (CI uses Node 24). No Docker needed: the app and tests use an embedded Postgres (PGlite) loaded on start from `data/maven-crm/` plus deterministic synthetic tables.
