@@ -10,7 +10,6 @@ Work merged into `main` after v0.5.0 goes here.
 
 ### Documentation
 
-- The one-minute demo film and its poster in docs/media/, shown at the top of the README.
 - PRD and roadmap v1.2 as living Markdown in `docs/product/`, updated with the client's Oct 15 answers and Oct 24 call, plus the rule for keeping them current. GCP and BigQuery deployment design in `docs/DEPLOYMENT-GCP.md`.
 
 ### Security
