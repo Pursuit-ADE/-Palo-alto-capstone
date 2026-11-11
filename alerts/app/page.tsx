@@ -25,8 +25,8 @@ const TAG_BY_EVENT: Record<string, string> = { engagement: 'CXO', low_usage: 'Us
 
 /**
  * Alerts with the same headline (the same rule, severity and account) as one card, with each one's reason listed in it.
- * Darcel had three "CXO engagement at Donquadtech" cards that differed only in the asset and the date (UX review Nov 2,
- * BH r2 7). The inbox is already sorted by severity, then title, so equal titles sit together. One copilot link per card:
+ * Darcel had three "CXO engagement at Donquadtech" cards that differed only in the asset and the date (UX review,
+ * Nov 2). The inbox is already sorted by severity, then title, so equal titles sit together. One copilot link per card:
  * every alert in it names the same account.
  */
 function groupByTitle<T extends { title: string }>(rows: T[]): [T, ...T[]][] {
@@ -159,16 +159,16 @@ export default async function AlertsPage({ searchParams }: { searchParams: Promi
                     <b>{a.title}</b>
                     {more.length ? <span className="muted">{more.length + 1} alerts</span> : null}
                   </div>
-                  {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one.
-                      The link pre-fills a fixed question about this alert's account (src/server/prompts.ts), so the label can say "about this
-                      account" again. It only pre-fills: the reader still presses Ask (UX review, Nov 2). */}
                   {more.length ? (
-                    <ul className="alerts">
+                    <ul className="alert-reasons">
                       {[a, ...more].map((x) => <li key={x.id}><p>{x.explanation}</p></li>)}
                     </ul>
                   ) : (
                     <p>{a.explanation}</p>
                   )}
+                  {/* A new tab, so the inbox stays open behind the copilot (Nov 1 demo test). noopener: the copilot page gets no handle back to this one.
+                      The link pre-fills a fixed question about this alert's account (src/server/prompts.ts), so the label can say "about this
+                      account" again. It only pre-fills: the reader still presses Ask (UX review, Nov 2). */}
                   <a href={a.link} target="_blank" rel="noopener noreferrer">Ask the copilot about this account (opens in a new tab)</a>
                 </li>
               ))}
