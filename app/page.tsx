@@ -58,11 +58,11 @@ function Who({ signedIn, user, name }: { signedIn: boolean; user: string; name: 
 }
 
 /** The map card: coverage for every region, lit where the person's access reaches (app/scope-map.tsx). */
-function MapCard({ byRegion, allowed, period, goal, metricCount }: { byRegion: Governed; allowed: readonly string[]; period: string; goal: CoverageTarget | null; metricCount: number }) {
+function MapCard({ byRegion, allowed, slice, period, goal, metricCount }: { byRegion: Governed; allowed: readonly string[]; slice: string; period: string; goal: CoverageTarget | null; metricCount: number }) {
   return (
     <section className="card map-card" aria-labelledby="map-title">
       <h2 id="map-title">Coverage by region · {period}</h2>
-      <p className="sub">Every number comes from the approved metrics at the centre. Regions in your access are lit; the others stay locked.</p>
+      <p className="sub">Every number comes from the approved metrics at the centre. A lit region shows the coverage for {slice}, not always the whole region; the others stay locked.</p>
       <ScopeMap rows={byRegion.rows} allowed={allowed} period={period} goal={goal} metricCount={metricCount} />
       <p className="bars-note">{goal ? `The line on each bar marks the ${goal.target.toFixed(2)}x target. Red is below ${goal.caution.toFixed(2)}x, amber is from ${goal.caution.toFixed(2)}x up to the target, and green is at or above the target. 1.00x still means pipeline equals quota.` : 'The line on each bar marks 1.00x. No coverage target is defined in the metric registry yet, so the dashboard does not label results as on or off target.'}</p>
     </section>
@@ -217,7 +217,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ u
           <p>{signedIn ? 'Your access comes from your account.' : 'Identity switch for local testing only.'}</p>
           <ViewSwitch view={view} />
         </div>
-        <MapCard byRegion={byRegion} allowed={principal.regions} period={period} goal={goal} metricCount={registry.metrics.size} />
+        <MapCard byRegion={byRegion} allowed={principal.regions} slice={principal.slice} period={period} goal={goal} metricCount={registry.metrics.size} />
         <Tiles answers={{ coverage, byRegion, pipeline, count, pipelineByStage, countByStage }} period={period} goal={goal} graphs={graphs} kinds={kinds} />
         <div id="ask">
           <AskPanel

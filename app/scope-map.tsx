@@ -8,7 +8,7 @@ import { LockIcon, RegistryIcon } from './icons';
 
 type Row = Answer['rows'][number];
 
-/** Left to right on the map: West, Central (above the hub), East. */
+/** Left to right on the map: West, Central (above the hub), East. A dataset's other regions follow, in its own order. */
 const MAP_ORDER = ['west', 'central', 'east'];
 
 export interface RegionNode {
@@ -22,7 +22,7 @@ export interface RegionNode {
 /** Every region in map order, with whether the person can see it and, if so, its coverage row. */
 export function regionNodes(rows: readonly Row[], allowed: readonly string[], regions: readonly string[] = ALL_REGIONS): RegionNode[] {
   const byRegion = new Map(rows.map((r) => [String(r.region), r]));
-  return MAP_ORDER.filter((r) => regions.includes(r)).map((region) => {
+  return [...MAP_ORDER.filter((r) => regions.includes(r)), ...regions.filter((r) => !MAP_ORDER.includes(r))].map((region) => {
     const access = allowed.includes(region);
     return { region, access, row: access ? (byRegion.get(region) ?? null) : null };
   });

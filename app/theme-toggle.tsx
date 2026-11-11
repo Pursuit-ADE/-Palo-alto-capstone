@@ -10,7 +10,7 @@ import { otherTheme, type Theme } from './theme-shared';
 /** `saved` is the theme the server rendered with, or null when the page follows the system setting. */
 export function ThemeToggle({ saved }: { saved: Theme | null }) {
   // The server can't know the system setting, so the browser reads it, and follows it if it changes.
-  const [system, setSystem] = useState<Theme>('light');
+  const [system, setSystem] = useState<Theme | null>(null);
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const follow = () => setSystem(media.matches ? 'dark' : 'light');
@@ -19,8 +19,11 @@ export function ThemeToggle({ saved }: { saved: Theme | null }) {
     return () => media.removeEventListener('change', follow);
   }, []);
 
-  const next = otherTheme(saved ?? system);
-  const label = `Switch to the ${next} theme`;
+  const shown = saved ?? system;
+  const next = otherTheme(shown ?? 'light');
+  // Until the browser has read the system setting, the label doesn't name a theme: on a dark system it would say
+  // "Switch to the dark theme" over a page that is already dark (review of #126).
+  const label = shown ? `Switch to the ${next} theme` : 'Switch between the light and dark themes';
   return (
     <form className="theme-toggle" action={setTheme}>
       {/* The click changes the page at once but leaves the button as it is: the form must still send this value. The

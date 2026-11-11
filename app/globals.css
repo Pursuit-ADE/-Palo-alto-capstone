@@ -36,6 +36,9 @@
   --button: light-dark(#c23b16, #ff6a3d);
   --button-hover: light-dark(#a3310f, #ff8a63);
   --on-button: light-dark(#ffffff, #1a0a04);
+  /* The focus ring: the brand orange is 2.9:1 on the light page, under the 3:1 minimum, so light takes the darker shade
+     (review of #126). */
+  --focus: light-dark(#c23b16, #fa582d);
 
   /* Status. --warn is for bars and borders only; text uses --warn-text. */
   --ok: light-dark(#177245, #43d095);
@@ -65,6 +68,7 @@
   --c3d-surface: var(--card);
   --c3d-field: light-dark(#868e99, #737a86);
   --c3d-link: var(--link);
+  --c3d-focus: var(--focus);
   --c3d-on-ink: light-dark(#ffffff, #16181c);
   --c3d-cta: var(--button);
   --c3d-on-cta: var(--on-button);
@@ -81,6 +85,54 @@
   --font: var(--font-manrope), "Manrope", "Segoe UI", system-ui, sans-serif;
   --mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
+/* Browsers without light-dark() (Safari before 17.5, Chrome before 123) would drop every token above: they get the
+   light theme (review of #126). */
+@supports not (color: light-dark(#000, #fff)) {
+  :root {
+    --bg: #f3f4f6;
+    --rail: #fbfbfc;
+    --card: #ffffff;
+    --surface-2: #f6f7f9;
+    --field-bg: #ffffff;
+    --fg: #16181c;
+    --muted: #5b6270;
+    --line: #e2e5ea;
+    --line-strong: #c9ced6;
+    --field: #868e99;
+    --accent-soft: #fff1ec;
+    --accent-line: #f4b29f;
+    --link: #c23b16;
+    --button: #c23b16;
+    --button-hover: #a3310f;
+    --on-button: #ffffff;
+    --focus: #c23b16;
+    --ok: #177245;
+    --warn: #c98a00;
+    --warn-text: #8a5d00;
+    --bad: #c53030;
+    --ok-soft: #e6f6ed;
+    --warn-soft: #fff8e8;
+    --bad-soft: #fdf0f0;
+    --warn-line: #ecd08a;
+    --bad-line: #f1b9b9;
+    --track: #eceef2;
+    --target-line: #1b1d21;
+    --dot: rgba(22, 24, 28, 0.1);
+    --glow: rgba(250, 88, 45, 0.16);
+    --shadow-1: rgba(16, 18, 22, 0.05);
+    --shadow-2: rgba(16, 18, 22, 0.08);
+    --c3d-field: #868e99;
+    --c3d-on-ink: #ffffff;
+    --c3d-tip: #1b1d21;
+    --c3d-tip-line: #1b1d21;
+    --c3d-s1: #26292f;
+    --c3d-s1-hover: #1b1d21;
+    --c3d-s2: #868e99;
+    --c3d-s2-hover: #5d6470;
+    --c3d-case: rgba(226, 229, 234, 0.55);
+    --c3d-case-hover: rgba(194, 199, 207, 0.55);
+  }
+}
 /* A saved choice wins over the system setting. */
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -90,7 +142,7 @@ html, body { margin: 0; }
 body { font: 15px/1.55 var(--font); color: var(--fg); background: var(--bg); -webkit-font-smoothing: antialiased; }
 a { color: var(--link); text-underline-offset: 2px; }
 ::selection { background: var(--accent-soft); color: var(--fg); }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 html { scrollbar-color: var(--line-strong) transparent; }
 
 /* Read out, not shown. Also in chart3d.css, which only pages with graphs load. */
@@ -140,7 +192,7 @@ html { scroll-padding-bottom: 80px; }
 form.ask { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2; background: var(--card); padding: 12px 0; }
 form.ask input { flex: 1 1 260px; min-width: 0; font: 16px var(--font); color: var(--fg); background: var(--field-bg); padding: 11px 14px; border: 1px solid var(--field); border-radius: 10px; }
 form.ask input::placeholder { color: var(--muted); }
-form.ask input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+form.ask input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
 form.ask button { font: 700 15px var(--font); color: var(--on-button); background: var(--button); border: 0; border-radius: 10px; padding: 11px 22px; cursor: pointer; }
 form.ask button:hover:not(:disabled) { background: var(--button-hover); }
 form.ask button:disabled { opacity: .65; cursor: default; }

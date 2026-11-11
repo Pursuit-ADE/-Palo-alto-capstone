@@ -4,6 +4,7 @@
    dashed where it doesn't (app/scope-map.tsx). Lit spokes carry a slow flow outward: the numbers come from the hub. */
 .map {
   --hub: 176px;
+  --hub-core: #fff3ee; /* for browsers without light-dark() */
   --hub-core: light-dark(#fff3ee, #2a1610);
   container-type: inline-size; position: relative; margin-top: 4px; overflow: hidden;
   border: 1px solid var(--line); border-radius: 12px;

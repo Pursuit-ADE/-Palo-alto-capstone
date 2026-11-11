@@ -24,6 +24,10 @@ describe('regionNodes', () => {
     ]);
   });
 
+  it('keeps a region the map order does not know, after the known ones (review of #126)', () => {
+    expect(regionNodes([], ['north'], ['north', 'east', 'west']).map((n) => [n.region, n.access])).toEqual([['west', false], ['east', false], ['north', true]]);
+  });
+
   it('lights every region for an analyst', () => {
     const nodes = regionNodes([row('central', 0.7), row('east', 0.52), row('west', 0.9)], ['central', 'east', 'west']);
     expect(nodes.every((n) => n.access && n.row !== null)).toBe(true);

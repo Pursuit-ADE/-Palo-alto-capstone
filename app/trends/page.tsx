@@ -8,10 +8,9 @@ import { topicName } from '@/audit/topics';
 import { trendFacts, type TopicCount } from '@/audit/trends-agent';
 import { appUsers, questionTopicsView, questionTrendsView } from '@/db/schema';
 import { activeDatasetLabel, AS_OF_DATE } from '@/db/seed';
-import { loadRegistry } from '@/registry/load';
 import { alertsLink } from '@/server/alerts-link';
 import { requireUser } from '@/server/require-user';
-import { getDatabase } from '@/server/runtime';
+import { getDatabase, getRegistry } from '@/server/runtime';
 import { AppShell } from '../app-shell';
 import { logOutAction } from '../auth-actions';
 import { dateRange } from '../format';
@@ -23,7 +22,7 @@ export const dynamic = 'force-dynamic';
 const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 // Metric ids to the registry's names, as the dashboard shows them.
-const metricNames = () => new Map([...loadRegistry().metrics.values()].map((m) => [m.id, m.name]));
+const metricNames = () => new Map([...getRegistry().metrics.values()].map((m) => [m.id, m.name]));
 
 function Table({ rows, names }: { rows: TrendCount[]; names: ReadonlyMap<string, string> }) {
   if (rows.length === 0) return <p className="sub">None.</p>;
@@ -62,7 +61,7 @@ export default async function TrendsPage() {
       theme={await readTheme()}
       dataset={activeDatasetLabel()}
       asOf={dateRange(AS_OF_DATE)}
-      metricCount={loadRegistry().metrics.size}
+      metricCount={getRegistry().metrics.size}
       who={
         <form className="who" action={logOutAction}>
           <span>Signed in as {person.name}</span>
