@@ -1,0 +1,113 @@
+/* The overview (app/page.tsx): the region map around the approved metrics, then the headline tiles. */
+
+/* The map. The approved metrics sit at the hub; each region hangs off it, lit where the person's access reaches and
+   dashed where it doesn't (app/scope-map.tsx). Lit spokes carry a slow flow outward: the numbers come from the hub. */
+.map {
+  --hub: 176px;
+  --hub-core: #fff3ee; /* for browsers without light-dark() */
+  --hub-core: light-dark(#fff3ee, #2a1610);
+  container-type: inline-size; position: relative; margin-top: 4px; overflow: hidden;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: radial-gradient(var(--dot) 1px, transparent 1.5px) 0 0 / 16px 16px, var(--surface-2);
+}
+/* The padding is here, not on .map: a container query can restyle what is inside the container, not the container. */
+.map-grid {
+  --gap-x: 48px; --gap-y: 36px;
+  padding: 32px 20px;
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(200px, 240px) minmax(0, 1fr);
+  grid-template-areas: "central central central" "west hub east"; column-gap: var(--gap-x); row-gap: var(--gap-y); align-items: center;
+}
+.node-west { grid-area: west; justify-self: end; }
+.node-central { grid-area: central; justify-self: center; }
+.node-east { grid-area: east; justify-self: start; }
+
+.map-hub { grid-area: hub; position: relative; align-self: stretch; display: grid; place-items: center; min-height: 216px; }
+/* The hub's light, behind everything. */
+.map-hub::before { content: ""; position: absolute; inset: -40px -90px; background: radial-gradient(closest-side, var(--glow), transparent); pointer-events: none; }
+.map-hub-disc {
+  position: relative; z-index: 1; width: var(--hub); height: var(--hub); border-radius: 50%; padding: 18px;
+  display: grid; place-content: center; justify-items: center; gap: 4px; text-align: center;
+  background: radial-gradient(circle at 50% 30%, var(--hub-core), var(--card) 74%);
+  border: 1.5px solid var(--accent);
+  box-shadow: 0 0 0 8px var(--accent-soft), 0 0 56px -8px var(--glow), var(--elev);
+}
+/* The orbit: a dashed ring around the hub. */
+.map-hub-disc::after { content: ""; position: absolute; inset: -22px; border-radius: inherit; border: 1px dashed var(--accent-line); pointer-events: none; }
+.map-hub-disc .icon { width: 28px; height: 28px; margin-bottom: 4px; color: var(--accent); stroke-width: 1.6; }
+.map-hub-disc strong { font-size: 15px; line-height: 1.2; font-weight: 800; }
+.map-hub-disc span { font-size: 12px; color: var(--muted); }
+
+/* Spokes run from the hub's edge to each region's card, across the grid gap. */
+.map-spoke { position: absolute; pointer-events: none; --spoke: var(--line-strong); }
+.map-spoke.live { --spoke: var(--accent); box-shadow: 0 0 12px var(--glow); }
+.spoke-west, .spoke-east {
+  top: 50%; height: 2px; margin-top: -1px; width: calc(50% - var(--hub) / 2 + var(--gap-x));
+  background: repeating-linear-gradient(90deg, var(--spoke) 0 7px, transparent 7px 14px);
+}
+.spoke-west { left: calc(-1 * var(--gap-x)); }
+.spoke-east { right: calc(-1 * var(--gap-x)); }
+.spoke-central {
+  left: 50%; width: 2px; margin-left: -1px; top: calc(-1 * var(--gap-y)); height: calc(50% - var(--hub) / 2 + var(--gap-y));
+  background: repeating-linear-gradient(180deg, var(--spoke) 0 7px, transparent 7px 14px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .spoke-west.live { animation: spoke-west 1.4s linear infinite; }
+  .spoke-east.live { animation: spoke-east 1.4s linear infinite; }
+  .spoke-central.live { animation: spoke-up 1.4s linear infinite; }
+}
+@keyframes spoke-west { to { background-position: -14px 0; } }
+@keyframes spoke-east { to { background-position: 14px 0; } }
+@keyframes spoke-up { to { background-position: 0 -14px; } }
+
+/* A region's card. */
+.map-node {
+  position: relative; z-index: 1; width: 100%; max-width: 320px; min-width: 0; display: grid; gap: 10px; padding: 16px 16px 14px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--elev);
+}
+.map-node header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 8px; }
+.map-node h3 { margin: 0; font-size: 15px; font-weight: 800; }
+.node-state { display: inline-flex; align-items: center; gap: 6px; font: 500 10.5px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.node-state .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), 0 0 10px var(--glow); }
+.map-node.lit { border-color: var(--accent-line); box-shadow: var(--elev), 0 14px 36px -22px var(--glow); }
+.node-reading { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.node-value { font-size: 30px; line-height: 1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.node-standing { font-size: 13px; font-weight: 700; }
+/* The two figures the coverage is made of, label on the left and amount on the right, so every lit card lines up. */
+.node-figs { margin: 0; display: grid; gap: 3px; font-size: 12.5px; }
+.node-figs div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0 12px; }
+.node-figs dt { color: var(--muted); }
+.node-figs dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.map-node.locked { background: transparent; border-style: dashed; border-color: var(--line-strong); box-shadow: none; }
+.map-node.locked h3 { color: var(--muted); }
+.node-note { margin: 0; font-size: 13px; color: var(--muted); }
+
+/* Narrow (a phone, or a tablet's column): the regions stack under a compact hub, with no spokes to draw. */
+@container (max-width: 719.98px) {
+  .map-grid { padding: 18px 14px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "hub" "west" "central" "east"; row-gap: 12px; }
+  .map-node { max-width: none; justify-self: stretch; }
+  .map-hub { min-height: 0; justify-items: start; padding: 2px 0 10px; }
+  .map-hub::before { inset: -30px -10px; }
+  .map-hub-disc {
+    width: auto; height: auto; border-radius: 999px; padding: 10px 20px 10px 14px; grid-template-columns: auto auto;
+    column-gap: 12px; row-gap: 0; justify-items: start; align-items: center; text-align: left;
+    box-shadow: 0 0 0 5px var(--accent-soft), 0 0 40px -10px var(--glow);
+  }
+  .map-hub-disc::after { inset: -10px; }
+  .map-hub-disc .icon { grid-row: span 2; margin: 0; }
+  .map-spoke { display: none; }
+}
+
+/* The headline tiles: three in a row on a wide screen; otherwise, and with graphs, coverage takes a row of its own. */
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.kpi-coverage { grid-column: 1 / -1; }
+.kpi-reading { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.kpi-standing { font-size: 13px; font-weight: 700; }
+.kpi .track { margin: 8px 0 4px; }
+.kpi .note { margin: 0; }
+@media (min-width: 1280px) {
+  .tiles:not(.graphs) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .tiles:not(.graphs) .kpi-coverage { grid-column: auto; }
+}
+@media (max-width: 600px) {
+  .tiles { grid-template-columns: minmax(0, 1fr); }
+}

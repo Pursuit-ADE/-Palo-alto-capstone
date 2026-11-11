@@ -1,5 +1,10 @@
-/* Palo Alto Networks-inspired palette: charcoal chrome, signature orange accent, cool greys. Colors only, no logos. */
+/* Light and dark themes (Nov 10) on the Palo Alto Networks-inspired palette: charcoal, signature orange, cool greys.
+   Colours only, no logos. Each token holds its light and its dark value. The page follows the system setting until
+   someone picks a theme with the switch in the top bar; the server then puts it on <html data-theme> (app/layout.tsx). */
 :root {
+  color-scheme: light dark;
+
+  /* Brand constants, the same in both themes. The sign-in stage (auth-stage.css), which is always dark, uses these. */
   --chrome: #1b1d21;
   --chrome-2: #26292f;
   --chrome-fg: #f5f6f7;
@@ -8,54 +13,163 @@
   --orange-dark: #c23b16; /* 5.3:1 with white, so it carries text and white-on-orange buttons (WCAG AA) */
   --orange-deep: #a3310f; /* button hover */
   --orange-soft: #fff1ec;
-  --bg: #f3f4f6;
-  --card: #ffffff;
-  --fg: #1b1d21;
-  --muted: #5d6470;
-  --line: #e2e5ea;
-  --ok: #177245;
-  --warn: #c98a00; /* bars and borders only; text uses --warn-text */
-  --warn-text: #8a5d00;
-  --bad: #c53030;
-  --field: #868e99; /* input borders, 3:1 on white */
+
+  /* Surfaces, from the page back to the fields. */
+  --bg: light-dark(#f3f4f6, #0b0c0f);
+  --rail: light-dark(#fbfbfc, #0f1014);
+  --card: light-dark(#ffffff, #14161a);
+  --surface-2: light-dark(#f6f7f9, #1b1d22);
+  --field-bg: light-dark(#ffffff, #0f1114);
+
+  /* Text and lines. Text tokens are 4.5:1 or more on every surface above, in both themes. */
+  --fg: light-dark(#16181c, #eceef2);
+  --muted: light-dark(#5b6270, #a2a9b5);
+  --line: light-dark(#e2e5ea, #262930);
+  --line-strong: light-dark(#c9ced6, #3a3e48);
+  --field: light-dark(#868e99, #6e7581); /* input borders, 3:1 on the card */
+
+  /* The accent. Orange marks and glows stay the brand orange; text and buttons take the shade that passes contrast. */
+  --accent: #fa582d;
+  --accent-soft: light-dark(#fff1ec, rgba(250, 88, 45, 0.13));
+  --accent-line: light-dark(#f4b29f, rgba(250, 88, 45, 0.45));
+  --link: light-dark(#c23b16, #ff8f66);
+  --button: light-dark(#c23b16, #ff6a3d);
+  --button-hover: light-dark(#a3310f, #ff8a63);
+  --on-button: light-dark(#ffffff, #1a0a04);
+  /* The focus ring: the brand orange is 2.9:1 on the light page, under the 3:1 minimum, so light takes the darker shade
+     (review of #126). */
+  --focus: light-dark(#c23b16, #fa582d);
+
+  /* Status. --warn is for bars and borders only; text uses --warn-text. */
+  --ok: light-dark(#177245, #43d095);
+  --warn: light-dark(#c98a00, #e3a82b);
+  --warn-text: light-dark(#8a5d00, #f2bd55);
+  --bad: light-dark(#c53030, #ff7070);
+  --ok-soft: light-dark(#e6f6ed, rgba(67, 208, 149, 0.12));
+  --warn-soft: light-dark(#fff8e8, rgba(242, 189, 85, 0.1));
+  --bad-soft: light-dark(#fdf0f0, rgba(255, 112, 112, 0.1));
+  --warn-line: light-dark(#ecd08a, rgba(242, 189, 85, 0.38));
+  --bad-line: light-dark(#f1b9b9, rgba(255, 112, 112, 0.38));
+
+  /* Bars, the region map and depth. */
+  --track: light-dark(#eceef2, #23262d);
+  --target-line: light-dark(#1b1d21, #eceef2);
+  --dot: light-dark(rgba(22, 24, 28, 0.1), rgba(236, 238, 242, 0.08));
+  --glow: light-dark(rgba(250, 88, 45, 0.16), rgba(255, 106, 61, 0.3));
+  --shadow-1: light-dark(rgba(16, 18, 22, 0.05), rgba(0, 0, 0, 0.5));
+  --shadow-2: light-dark(rgba(16, 18, 22, 0.08), rgba(0, 0, 0, 0.45));
+  --elev: 0 1px 2px var(--shadow-1), 0 10px 28px -14px var(--shadow-2);
+
+  /* The graphs (chart3d.css) read these; the alerts app doesn't set them, so its graphs keep their light colours. */
+  --c3d-ink: var(--fg);
+  --c3d-muted: var(--muted);
+  --c3d-line: var(--line);
+  --c3d-soft: var(--surface-2);
+  --c3d-surface: var(--card);
+  --c3d-field: light-dark(#868e99, #737a86);
+  --c3d-link: var(--link);
+  --c3d-focus: var(--focus);
+  --c3d-on-ink: light-dark(#ffffff, #16181c);
+  --c3d-cta: var(--button);
+  --c3d-on-cta: var(--on-button);
+  --c3d-tip: light-dark(#1b1d21, #23262d);
+  --c3d-tip-line: light-dark(#1b1d21, #3a3e48);
+  /* Series 1 is charcoal on white. On the dark card it is a slate that still carries white labels (6:1). */
+  --c3d-s1: light-dark(#26292f, #5d6470);
+  --c3d-s1-hover: light-dark(#1b1d21, #6c7380);
+  --c3d-s2: light-dark(#868e99, #b4bac2);
+  --c3d-s2-hover: light-dark(#5d6470, #c9ced6);
+  --c3d-case: light-dark(rgba(226, 229, 234, 0.55), rgba(236, 238, 242, 0.07));
+  --c3d-case-hover: light-dark(rgba(194, 199, 207, 0.55), rgba(236, 238, 242, 0.14));
+
   --font: var(--font-manrope), "Manrope", "Segoe UI", system-ui, sans-serif;
   --mono: var(--font-plex-mono), "IBM Plex Mono", ui-monospace, Consolas, monospace;
 }
+/* Browsers without light-dark() (Safari before 17.5, Chrome before 123) would drop every token above: they get the
+   light theme (review of #126). */
+@supports not (color: light-dark(#000, #fff)) {
+  :root {
+    --bg: #f3f4f6;
+    --rail: #fbfbfc;
+    --card: #ffffff;
+    --surface-2: #f6f7f9;
+    --field-bg: #ffffff;
+    --fg: #16181c;
+    --muted: #5b6270;
+    --line: #e2e5ea;
+    --line-strong: #c9ced6;
+    --field: #868e99;
+    --accent-soft: #fff1ec;
+    --accent-line: #f4b29f;
+    --link: #c23b16;
+    --button: #c23b16;
+    --button-hover: #a3310f;
+    --on-button: #ffffff;
+    --focus: #c23b16;
+    --ok: #177245;
+    --warn: #c98a00;
+    --warn-text: #8a5d00;
+    --bad: #c53030;
+    --ok-soft: #e6f6ed;
+    --warn-soft: #fff8e8;
+    --bad-soft: #fdf0f0;
+    --warn-line: #ecd08a;
+    --bad-line: #f1b9b9;
+    --track: #eceef2;
+    --target-line: #1b1d21;
+    --dot: rgba(22, 24, 28, 0.1);
+    --glow: rgba(250, 88, 45, 0.16);
+    --shadow-1: rgba(16, 18, 22, 0.05);
+    --shadow-2: rgba(16, 18, 22, 0.08);
+    --c3d-field: #868e99;
+    --c3d-on-ink: #ffffff;
+    --c3d-tip: #1b1d21;
+    --c3d-tip-line: #1b1d21;
+    --c3d-s1: #26292f;
+    --c3d-s1-hover: #1b1d21;
+    --c3d-s2: #868e99;
+    --c3d-s2-hover: #5d6470;
+    --c3d-case: rgba(226, 229, 234, 0.55);
+    --c3d-case-hover: rgba(194, 199, 207, 0.55);
+  }
+}
+/* A saved choice wins over the system setting. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
 * { box-sizing: border-box; }
 html, body { margin: 0; }
-body { font: 15px/1.55 var(--font); color: var(--fg); background: var(--bg); }
+body { font: 15px/1.55 var(--font); color: var(--fg); background: var(--bg); -webkit-font-smoothing: antialiased; }
+a { color: var(--link); text-underline-offset: 2px; }
+::selection { background: var(--accent-soft); color: var(--fg); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html { scrollbar-color: var(--line-strong) transparent; }
 
-.topbar { background: var(--chrome); color: var(--chrome-fg); border-bottom: 3px solid var(--orange); }
-.topbar-inner { max-width: 1200px; margin: 0 auto; padding: 14px 24px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
-.brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
-.mark { width: 26px; height: 26px; border-radius: 4px; background: var(--orange); display: grid; place-items: center; }
+/* Read out, not shown. Also in chart3d.css, which only pages with graphs load. */
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* Icons (app/icons.tsx): line drawings that take the text colour. */
+.icon { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+.icon-sm { width: 14px; height: 14px; }
+
+.mark { width: 26px; height: 26px; border-radius: 6px; background: var(--orange); display: grid; place-items: center; flex: none; }
 .mark::after { content: ""; width: 10px; height: 10px; border: 3px solid var(--chrome); border-radius: 2px; transform: rotate(45deg); }
-.brand strong { font-size: 17px; font-weight: 800; letter-spacing: -.01em; }
-.brand span { display: block; font-size: 12px; color: var(--chrome-muted); }
-.badge.synthetic { justify-self: start; color: var(--chrome); background: #ffd84d; border-color: #ffd84d; }
+.badge.synthetic { color: var(--chrome); background: #ffd84d; border-color: #ffd84d; }
 .badge { flex-shrink: 0; white-space: nowrap; font: 700 11px/1 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--orange); border: 1px solid var(--orange); border-radius: 999px; padding: 5px 10px; }
-.who { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
-.who label { font-size: 12px; color: var(--chrome-muted); }
-.who select { min-width: 0; max-width: 100%; flex: 1 1 200px; font: 600 14px var(--font); color: var(--chrome-fg); background: var(--chrome-2); border: 1px solid #3a3e46; border-radius: 6px; padding: 8px 10px; }
 
-main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid; gap: 24px; }
-.page-head h1 { font-size: 26px; font-weight: 800; letter-spacing: -.02em; margin: 0; }
-.page-head p { margin: 4px 0 0; color: var(--muted); }
+main { width: 100%; max-width: 1240px; margin: 0 auto; padding: 28px 32px 72px; display: grid; gap: 24px; min-width: 0; }
+.page-head h1 { font-size: 28px; line-height: 1.15; font-weight: 800; letter-spacing: -.02em; margin: 0; text-wrap: balance; }
+.page-head p { margin: 6px 0 0; color: var(--muted); }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
-.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; display: grid; gap: 4px; }
-.kpi .label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.kpi .value { font-size: 32px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; display: grid; gap: 6px; align-content: start; box-shadow: var(--elev); min-width: 0; }
+.kpi .label { font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.kpi .value { font-size: 34px; line-height: 1.1; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
 .kpi .note { font-size: 13px; color: var(--muted); }
 .pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
-.pill.ok { background: #e6f6ed; color: var(--ok); }
-.pill.warn { background: #fdf4dc; color: var(--warn-text); }
-.pill.bad { background: #fde9e9; color: var(--bad); }
+.pill.ok { background: var(--ok-soft); color: var(--ok); }
+.pill.warn { background: var(--warn-soft); color: var(--warn-text); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
 
-.overview { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; align-items: start; }
-.kpis.stack { grid-template-columns: minmax(0, 1fr); }
-.coverage .label { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); display: block; }
-.cov-value { display: block; font-size: 32px; font-weight: 800; letter-spacing: -.02em; font-variant-numeric: tabular-nums; margin: 4px 0; }
 .tone-red { color: var(--bad); }
 .tone-amber { color: var(--warn-text); }
 .tone-green { color: var(--ok); }
@@ -65,10 +179,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 .answer-value.tone-red { color: var(--bad); }
 .answer-value.tone-amber { color: var(--warn-text); }
 .answer-value.tone-green { color: var(--ok); }
-.coverage h2 { font-size: 14px; margin: 4px 0 12px; }
-.grid2 { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 24px; align-items: start; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px; min-width: 0; }
-.card h2 { font-size: 16px; font-weight: 800; margin: 0 0 4px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 22px; min-width: 0; box-shadow: var(--elev); }
+.card h2 { font-size: 17px; line-height: 1.3; font-weight: 800; letter-spacing: -.01em; margin: 0 0 4px; }
+.card h3 { font-size: 15px; margin: 22px 0 4px; }
 .card .sub { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
 
 /* Room for the sticky question bar (about its height): a focused link or chip near the bottom scrolls clear of it
@@ -76,34 +189,38 @@ main { max-width: 1200px; margin: 0 auto; padding: 28px 24px 64px; display: grid
 html { scroll-padding-bottom: 80px; }
 /* Sticky at the bottom of the screen while the conversation runs past it: after a long answer the box was 3-4 screens
    down, out of sight on a projector (UX review, Nov 2). The card background keeps answers from showing through. */
-form.ask { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2; background: var(--card); padding: 10px 0; }
-form.ask input { flex: 1 1 260px; font: 16px var(--font); padding: 11px 12px; border: 1px solid var(--field); border-radius: 6px; }
+form.ask { display: flex; gap: 8px; flex-wrap: wrap; position: sticky; bottom: 0; z-index: 2; background: var(--card); padding: 12px 0; }
+form.ask input { flex: 1 1 260px; min-width: 0; font: 16px var(--font); color: var(--fg); background: var(--field-bg); padding: 11px 14px; border: 1px solid var(--field); border-radius: 10px; }
 form.ask input::placeholder { color: var(--muted); }
-form.ask input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
-form.ask button { font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 20px; cursor: pointer; }
-form.ask button:hover { background: var(--orange-deep); }
+form.ask input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--focus); }
+form.ask button { font: 700 15px var(--font); color: var(--on-button); background: var(--button); border: 0; border-radius: 10px; padding: 11px 22px; cursor: pointer; }
+form.ask button:hover:not(:disabled) { background: var(--button-hover); }
+form.ask button:disabled { opacity: .65; cursor: default; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; border: 0; padding: 0; min-inline-size: 0; }
-.chips button { cursor: pointer; font: 13px var(--font); font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; text-decoration: none; }
-.chips button:hover:not([disabled]) { border-color: var(--orange); color: var(--orange-dark); }
+.chips button { cursor: pointer; font: 13px var(--font); color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 6px 13px; text-decoration: none; }
+.chips button:hover:not([disabled]) { border-color: var(--accent-line); color: var(--link); background: var(--accent-soft); }
+.chips button:disabled { opacity: .6; cursor: default; }
 
 .answer { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 16px; }
 .answer h3 { margin: 0 0 8px; font-size: 15px; }
 /* Replies that are not a number. Each kind looks different so a question back never reads as a refusal. */
-.answer.notice { border-top: 0; border-left: 4px solid; padding: 12px 14px; border-radius: 0 6px 6px 0; }
-.answer.clarify { border-left-color: var(--muted); background: var(--bg); }
-.answer.refused { border-left-color: var(--warn); background: #fffaf0; }
-.answer.failed { border-left-color: var(--bad); background: #fdf0f0; }
-.notice-tag { display: block; margin-bottom: 2px; font: 700 11px/1.6 var(--font); letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
+.answer.notice { border: 1px solid var(--line-strong); padding: 12px 14px; border-radius: 10px; }
+.answer.clarify { background: var(--surface-2); }
+.answer.refused { border-color: var(--warn-line); background: var(--warn-soft); }
+.answer.failed { border-color: var(--bad-line); background: var(--bad-soft); }
+.notice-tag { display: block; margin-bottom: 2px; font: 500 11px/1.6 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
 .answer.refused .notice-tag { color: var(--warn-text); }
 .answer.failed .notice-tag { color: var(--bad); }
 .tablewrap { overflow-x: auto; }
-.trends-summary { white-space: pre-wrap; font: inherit; margin: 0 0 1rem; }
+.trends-summary { white-space: pre-wrap; font: inherit; margin: 0 0 1rem; padding-left: 20px; }
+.trends-summary li { margin: 4px 0; }
 table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
-th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px; border-bottom: 2px solid var(--line); }
-td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
+th { text-align: left; font: 500 11px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); padding: 8px; border-bottom: 1px solid var(--line-strong); }
+td { padding: 10px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
 /* Provenance panel: under every answer */
-.provenance { margin-top: 14px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--chrome); border-radius: 0 8px 8px 0; padding: 12px 14px; font-size: 13px; color: var(--muted); }
-.provenance h4 { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
+.provenance { margin-top: 14px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; font-size: 13px; color: var(--muted); }
+.provenance h4 { margin: 0 0 8px; font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--fg); }
 .provenance dl { margin: 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 6px 12px; }
 .provenance dt { font-weight: 700; color: var(--fg); }
 .provenance dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
@@ -121,37 +238,28 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
   .provenance dd { margin-bottom: 6px; }
 }
 
-.bars { display: grid; gap: 14px; }
-.bar-row { display: grid; gap: 6px; }
-.bar-head { display: flex; justify-content: space-between; font-size: 14px; }
-.bar-head b { font-variant-numeric: tabular-nums; }
-.track { position: relative; height: 12px; background: var(--bg); border-radius: 6px; overflow: hidden; }
-.fill { height: 100%; background: var(--orange); border-radius: 6px; }
-.target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--chrome); }
-.legend { font-size: 12px; color: var(--muted); margin-top: 6px; }
-.bars-note { font-size: 12px; color: var(--muted); margin: 14px 0 0; }
-
-@media (max-width: 860px) {
-  .grid2, .overview { grid-template-columns: minmax(0, 1fr); }
-  .topbar-inner, main { padding-left: 16px; padding-right: 16px; }
-}
+/* A bar with the target line across it: the map's regions and the coverage tile. */
+.track { position: relative; height: 10px; background: var(--track); border-radius: 999px; }
+.fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.target { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--target-line); }
+.bars-note { font-size: 12px; color: var(--muted); margin: 16px 0 0; }
 
 /* Week 3: conversation */
 .chat-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
-.link-button { font: 600 13px var(--font); color: var(--orange-dark); background: none; border: 0; cursor: pointer; padding: 4px 0; }
+.link-button { font: 600 13px var(--font); color: var(--link); background: none; border: 0; cursor: pointer; padding: 4px 0; }
 .link-button:hover { text-decoration: underline; }
 .turns { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 16px; }
 .turn { display: grid; gap: 8px; }
 .turn .you { margin: 0; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
-.turn .you span { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.turn .you span { font: 500 11px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 .turn.thinking { color: var(--muted); font-size: 14px; }
 .turn .answer { margin-top: 0; }
 .answer-value { margin: 0 0 6px; font-size: 32px; font-weight: 800; letter-spacing: -.02em; line-height: 1.15; font-variant-numeric: tabular-nums; }
 /* Label-then-value chips: scope and data date, right under the number */
 .facts { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 8px; }
-.facts li { font-size: 13px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
+.facts li { font-size: 13px; color: var(--fg); background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; }
 .facts li span { font-weight: 700; color: var(--muted); margin-right: 6px; }
-.page-head .facts { margin: 10px 0 0; }
+.page-head .facts { margin: 12px 0 0; }
 .page-head .facts li { background: var(--card); }
 .narrative { margin: 0 0 10px; }
 .narrative-lead { font-size: 1.15rem; line-height: 1.45; font-weight: 600; margin: 4px 0 12px; }
@@ -159,32 +267,42 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .read-as span { font-weight: 700; color: var(--fg); margin-right: 6px; }
 .chart { margin: 4px 0 12px; overflow-x: auto; }
 .chart svg { width: 100%; max-width: 760px; height: auto; display: block; }
-.chart-bar { fill: var(--orange); }
+.chart-bar { fill: var(--accent); }
 .chart-label, .chart-value { font: 12px var(--font); fill: var(--fg); }
 .chart-value { fill: var(--muted); }
 
-/* Demo sign-in (Week 5) */
+/* Demo sign-in (Week 5). The sign-in stage restyles these on its dark panel (auth-stage.css). */
 .auth-page { max-width: 460px; }
 .auth-form { display: grid; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
 .auth-form label { font-weight: 600; font-size: 14px; }
 /* 16px so iOS Safari does not zoom the page when a field is focused and hide the rest of the card. */
-.auth-form input { font: 16px var(--font); padding: 10px 12px; border: 1px solid var(--field); border-radius: 6px; min-width: 0; }
+.auth-form input { font: 16px var(--font); color: var(--fg); background: var(--field-bg); padding: 10px 12px; border: 1px solid var(--field); border-radius: 6px; min-width: 0; }
 .auth-form input:focus-visible { outline: 2px solid var(--orange); outline-offset: 1px; }
 .auth-form button { margin-top: 8px; font: 700 15px var(--font); color: #fff; background: var(--orange-dark); border: 0; border-radius: 6px; padding: 11px 16px; cursor: pointer; }
 .auth-form button:disabled { opacity: .6; cursor: default; }
 .auth-error { color: var(--bad); font-weight: 600; margin: 4px 0 0; }
 .hint { color: var(--muted); font-size: 14px; margin: 0; }
-.who span { font-size: 14px; color: var(--chrome-fg); }
 
 /* "Why is my number different?" (app/explanation-panel.tsx) */
 .explanation .reasons { margin: 0 0 12px; padding-left: 20px; }
 .explanation .reasons li { margin: 3px 0; }
-.side-by-side th[scope="row"] { text-align: left; font-weight: 600; }
+.side-by-side th[scope="row"] { text-align: left; font: 600 14px var(--font); letter-spacing: 0; text-transform: none; color: var(--fg); }
 .side-by-side tr.differs td { font-weight: 700; }
 .provenance-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 0 16px; }
-.provenance-pair .figure-label { margin: 14px 0 0; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.provenance-pair .figure-label { margin: 14px 0 0; font: 500 11px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 .checks { list-style: none; margin: 12px 0 0; padding: 0; font-size: 13px; }
 .checks li { margin: 3px 0; }
-.check-tag { display: inline-block; min-width: 64px; font: 700 11px/1.6 var(--font); letter-spacing: .06em; text-transform: uppercase; }
+.check-tag { display: inline-block; min-width: 64px; font: 500 11px/1.6 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .checks .ok .check-tag { color: var(--ok); }
 .checks .bad .check-tag { color: var(--bad); }
+
+/* Question trends (app/trends/page.tsx) */
+.trends h2:not(:first-child) { margin-top: 28px; }
+
+@media (max-width: 720px) {
+  main { padding: 20px 16px 64px; gap: 18px; }
+  .card { padding: 18px 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+}
