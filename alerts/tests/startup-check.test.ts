@@ -28,3 +28,14 @@ it('starts when the settings are decided', async () => {
   await register();
   expect(exit).not.toHaveBeenCalled();
 });
+
+it('skips the check while next build runs, so the build needs no runtime settings', async () => {
+  vi.stubEnv('NEXT_RUNTIME', 'nodejs');
+  vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('NEXT_PHASE', 'phase-production-build');
+  vi.stubEnv('EMPLOYEE_STATUS', '');
+  vi.stubEnv('ALERTS_SCHEDULER', 'true');
+  const exit = vi.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
+  await register();
+  expect(exit).not.toHaveBeenCalled();
+});
