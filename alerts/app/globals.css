@@ -108,6 +108,8 @@ td { padding: 9px 8px; border-bottom: 1px solid var(--line); }
 .alert.sev-p2 { border-left-color: var(--warn); }
 .alert.sev-info { border-left-color: var(--orange); }
 .alert p { margin: 0; font-size: 14px; color: var(--muted); }
+/* The reasons inside one grouped card: a plain list, without the bordered card grid of .alerts (review of #131). */
+.alert-reasons { list-style: disc; margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .alert a { font-size: 14px; font-weight: 700; color: var(--orange-dark); }
 .alert-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .alert-head .status { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
